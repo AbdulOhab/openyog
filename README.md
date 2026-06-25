@@ -16,9 +16,9 @@ Learn more about SQLyog’s commercial edition [here](https://webyog.com/product
 
 Download a free, fully functional, 14-day trial of SQLyog’s commercial edition [here](https://webyog.com/product/sqlyog/trial/).
 
-Schedule a free product demonstration [here](https://webyog.com/demo).
+Schedule a free product demonstration [here](https://webyog.com/demo](https://webyog.com/product/sqlyog/demo/))
 
-View prices and purchase SQLyog’s commercial edition [here](https://store.webyog.com/product/sqlyogpricing).
+View prices and purchase SQLyog’s commercial edition [here](https://store.webyog.com/product/sqlyogpricing)
 
 Learn more about the latest releases of SQLyog in Webyog’s [blog](https://blog.sqlyog.com/category/releases/).
 
