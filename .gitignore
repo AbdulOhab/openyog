@@ -41,3 +41,6 @@ CMakeLists.txt.user*
 
 # Keep the vendored upstream binaries out of ignore rules:
 !lib/**
+
+# generated symlink (CMakeLists.txt/build.sh recreate it)
+port/shim/mysql
