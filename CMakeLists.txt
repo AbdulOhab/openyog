@@ -43,3 +43,18 @@ if(SQLITE3_LIBRARY)
     target_link_libraries(smoketest PRIVATE ${SQLITE3_LIBRARY})
 endif()
 target_compile_options(smoketest PRIVATE -Wall)
+
+# ---- Phase 2: the Qt 6 application shell (working name "OpenYog", see plan.md)
+find_package(Qt6 REQUIRED COMPONENTS Widgets)
+set(CMAKE_AUTOMOC ON)
+
+add_executable(openyog
+    qt/main.cpp
+    qt/MainWindow.h        qt/MainWindow.cpp
+    qt/ConnectionDialog.h  qt/ConnectionDialog.cpp
+    qt/ConnectionTab.h     qt/ConnectionTab.cpp
+    qt/QueryModel.h        qt/QueryModel.cpp
+    qt/ConnectionStore.h   qt/ConnectionStore.cpp
+)
+target_link_libraries(openyog PRIVATE wycore Qt6::Widgets ${MARIADB_LIBRARY})
+target_compile_options(openyog PRIVATE -Wall)
