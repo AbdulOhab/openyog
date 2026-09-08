@@ -195,7 +195,12 @@ wyIni::IniIsConnectionExists(const wyWChar *path)
 
     do
 	{
+#ifdef _WIN32
 		if((in_stream = _wfopen(path, L"rb")))
+#else
+		// PORT: no _wfopen() on Linux; wchar paths are converted to UTF-8 bytes
+		if((in_stream = fopen(wyWideToUtf8(path), "rb")))
+#endif
 		{
 			break;
 		}
@@ -204,18 +209,23 @@ wyIni::IniIsConnectionExists(const wyWChar *path)
 			if(GetLastError() == ERROR_FILE_NOT_FOUND)
 			{
                 LeaveCriticalSection(&pGlobals->m_csiniglobal);
-				return wyFalse;				
+				return wyFalse;
 			}
 
 			Sleep(FILE_LOCK_WAIT);
-			trycount++;	
+			trycount++;
 		}
 
 	}while(trycount <= FILE_LOCK_WAIT_TRY_COUNT);
-	
+
 	if(trycount > FILE_LOCK_WAIT_TRY_COUNT)
 	{
-		MessageBox(NULL, _(L"Files are inaccessible"), L"SQLyog", MB_ICONERROR | MB_OKCANCEL); 
+#ifdef _WIN32
+		MessageBox(NULL, _(L"Files are inaccessible"), L"SQLyog", MB_ICONERROR | MB_OKCANCEL);
+#else
+		// PORT: no GUI in the core build; log instead of showing a dialog
+		WriteToLogFile((wyChar*)"Files are inaccessible");
+#endif
         LeaveCriticalSection(&pGlobals->m_csiniglobal);
         return wyFalse;
     }
@@ -303,7 +313,12 @@ wyIni::IniTransferFullSection(const wyChar* fromSec, const wyChar* toSec,
 
 	do
 	{
+#ifdef _WIN32
 		if((in_stream = _wfopen(fname.GetAsWideChar(), L"rb")))
+#else
+		// PORT: no _wfopen() on Linux; wyString::GetString() is UTF-8 bytes
+		if((in_stream = fopen(fname.GetString(), "rb")))
+#endif
 		{
 			break;
 		}
@@ -313,18 +328,23 @@ wyIni::IniTransferFullSection(const wyChar* fromSec, const wyChar* toSec,
 			if(GetLastError() == ERROR_FILE_NOT_FOUND)
 			{
                 LeaveCriticalSection(&pGlobals->m_csiniglobal);
-				return wyFalse;				
+				return wyFalse;
 			}
 
 			Sleep(FILE_LOCK_WAIT);
-			trycount++;	
+			trycount++;
 		}
 
 	}while(trycount <= FILE_LOCK_WAIT_TRY_COUNT);
-	
+
 	if(trycount > FILE_LOCK_WAIT_TRY_COUNT)
 	{
-		MessageBox(NULL, _(L"Files are inaccessible"), L"SQLyog", MB_ICONERROR | MB_OKCANCEL); 
+#ifdef _WIN32
+		MessageBox(NULL, _(L"Files are inaccessible"), L"SQLyog", MB_ICONERROR | MB_OKCANCEL);
+#else
+		// PORT: no GUI in the core build; log instead of showing a dialog
+		WriteToLogFile((wyChar*)"Files are inaccessible");
+#endif
         LeaveCriticalSection(&pGlobals->m_csiniglobal);
         return wyFalse;
     }
@@ -361,7 +381,12 @@ wyIni::IniTransferFullSection(const wyChar* fromSec, const wyChar* toSec,
 
 					do
 					{
+#ifdef _WIN32
 						if((out_stream = _wfopen(fname.GetAsWideChar(), L"ab")))
+#else
+						// PORT: no _wfopen() on Linux; "ab" matches L"ab"
+						if((out_stream = fopen(fname.GetString(), "ab")))
+#endif
 						{
 							break;
 						}
@@ -372,18 +397,23 @@ wyIni::IniTransferFullSection(const wyChar* fromSec, const wyChar* toSec,
 							{
                                 fclose(in_stream);
                                 LeaveCriticalSection(&pGlobals->m_csiniglobal);
-                                return wyFalse;				
+                                return wyFalse;
 							}
 
 							Sleep(FILE_LOCK_WAIT);
-							trycount++;	
+							trycount++;
 						}
 
 	                }while(trycount <= FILE_LOCK_WAIT_TRY_COUNT);
-	
+
 	                if(trycount > FILE_LOCK_WAIT_TRY_COUNT)
 	                {
-		                MessageBox(NULL, _(L"Files are inaccessible"), L"SQLyog", MB_ICONERROR | MB_OKCANCEL); 
+#ifdef _WIN32
+		                MessageBox(NULL, _(L"Files are inaccessible"), L"SQLyog", MB_ICONERROR | MB_OKCANCEL);
+#else
+		                // PORT: no GUI in the core build; log instead of showing a dialog
+		                WriteToLogFile((wyChar*)"Files are inaccessible");
+#endif
 		                fclose(in_stream);
                         LeaveCriticalSection(&pGlobals->m_csiniglobal);
                         return wyFalse;
@@ -573,7 +603,13 @@ wyIni::LoadFile(const wyChar *filename, const wyChar* secname, const wyChar* key
     fname.SetAs(filename);
 	do
 	{
+#ifdef _WIN32
 		if((in_stream = _wfopen(fname.GetAsWideChar(), L"rbN")))
+#else
+		// PORT: no _wfopen() on Linux; the "N" (non-inherit) CRT flag has no
+		// POSIX counterpart and is dropped
+		if((in_stream = fopen(fname.GetString(), "rb")))
+#endif
 		{
 			break;
 		}
@@ -581,25 +617,30 @@ wyIni::LoadFile(const wyChar *filename, const wyChar* secname, const wyChar* key
 		else
 		{
 			if(GetLastError() == ERROR_FILE_NOT_FOUND)
-			{				
+			{
 				m_errormsg = "open file error";
 
-				return wyFalse;				
+				return wyFalse;
 			}
 
 			Sleep(FILE_LOCK_WAIT);
-			trycount++;	
+			trycount++;
 		}
 
 	}while(trycount <= FILE_LOCK_WAIT_TRY_COUNT);
-	
+
 	if(trycount > FILE_LOCK_WAIT_TRY_COUNT)
 	{
 		m_errormsg = "open file error";
-		MessageBox(NULL, _(L"SQLyog is getting terminated"), L"SQLyog", MB_ICONERROR | MB_OKCANCEL); 
+#ifdef _WIN32
+		MessageBox(NULL, _(L"SQLyog is getting terminated"), L"SQLyog", MB_ICONERROR | MB_OKCANCEL);
+#else
+		// PORT: no GUI in the core build; log instead of showing a dialog
+		WriteToLogFile((wyChar*)"INI file inaccessible, terminating");
+#endif
 
 		exit(0);
-		//return wyFalse;	
+		//return wyFalse;
 	}
 	
 	while(fgets(buffer,sizeof(buffer) -1,in_stream) != NULL)
@@ -855,16 +896,20 @@ wyIni::GetValue(const wyChar *sec,const wyChar *key,  wyChar *comment)
 	}
 }
 
-wyBool 
+wyBool
 wyIni::SetValue(const wyChar *sec,const wyChar *key,  const wyChar *value,const wyChar *comment,REPLACE_FLAG flag)
 {
 	m_flag = flag;
 	m_errormsg = NULL;
 	Append(sec,key,value);
+	// PORT: upstream returned wyFalse when m_errormsg was NULL (success) —
+	// the checks were inverted. Never surfaced on Windows because callers
+	// (Escapechar.cpp, AutoCompleteInterface.cpp, …) ignore the return value.
+	// Fixed so success actually reports wyTrue; caught by port/smoketest.
 	if(m_errormsg == NULL)
-		return wyFalse;
-	else
 		return wyTrue;
+	else
+		return wyFalse;
 }
 
 // get last error

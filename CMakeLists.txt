@@ -22,13 +22,24 @@ endif()
 
 add_library(wycore STATIC
     src/wyString.cpp     # portable string class everything depends on
+    src/wyFile.cpp       # POSIX port (PORT guards, Phase 1)
+    src/wySqlite.cpp     # INI-adjacent helper store; upstream Linux bugs fixed
+    src/wyIni.cpp        # INI engine = SQLyog's connection storage format
     port/stubs.cpp       # upstream-declared CRT externs + copied base64 helpers
 )
+target_compile_definitions(wycore PUBLIC COMMUNITY)   # upstream vcxproj default
 target_include_directories(wycore PUBLIC port/shim include)
 target_compile_options(wycore PRIVATE -Wall -Wno-unknown-pragmas)
 
+find_package(Threads REQUIRED)
+target_link_libraries(wycore PUBLIC Threads::Threads)
+
 find_library(MARIADB_LIBRARY mariadb REQUIRED)
+find_library(SQLITE3_LIBRARY sqlite3)
 
 add_executable(smoketest port/smoketest.cpp)
 target_link_libraries(smoketest PRIVATE wycore ${MARIADB_LIBRARY})
+if(SQLITE3_LIBRARY)
+    target_link_libraries(smoketest PRIVATE ${SQLITE3_LIBRARY})
+endif()
 target_compile_options(smoketest PRIVATE -Wall)

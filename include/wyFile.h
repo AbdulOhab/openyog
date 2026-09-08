@@ -33,7 +33,12 @@
 #include <fcntl.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#ifdef _WIN32
 #include <io.h>
+#else
+// PORT: <io.h> is Windows-only; POSIX calls come via unistd.h in wyFile.cpp
+#include <unistd.h>
+#endif
 #include <stdio.h>
 
 //#ifdef _WIN32
@@ -77,6 +82,11 @@ public:
 	*/
 	wyInt32			RemoveFile();
 
+	// PORT: called from wySqlite.cpp Linux path; upstream referenced this
+	// method but wyFile never had it (phantom member). Gives a newly created
+	// file sane permissions (0644), mirroring the Win32 default ACL.
+	wyBool			SetFilePermission(const wyChar *path);
+
 	//Open the Temp file with permissions
 	/**
 	@param pFlags : IN flags to open() function
@@ -95,7 +105,12 @@ public:
 	/******Variables************/
 	
 	//File descripter
+#ifdef _WIN32
 	HANDLE m_hfile;
+#else
+	// PORT: POSIX file descriptor; -1 = closed (HANDLE is a pointer on Windows)
+	int m_hfile;
+#endif
 	wyString m_filename;
 };
 #endif

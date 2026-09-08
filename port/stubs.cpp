@@ -9,12 +9,15 @@
  */
 
 #include "CommonHelper.h"
+#include "Global.h"        /* port shim: GLOBALS/PGLOBALS for pGlobals */
 
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
 #include <cctype>
+#include <cwchar>
+#include <algorithm>
 
 /* Windows CRT functions the Linux path of Datatype.h (lines 104-106) declares
  * as extern — upstream expects the builder to supply them, same as their SJA
@@ -46,6 +49,53 @@ int strnicmp(const char *a, const char *b, int count)
 my_ulonglong _atoi64(const char *nptr)
 {
     return (my_ulonglong)std::strtoll(nptr, nullptr, 10);
+}
+
+/* See port/shim/Global.h: core-build stand-in for the app-wide globals.
+ * Only the members core files actually touch exist here. */
+static GLOBALS g_core_globals = { PTHREAD_MUTEX_INITIALIZER };
+PGLOBALS pGlobals = &g_core_globals;
+
+/* Linux has no _wfopen(); paths are narrow UTF-8 bytes. Converts wchar_t* ->
+ * UTF-8 using a static buffer (callers touch INI files under
+ * pGlobals->m_csiniglobal, so the non-reentrancy is contained). */
+const wyChar *wyWideToUtf8(const wyWChar *wide)
+{
+    static char buf[4096];
+    if(!wide) {
+        buf[0] = '\0';
+        return buf;
+    }
+    std::mbstate_t state{};
+    const wchar_t *src = wide;
+    size_t n = std::wcsrtombs(buf, &src, sizeof(buf) - 1, &state);
+    if(n == (size_t)-1) {
+        buf[0] = '\0';
+    } else {
+        buf[n] = '\0';
+    }
+    return buf;
+}
+
+/* Windows CRT function used by wyIni.cpp (Int to ASCII, up to 10 digits). */
+wyChar *itoa(int value, wyChar *str, int radix)
+{
+    if(!str || (radix < 2 || radix > 36)) {
+        if(str) str[0] = '\0';
+        return str;
+    }
+    char *p = str;
+    bool neg = (value < 0 && radix == 10);
+    unsigned int v = neg ? (unsigned int)(-(long)value) : (unsigned int)value;
+    do {
+        int digit = v % radix;
+        *p++ = digit < 10 ? '0' + digit : 'a' + digit - 10;
+        v /= radix;
+    } while(v);
+    if(neg) *p++ = '-';
+    *p = '\0';
+    std::reverse(str, p);
+    return str;
 }
 
 /* Real one writes into the app log directory (CommonHelper.cpp). */

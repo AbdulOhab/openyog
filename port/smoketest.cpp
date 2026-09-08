@@ -13,6 +13,8 @@
 
 #include "wyString.h"
 #include "CommonHelper.h"   /* port shim: _(), base64 + log stubs */
+#include "wyFile.h"
+#include "wyIni.h"
 
 #include <mysql/mysql.h>
 
@@ -20,6 +22,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <string>
+#include <unistd.h>
 
 static int g_failures = 0;
 
@@ -70,6 +73,59 @@ static void test_wystring()
     size_t rawlen = DecodeBase64(b64, decoded);
     check(rawlen == 5 && strcmp(decoded, "hello") == 0, "DecodeBase64 round-trip");
     free(b64);
+}
+
+static void test_wyfile()
+{
+    std::printf("wyFile unit tests:\n");
+
+    wyString dir, path;
+    wyFile f;
+    f.GetTempFilePath(&dir);
+    path.SetAs(dir.GetString());
+    path.Add("/port_smoke_test.tmp");
+    f.SetFilename(&path);
+
+    check(f.CheckIfFileExists() == wyFalse, "GetTempFilePath + file absent");
+    check(f.OpenWithPermission(GENERIC_WRITE, CREATE_NEW) != -1,
+          "OpenWithPermission(GENERIC_WRITE, CREATE_NEW)");
+
+    const char *msg = "linux port works";
+    bool wrote = write(f.m_hfile, msg, strlen(msg)) == (ssize_t)strlen(msg);
+    check(wrote, "write() through wyFile fd");
+    check(f.Close() == 0, "Close()");
+
+    check(f.CheckIfFileExists() == wyTrue, "CheckIfFileExists after write");
+    check(f.RemoveFile() == 1, "RemoveFile");
+    check(f.CheckIfFileExists() == wyFalse, "file gone after RemoveFile");
+}
+
+static void test_wyini()
+{
+    std::printf("wyIni unit tests (INI round-trip = SQLyog connection storage path):\n");
+
+    wyString dir, path;
+    wyFile f;
+    f.GetTempFilePath(&dir);
+    path.SetAs(dir.GetString());
+    path.Add("/port_smoke_test.ini");
+
+    check(wyIni::IniWriteString("port_smoke", "engine", "mariadb", path.GetString()) == wyTrue,
+          "IniWriteString");
+    check(wyIni::IniWriteInt("port_smoke", "answer", 42, path.GetString()) == wyTrue,
+          "IniWriteInt");
+
+    wyString got;
+    wyIni::IniGetString("port_smoke", "engine", "", &got, path.GetString());
+    check(got.Compare("mariadb") == 0, "IniGetString round-trip");
+    check(wyIni::IniGetInt("port_smoke", "answer", 0, path.GetString()) == 42,
+          "IniGetInt round-trip");
+    check(wyIni::IniGetString("port_smoke", "missing", "fallback", &got, path.GetString()) != 0
+          && got.Compare("fallback") == 0, "IniGetString default on missing key");
+
+    wyFile cleaner;
+    cleaner.SetFilename(&path);
+    cleaner.RemoveFile();
 }
 
 static void test_mariadb(const char *host, const char *user, const char *pass, int port, const char *db)
@@ -138,6 +194,8 @@ int main(int argc, char **argv)
     const char *db   = argc > 5 ? argv[5] : "port_test";
 
     test_wystring();
+    test_wyfile();
+    test_wyini();
     test_mariadb(host, user, pass, port, db);
 
     std::printf("\n%s (%d failure%s)\n",
