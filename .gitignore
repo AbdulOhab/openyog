@@ -1,0 +1,43 @@
+# Build directories
+build*/
+out/
+cmake-build-*/
+bin-qt/
+qt/*/build*/
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+install_manifest.txt
+compile_commands.json
+.cache/
+
+# Compiled artifacts
+*.o
+*.obj
+*.so
+*.so.*
+*.a
+*.dll
+*.exe
+*.AppImage
+
+# Qt
+moc_*.cpp
+qrc_*.cpp
+ui_*.h
+*.qm
+.qtc_clangd/
+CMakeLists.txt.user*
+
+# Editors / OS
+.vs/
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store
+
+# Keep the vendored upstream binaries out of ignore rules:
+!lib/**
