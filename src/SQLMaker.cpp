@@ -21,8 +21,13 @@
     \brief Implementation of all functions declared in SqlMaker.Cpp
     The functions in this file helps in framing the SQL query as well as get it executed.    
 */
+// PORT: was unguarded; Datatype.h's pattern (Linux: mysql/mysql.h) applied
+#ifdef _WIN32
 #include <winsock.h>
 #include <mysql.h>
+#else
+#include <mysql/mysql.h>
+#endif
 #include "SQLMaker.h"
 #include "FrameWindowHelper.h"
 #include "ClientMySQLWrapper.h"

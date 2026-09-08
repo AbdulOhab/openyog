@@ -178,8 +178,10 @@ wyBool wySQLite::OpenAndPrepare(sqlite3_stmt **stmt)
 #ifdef _WIN32
     UNREFERENCED_PARAMETER(isdbexists);
 #else
-    sqlitefile.SetFilename(db_name_.GetString());
-    isdbexists = sqlitefile.CheckIfFileExists(db_name_.GetString());
+    // PORT: upstream passed a const char* but SetFilename() takes wyString*;
+    // db_name_ is already the wyString member holding this name.
+    sqlitefile.SetFilename(&db_name_);
+    isdbexists = sqlitefile.CheckIfFileExists();
 #endif
 
     ret_ = sqlite3_open(db_name_.GetString(), &sqlite_); 
@@ -274,10 +276,13 @@ wyBool wySQLite::Open(const wyChar * db_name, wyBool isreadonlymode)
 #ifdef _WIN32
     UNREFERENCED_PARAMETER(isdbexists);
 #else
-    isdbexists = sqlitefile.CheckIfFileExists(db_name);
+    // PORT: same arg-mismatch bug as the other CheckIfFileExists() calls;
+    // db_name_ was SetAs(db_name) above.
+    sqlitefile.SetFilename(&db_name_);
+    isdbexists = sqlitefile.CheckIfFileExists();
 #endif
 
-    if (isreadonlymode == wyFalse) 
+    if (isreadonlymode == wyFalse)
     {	
         ret_ = sqlite3_open(db_name_.GetString(), &sqlite_);     
     } 
@@ -824,7 +829,11 @@ wyBool wySQLite::SqliteConnectionGetNew(const wyChar* db_name,
 #ifdef _WIN32
     UNREFERENCED_PARAMETER(isdbexists);
 #else
-    isdbexists = sqlitefile.CheckIfFileExists((wyChar*) db_name);
+    // PORT: same arg-mismatch bug as the other CheckIfFileExists() calls
+    wyString fname;
+    fname.SetAs(db_name);
+    sqlitefile.SetFilename(&fname);
+    isdbexists = sqlitefile.CheckIfFileExists();
 #endif
 
     ret = sqlite3_open(db_name, &(sqlite->uSqlite));
