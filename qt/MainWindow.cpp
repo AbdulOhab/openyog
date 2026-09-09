@@ -183,10 +183,25 @@ MainWindow::MainWindow(QWidget *parent)
     connect(selAll, &QAction::triggered, this,
             [this] { editClipboard(QStringLiteral("selectall")); });
     edit->addSeparator();
-    addDisabled(edit, QStringLiteral("&Find…\tCtrl+F"));
-    addDisabled(edit, QStringLiteral("Find Next\tF3"));
-    addDisabled(edit, QStringLiteral("R&eplace…\tCtrl+H"));
-    addDisabled(edit, QStringLiteral("&Go To…\tCtrl+G"));
+    const auto onEditor = [this](void (ConnectionTab::*fn)()) {
+        if(auto *t = currentTab()) (t->*fn)();
+    };
+    QAction *findAct = edit->addAction(QStringLiteral("&Find…\tCtrl+F"));
+    findAct->setShortcut(QKeySequence::Find);
+    connect(findAct, &QAction::triggered, this,
+            [onEditor] { onEditor(&ConnectionTab::promptFind); });
+    QAction *findNextAct = edit->addAction(QStringLiteral("Find Next\tF3"));
+    findNextAct->setShortcut(QKeySequence::FindNext);
+    connect(findNextAct, &QAction::triggered, this,
+            [onEditor] { onEditor(&ConnectionTab::findNext); });
+    QAction *replaceAct = edit->addAction(QStringLiteral("R&eplace…\tCtrl+H"));
+    replaceAct->setShortcut(QKeySequence::Replace);
+    connect(replaceAct, &QAction::triggered, this,
+            [onEditor] { onEditor(&ConnectionTab::promptReplace); });
+    QAction *gotoAct = edit->addAction(QStringLiteral("&Go To…\tCtrl+G"));
+    gotoAct->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_G));
+    connect(gotoAct, &QAction::triggered, this,
+            [onEditor] { onEditor(&ConnectionTab::promptGoto); });
     edit->addSeparator();
     addDisabled(edit, QStringLiteral("Li&st All Tags\tCtrl+Space"));
     addDisabled(edit, QStringLiteral("List &Matching Tags\tCtrl+Enter"));
@@ -226,8 +241,18 @@ MainWindow::MainWindow(QWidget *parent)
     connect(lower, &QAction::triggered, this,
             [this] { editClipboard(QStringLiteral("lower")); });
     advanced->addSeparator();
-    addDisabled(advanced, QStringLiteral("&Comment Selection\tCtrl+Shift+C"));
-    addDisabled(advanced, QStringLiteral("&Remove Comment From Selection\tCtrl+Shift+R"));
+    QAction *commentAct = advanced->addAction(
+        QStringLiteral("&Comment Selection\tCtrl+Shift+C"));
+    commentAct->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_C));
+    connect(commentAct, &QAction::triggered, this, [this] {
+        if(auto *t = currentTab()) t->commentSelection(true);
+    });
+    QAction *uncommentAct = advanced->addAction(
+        QStringLiteral("&Remove Comment From Selection\tCtrl+Shift+R"));
+    uncommentAct->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_R));
+    connect(uncommentAct, &QAction::triggered, this, [this] {
+        if(auto *t = currentTab()) t->commentSelection(false);
+    });
 
     /* ================= Favorites ==================================== */
     QMenu *favorites = menuBar()->addMenu(QStringLiteral("Fa&vorites"));

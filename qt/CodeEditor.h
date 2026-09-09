@@ -13,6 +13,11 @@ public:
 
     int lineNumberAreaWidth() const;
 
+    /* editor ops wired to the Edit menu (Scintilla swap still pending) */
+    bool findText(const QString &needle, bool caseSensitive, bool backward);
+    void gotoLine(int line);                 /* 1-based */
+    void toggleLineComment(bool add);        /* prefix/strip "-- " on sel lines */
+
 protected:
     void resizeEvent(QResizeEvent *event) override;
 

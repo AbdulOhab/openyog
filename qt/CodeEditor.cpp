@@ -3,6 +3,7 @@
 #include <QFontDatabase>
 #include <QPainter>
 #include <QTextBlock>
+#include <QTextDocument>
 
 CodeEditor::CodeEditor(QWidget *parent)
     : QPlainTextEdit(parent)
@@ -88,4 +89,64 @@ void CodeEditor::paintLineNumberArea(QPaintEvent *event)
         bottom = top + (int)blockBoundingRect(block).height();
         ++blockNumber;
     }
+}
+
+/* ---- Edit-menu ops (placeholder until Scintilla) --------------------- */
+
+bool CodeEditor::findText(const QString &needle, bool caseSensitive,
+                          bool backward)
+{
+    if(needle.isEmpty())
+        return false;
+    QTextDocument::FindFlags f;
+    if(caseSensitive) f |= QTextDocument::FindCaseSensitively;
+    if(backward)      f |= QTextDocument::FindBackward;
+    if(find(needle, f))
+        return true;
+    /* wrap around */
+    QTextCursor c = textCursor();
+    c.movePosition(backward ? QTextCursor::End : QTextCursor::Start);
+    setTextCursor(c);
+    return find(needle, f);
+}
+
+void CodeEditor::gotoLine(int line)
+{
+    QTextCursor c(document()->findBlockByLineNumber(qMax(0, line - 1)));
+    setTextCursor(c);
+    centerCursor();
+    setFocus();
+}
+
+void CodeEditor::toggleLineComment(bool add)
+{
+    QTextCursor c = textCursor();
+    const int selStart = c.selectionStart(), selEnd = c.selectionEnd();
+    c.setPosition(selStart);
+    const int firstBlock = c.blockNumber();
+    c.setPosition(selEnd);
+    const int lastBlock = c.blockNumber();
+
+    c.beginEditBlock();
+    for(int b = firstBlock; b <= lastBlock; ++b) {
+        QTextBlock blk = document()->findBlockByNumber(b);
+        QTextCursor lc(blk);
+        if(add) {
+            lc.insertText(QStringLiteral("-- "));
+        } else {
+            const QString t = blk.text();
+            int i = 0;
+            while(i < t.size() && t[i].isSpace()) ++i;
+            if(t.mid(i).startsWith(QStringLiteral("-- "))) {
+                lc.setPosition(blk.position() + i);
+                lc.setPosition(blk.position() + i + 3, QTextCursor::KeepAnchor);
+                lc.removeSelectedText();
+            } else if(t.mid(i).startsWith(QStringLiteral("--"))) {
+                lc.setPosition(blk.position() + i);
+                lc.setPosition(blk.position() + i + 2, QTextCursor::KeepAnchor);
+                lc.removeSelectedText();
+            }
+        }
+    }
+    c.endEditBlock();
 }

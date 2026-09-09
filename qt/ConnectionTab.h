@@ -92,6 +92,13 @@ public slots:
     void showHistory();
     void exportResult();   /* CSV / HTML / JSON / Markdown, by chosen filter */
 
+    /* editor Edit-menu ops on the active Query tab */
+    void promptFind();
+    void findNext();
+    void promptReplace();
+    void promptGoto();
+    void commentSelection(bool add);
+
 signals:
     void databasesChanged(const QStringList &dbs, const QString &current);
     void executed(const QString &info);      /* "Exec: 0.01 sec" etc. */
@@ -123,6 +130,7 @@ private:
     bool                m_running   = false;
 
     QStringList         m_databases;
+    QString             m_lastFind;       /* for Find Next / F3 */
 
     /* selected table in the browser: [db, table] or empty */
     QStringList currentTableInfo() const;
