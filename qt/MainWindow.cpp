@@ -20,6 +20,7 @@
 #include <QMessageBox>
 #include <QPlainTextEdit>
 #include <QPushButton>
+#include <QFrame>
 #include <QStatusBar>
 #include <QTabWidget>
 #include <QToolBar>
@@ -46,18 +47,19 @@ MainWindow::MainWindow(QWidget *parent)
     resize(1200, 760);
 
     m_tabs = new QTabWidget(this);
+    m_tabs->setObjectName(QStringLiteral("connTabs"));
     m_tabs->setTabsClosable(true);
     m_tabs->setMovable(true);
     m_tabs->setDocumentMode(true);
-    m_tabs->tabBar()->setExpanding(true);         /* full-width blue strip */
+    m_tabs->tabBar()->setExpanding(false);        /* SQLyog left-aligns tabs */
     auto *plus = new QPushButton(QStringLiteral("+"), this);
-    plus->setFixedSize(24, 22);
+    plus->setFixedSize(22, 20);
     plus->setStyleSheet(QStringLiteral(
-        "QPushButton { background: transparent; color: white; "
+        "QPushButton { background: transparent; color: #3B7DBB; "
         "border: none; font-weight: bold; }"
-        "QPushButton:hover { background: #2A5D9F; }"));
+        "QPushButton:hover { background: #E8F2FA; }"));
     connect(plus, &QPushButton::clicked, this, &MainWindow::newConnection);
-    m_tabs->setCornerWidget(plus, Qt::TopLeftCorner);
+    m_tabs->setCornerWidget(plus, Qt::TopRightCorner);
     setCentralWidget(m_tabs);
 
     connect(m_tabs, &QTabWidget::tabCloseRequested, this, &MainWindow::closeTab);
@@ -456,16 +458,40 @@ MainWindow::MainWindow(QWidget *parent)
     });
 
     /* ================= toolbar + status bar ========================= */
+    /* button order + icons follow the SQLyog main toolbar (IDR_MAINFRAME) */
     auto *toolbar = addToolBar(QStringLiteral("main"));
     toolbar->setMovable(false);
+    toolbar->setIconSize(QSize(16, 16));
+
     newConn->setIcon(Icons::get(QStringLiteral("connect_16.ico")));
     toolbar->addAction(newConn);
-    QAction *execTool = toolbar->addAction(Icons::get(QStringLiteral("execute_16.ico")),
-        QStringLiteral("Execute Query (F9)"));
+    toolbar->addSeparator();
+
+    QAction *execTool = toolbar->addAction(
+        Icons::get(QStringLiteral("execute_16.ico")),
+        QStringLiteral("Execute Query\tF9"));
     connect(execTool, &QAction::triggered, this, &MainWindow::executeCurrentTab);
-    QAction *refreshTool = toolbar->addAction(Icons::get(QStringLiteral("refresh_16.ico")),
-        QStringLiteral("Refresh Objects (F5)"));
+    QAction *execAllTool = toolbar->addAction(
+        Icons::get(QStringLiteral("execall_16.ico")),
+        QStringLiteral("Execute All Queries\tCtrl+F9"));
+    connect(execAllTool, &QAction::triggered, this, &MainWindow::executeCurrentTab);
+    QAction *execEditTool = toolbar->addAction(
+        Icons::get(QStringLiteral("execforupd_16.ico")),
+        QStringLiteral("Execute Query & Edit Resultset\tF8"));
+    execEditTool->setEnabled(false);
+    QAction *stopTool = toolbar->addAction(
+        Icons::get(QStringLiteral("Stop_16.ico")), QStringLiteral("Stop"));
+    stopTool->setEnabled(false);
+    toolbar->addSeparator();
+
+    QAction *refreshTool = toolbar->addAction(
+        Icons::get(QStringLiteral("refresh_16.ico")),
+        QStringLiteral("Refresh Object Browser\tF5"));
     connect(refreshTool, &QAction::triggered, this, &MainWindow::refreshBrowser);
+    QAction *formatTool = toolbar->addAction(
+        Icons::get(QStringLiteral("formatall.ico")),
+        QStringLiteral("Format All Queries\tShift+F12"));
+    formatTool->setEnabled(false);
     toolbar->addSeparator();
 
     m_dbCombo = new QComboBox(toolbar);
@@ -473,15 +499,24 @@ MainWindow::MainWindow(QWidget *parent)
     toolbar->addWidget(m_dbCombo);
     connect(m_dbCombo, &QComboBox::activated, this,
             [this](int index) { useDatabaseFromCombo(m_dbCombo->itemText(index)); });
+    toolbar->addSeparator();
 
-    auto *ready = new QLabel(QStringLiteral("Ready"), this);
-    statusBar()->addWidget(ready, 1);
-    m_cursorLabel = new QLabel(QStringLiteral("Ln 1, Col 1"), this);
-    statusBar()->addWidget(m_cursorLabel);
+    QAction *userMgrTool = toolbar->addAction(
+        Icons::get(QStringLiteral("usermanager.ICO")),
+        QStringLiteral("User Manager\tCtrl+U"));
+    userMgrTool->setEnabled(false);
+
+    m_statusMsg = new QLabel(QStringLiteral("Ready"), this);
+    statusBar()->addWidget(m_statusMsg, 1);
     m_execLabel = new QLabel(QStringLiteral("Exec: 0 sec"), this);
+    m_totalLabel = new QLabel(QStringLiteral("Total: 0 sec"), this);
+    m_cursorLabel = new QLabel(QStringLiteral("Ln 1, Col 1"), this);
     m_connectionsLabel = new QLabel(QStringLiteral("Connections: 0"), this);
-    statusBar()->addWidget(m_execLabel);
-    statusBar()->addWidget(m_connectionsLabel);
+    for(QLabel *l : { m_execLabel, m_totalLabel, m_cursorLabel, m_connectionsLabel }) {
+        l->setMinimumWidth(90);
+        l->setFrameStyle(QFrame::Panel | QFrame::Sunken);
+        statusBar()->addPermanentWidget(l);
+    }
 
     syncToolbarToCurrentTab();
 }
@@ -621,8 +656,12 @@ bool MainWindow::openAndRun(const ConnectionParams &params)
             syncToolbarToCurrentTab();
     });
     connect(tab, &ConnectionTab::executed, this, [this, tab](const QString &info) {
-        if(m_tabs->currentWidget() == tab)
-            m_execLabel->setText(info);
+        if(m_tabs->currentWidget() != tab)
+            return;
+        /* ConnectionTab emits "Exec: X sec | Total: Y sec" */
+        const QStringList parts = info.split(QStringLiteral(" | "));
+        m_execLabel->setText(parts.value(0, QStringLiteral("Exec: 0 sec")));
+        m_totalLabel->setText(parts.value(1, QStringLiteral("Total: 0 sec")));
     });
     connect(tab, &ConnectionTab::cursorMoved, this,
             [this, tab](const QString &pos) {
