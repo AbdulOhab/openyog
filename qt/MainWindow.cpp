@@ -244,8 +244,15 @@ MainWindow::MainWindow(QWidget *parent)
 
     /* ================= Database ===================================== */
     QMenu *database = menuBar()->addMenu(QStringLiteral("&Database"));
-    addDisabled(database,
+    QAction *copyDb = database->addAction(
         QStringLiteral("&Copy Database To Different Host/Database…"));
+    connect(copyDb, &QAction::triggered, this, [this] {
+        if(auto *t = currentTab())
+            t->promptCopyDatabase();
+        else
+            QMessageBox::information(this, QStringLiteral("Copy Database"),
+                QStringLiteral("Open a connection first."));
+    });
     QAction *createDb = database->addAction(
         QStringLiteral("Create &Database…\tCtrl+D"));
     connect(createDb, &QAction::triggered, this, &MainWindow::createDatabase);
@@ -773,6 +780,18 @@ bool MainWindow::selftestDump(const QString &path)
     const bool ok = tab->dumpDatabaseToFile({}, path, &err);
     if(!ok)
         qWarning("dump failed: %s", qPrintable(err));
+    return ok;
+}
+
+bool MainWindow::selftestCopyDb(const QString &src, const QString &tgt)
+{
+    auto *tab = currentTab();
+    if(!tab)
+        return false;
+    QString err;
+    const bool ok = tab->copyDatabaseTo(src, tgt, true, true, &err);
+    if(!ok)
+        qWarning("copydb failed: %s", qPrintable(err));
     return ok;
 }
 

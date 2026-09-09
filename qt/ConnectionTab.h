@@ -71,6 +71,10 @@ public slots:
     void promptAlterTable(const QString &database, const QString &table);
     void promptRenameTable(const QString &database, const QString &table);
     void promptCopyTable(const QString &database, const QString &table);
+    void promptCopyDatabase(const QString &database = {});
+    /* non-interactive core, also used by the --copydb selftest */
+    bool copyDatabaseTo(const QString &srcDb, const QString &tgtDb,
+                        bool withData, bool dropFirst, QString *error);
     void promptManageIndexes(const QString &database, const QString &table);
     void promptManageForeignKeys(const QString &database, const QString &table);
     void dropTable(const QString &database, const QString &table);
