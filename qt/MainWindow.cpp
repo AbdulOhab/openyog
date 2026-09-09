@@ -2,8 +2,10 @@
 #include "ConnectionDialog.h"
 #include "ConnectionStore.h"
 #include "ConnectionTab.h"
+#include "Theme.h"
 
 #include <QAction>
+#include <QApplication>
 #include <QComboBox>
 #include <QLabel>
 #include <QMenuBar>
@@ -63,6 +65,15 @@ MainWindow::MainWindow(QWidget *parent)
     others->addAction(QStringLiteral("Copy Table…"))->setEnabled(false);
 
     QMenu *tools = menuBar()->addMenu(QStringLiteral("&Tools"));
+    QAction *darkTheme = tools->addAction(QStringLiteral("&Dark Theme"));
+    darkTheme->setCheckable(true);
+    darkTheme->setChecked(Theme::load() == QStringLiteral("dark"));
+    connect(darkTheme, &QAction::toggled, this, [this, darkTheme](bool checked) {
+        const QString theme = checked ? QStringLiteral("dark")
+                                      : QStringLiteral("light");
+        Theme::save(theme);
+        Theme::apply(*qApp, theme);
+    });
     tools->addAction(QStringLiteral("&User Manager…"))->setEnabled(false);
     tools->addAction(QStringLiteral("&Backup…"))->setEnabled(false);
 
@@ -104,10 +115,8 @@ MainWindow::MainWindow(QWidget *parent)
     auto *ready = new QLabel(QStringLiteral("Ready"), this);
     statusBar()->addWidget(ready, 1);
     m_execLabel = new QLabel(QStringLiteral("Exec: 0 sec"), this);
-    m_totalLabel = new QLabel(QStringLiteral("Total: 0 sec"), this);
     m_connectionsLabel = new QLabel(QStringLiteral("Connections: 0"), this);
     statusBar()->addWidget(m_execLabel);
-    statusBar()->addWidget(m_totalLabel);
     statusBar()->addWidget(m_connectionsLabel);
 
     syncToolbarToCurrentTab();

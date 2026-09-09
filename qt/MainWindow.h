@@ -34,6 +34,5 @@ private:
     QTabWidget *m_tabs    = nullptr;
     QComboBox  *m_dbCombo = nullptr;
     QLabel     *m_execLabel       = nullptr;
-    QLabel     *m_totalLabel      = nullptr;
     QLabel     *m_connectionsLabel = nullptr;
 };

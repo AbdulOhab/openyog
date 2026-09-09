@@ -7,6 +7,7 @@
 #include "MainWindow.h"
 #include "ConnectionDialog.h"
 #include "ConnectionParams.h"
+#include "Theme.h"
 
 #include <QApplication>
 #include <QTimer>
@@ -52,13 +53,9 @@ int main(int argc, char *argv[])
     QApplication::setApplicationName(QStringLiteral("OpenYog"));
     QApplication::setOrganizationName(QStringLiteral("OpenYog"));
 
-    /* SQLyog-look: steel-blue tab bars with white captions */
-    app.setStyleSheet(QStringLiteral(
-        "QTabWidget::pane { border: 1px solid #8FA8C8; }"
-        "QTabBar { background: #4A7EBB; }"
-        "QTabBar::tab { background: #4A7EBB; color: white; "
-        "  padding: 3px 12px; margin-right: 1px; }"
-        "QTabBar::tab:selected { background: #EAF0F8; color: black; }"));
+    /* SQLyog-look tab bars; palette/stylesheets follow the saved theme */
+    const QString theme = Theme::load();
+    Theme::apply(app, theme);
 
     mysql_library_init(0, nullptr, nullptr);
     int rc = 0;
@@ -77,11 +74,14 @@ int main(int argc, char *argv[])
         }
         std::unique_ptr<MainWindow> w(new MainWindow);
         w->show();
-        QTimer::singleShot(200, [&, w = w.get()] {
+        /* threaded execution needs more than a frame or two to land */
+        QTimer::singleShot(1500, [&, w = w.get()] {
             if(doAutoConnect)
                 w->openAndRun(autoConnect);
-            w->grab().save(screenshot);
-            QApplication::quit();
+            QTimer::singleShot(2500, [w, screenshot] {
+                w->grab().save(screenshot);
+                QApplication::quit();
+            });
         });
         QApplication::exec();
     } else if(shotDialog) {

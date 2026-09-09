@@ -38,8 +38,12 @@ ObjectBrowser::ObjectBrowser(QWidget *parent)
     connect(m_tree, &QTreeWidget::itemExpanded, this, &ObjectBrowser::onItemExpanded);
     connect(m_tree, &QTreeWidget::itemDoubleClicked, this,
             [this](QTreeWidgetItem *item, int) {
-                if(item->data(0, Qt::UserRole).toInt() == KDatabase)
+                const int kind = item->data(0, Qt::UserRole).toInt();
+                if(kind == KDatabase)
                     emit databaseActivated(item->data(0, Qt::UserRole + 1).toString());
+                else if(kind == KTable)
+                    emit tableActivated(item->data(0, Qt::UserRole + 1).toString(),
+                                        item->text(0));
             });
 
     auto *layout = new QVBoxLayout(this);
