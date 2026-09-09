@@ -25,6 +25,8 @@ public:
 signals:
     void databaseActivated(const QString &db);      /* double click → USE */
     void tableActivated(const QString &db, const QString &table); /* → SELECT */
+    void dropTableRequested(const QString &db, const QString &table);
+    void truncateTableRequested(const QString &db, const QString &table);
     void statusMessage(const QString &text);
 
 private slots:

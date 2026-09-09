@@ -9,6 +9,7 @@
 #include <QFontDatabase>
 #include <QTextStream>
 #include <QHeaderView>
+#include <QMessageBox>
 #include <QMetaObject>
 #include <QPushButton>
 #include <QSplitter>
@@ -197,6 +198,26 @@ ConnectionTab::ConnectionTab(const ConnectionParams &params, QWidget *parent)
     connect(m_tableData, &TableDataView::statusMessage, this,
             [this](const QString &text) {
         m_messages->appendPlainText(text);
+    });
+
+    connect(m_browser, &ObjectBrowser::dropTableRequested, this,
+            [this](const QString &db, const QString &table) {
+        if(QMessageBox::question(this, QStringLiteral("Drop Table"),
+                QStringLiteral("Permanently DROP table `%1`.`%2`?")
+                    .arg(db, table)) != QMessageBox::Yes)
+            return;
+        execDdl(QStringLiteral("DROP TABLE `%1`.`%2`").arg(db, table));
+        m_tableData->clear();
+    });
+    connect(m_browser, &ObjectBrowser::truncateTableRequested, this,
+            [this](const QString &db, const QString &table) {
+        if(QMessageBox::question(this, QStringLiteral("Truncate Table"),
+                QStringLiteral("Delete ALL rows of `%1`.`%2`?")
+                    .arg(db, table)) != QMessageBox::Yes)
+            return;
+        execDdl(QStringLiteral("TRUNCATE TABLE `%1`.`%2`").arg(db, table));
+        if(m_tableData->loadedTable() == table)
+            m_tableData->load(m_conn, db, table);   /* empty grid */
     });
 
     m_browser->setConnectionLabel(
