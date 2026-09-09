@@ -74,7 +74,8 @@ public slots:
     void promptCopyDatabase(const QString &database = {});
     /* non-interactive core, also used by the --copydb selftest */
     bool copyDatabaseTo(const QString &srcDb, const QString &tgtDb,
-                        bool withData, bool dropFirst, QString *error);
+                        bool withData, bool dropFirst, bool withRoutines,
+                        QString *error);
     void promptManageIndexes(const QString &database, const QString &table);
     void promptManageForeignKeys(const QString &database, const QString &table);
     void dropTable(const QString &database, const QString &table);
