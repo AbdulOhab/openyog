@@ -13,6 +13,7 @@
 #include <QAction>
 #include <QApplication>
 #include <QComboBox>
+#include <QIcon>
 #include <QFileDialog>
 #include <QInputDialog>
 #include <QLabel>
@@ -45,6 +46,14 @@ MainWindow::MainWindow(QWidget *parent)
 {
     setWindowTitle(QStringLiteral("OpenYog"));
     resize(1200, 760);
+
+    /* app icon at the left of the menu bar — visible regardless of whether the
+     * window manager draws a title-bar icon (SQLyog shows one here too) */
+    auto *menuIcon = new QLabel(this);
+    menuIcon->setPixmap(QIcon(QStringLiteral(":/resources/openyog-16.png"))
+                            .pixmap(16, 16));
+    menuIcon->setContentsMargins(6, 0, 4, 0);
+    menuBar()->setCornerWidget(menuIcon, Qt::TopLeftCorner);
 
     m_tabs = new QTabWidget(this);
     m_tabs->setObjectName(QStringLiteral("connTabs"));
