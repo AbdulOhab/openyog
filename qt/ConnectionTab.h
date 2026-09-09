@@ -23,6 +23,7 @@
 #include <QVector>
 
 class ObjectBrowser;
+class TableDataView;
 class QPlainTextEdit;
 
 /* one statement's outcome, collected on the worker thread */
@@ -62,6 +63,9 @@ public slots:
     void toggleBrowserPane();
     void toggleResultPane();
     void toggleEditorPane();
+    void openSelectedTable();
+    void openTableData(const QString &db, const QString &table);
+    void editTableCell(int row, int col, const QString &value);
     void openSqlFile(const QString &path);
     void saveEditor();
     void showHistory();
@@ -80,6 +84,7 @@ private:
     MYSQL            * m_conn       = nullptr;   /* browsing (GUI thread) */
 
     ObjectBrowser    * m_browser    = nullptr;
+    TableDataView    * m_tableData  = nullptr;
     QTabWidget       * m_editorTabs = nullptr;
     CodeEditor       * m_editor     = nullptr;
     QPlainTextEdit   * m_history    = nullptr;

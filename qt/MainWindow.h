@@ -34,6 +34,8 @@ private slots:
 public:
     /* programmatic path used by the --autoconnect selftest (main.cpp) */
     bool openAndRun(const ConnectionParams &params);
+    void openTableData(const QString &db, const QString &table);
+    void editTableCell(int row, int col, const QString &value);
 
 private:
     ConnectionTab *currentTab() const;

@@ -272,7 +272,11 @@ MainWindow::MainWindow(QWidget *parent)
     addDisabled(table,
         QStringLiteral("&Copy Table(s) To Different Host/Database…"));
     table->addSeparator();
-    addDisabled(table, QStringLiteral("&Open Table\tF11"));
+    QAction *openTable = table->addAction(QStringLiteral("&Open Table\tF11"));
+    connect(openTable, &QAction::triggered, this, [this] {
+        if(auto *t = currentTab())
+            t->openSelectedTable();
+    });
     addDisabled(table, QStringLiteral("Open Table in &New Tab\tCtrl+F11"));
     addDisabled(table, QStringLiteral("Create &Table\tF4"));
     addDisabled(table, QStringLiteral("&Alter Table\tF6"));
@@ -603,6 +607,18 @@ bool MainWindow::openAndRun(const ConnectionParams &params)
     syncToolbarToCurrentTab();
     tab->runQuery();   /* run the editor's default query so the grid has data */
     return true;
+}
+
+void MainWindow::editTableCell(int row, int col, const QString &value)
+{
+    if(auto *tab = currentTab())
+        tab->editTableCell(row, col, value);
+}
+
+void MainWindow::openTableData(const QString &db, const QString &table)
+{
+    if(auto *tab = currentTab())
+        tab->openTableData(db, table);
 }
 
 void MainWindow::closeTab(int index)
