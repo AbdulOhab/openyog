@@ -85,11 +85,13 @@ void Theme::apply(QApplication &app, const QString &theme)
         p.setColor(QPalette::Disabled, QPalette::ButtonText,  disabled);
         p.setColor(QPalette::Disabled, QPalette::WindowText,  disabled);
         app.setPalette(p);
+        /* Flat theme palette — values from include/Flat.xml, see
+         * xnote/2026-09-09-ui-shell-spec.md §2 */
         app.setStyleSheet(QStringLiteral(
             "QTabWidget::pane { border: none; }"
-            "QTabBar { background: #4A7EBB; }"
-            "QTabBar::tab { background: #4A7EBB; color: white; "
+            "QTabBar { background: #3B7DBB; }"
+            "QTabBar::tab { background: #3B7DBB; color: white; "
             "  padding: 2px 10px; margin-right: 1px; font-size: 12px; }"
-            "QTabBar::tab:selected { background: #EAF0F8; color: black; }"));
+            "QTabBar::tab:selected { background: #FFFFFF; color: black; }"));
     }
 }
