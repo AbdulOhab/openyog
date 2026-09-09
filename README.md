@@ -1,25 +1,67 @@
-# SQLyog Community Edition
+# OpenYog
 
-SQLyog is a powerful GUI tool to manage MySQL and MariaDB servers and databases in physical, virtual, and cloud environments.
+A cross-platform (Linux + Windows) MySQL / MariaDB GUI client — a **GPL-3.0
+fork of the SQLyog Community Edition source** (13.3.1 GA) with the Windows-only
+UI layer replaced by a **Qt 6** front end on top of SQLyog's portable `wy*`
+core.
 
-SQLyog has no dependencies on runtimes (such as Microsoft .NET and Java) and database abstraction layers (such as ODBC and JDBC).
+> **Not affiliated with, endorsed by, or connected to Webyog or Idera, Inc.**
+> "SQLyog" and the SQLyog logo are trademarks of their respective owners and are
+> **not** used in this project's branding or user-facing strings. This is an
+> independent community fork of the GPL-licensed source code, distributed under
+> a different name.
 
-SQLyog runs on Microsoft Windows. It may also run on Linux and Unix via Wine.
+## Status
 
-Users of SQLyog’s Community edition can get support through Webyog’s [forums for SQLyog](https://forums.webyog.com/forums/forum/sqlyog-2/). Webyog also maintains an extensive [FAQ for SQLyog](http://faq.webyog.com/) for frequently asked questions.
+Early but usable for day-to-day work against a local server. Working now:
 
-Download SQLyog’s Trial edition [here](https://webyog.com/product/?utm_source=Github&utm_medium=Referral&utm_content=combinationTrialForm&utm_campaign=Github_Comb_trail)
+- **Connections** — SQLyog-style *Connect to MySQL Host* dialog (saved
+  connections, clone / rename / delete, Test Connection); MySQL tab live,
+  HTTP / SSH / SSL / Advanced are placeholders.
+- **Object browser** — connection → databases → Tables / Views / Stored Procs /
+  Functions / Triggers / Events (lazy-loaded); tables expand to columns.
+- **Query editor** — line-number gutter, SQL highlighting, multiple *Query N*
+  tabs, threaded execution (UI never blocks), multi-statement → multiple result
+  grids, History tab.
+- **Data grid** — fully staged editing: edited cells (amber), new rows (green),
+  rows marked for deletion (red); one **Apply** commits them in a single
+  transaction, **Revert** drops them.
+- **Schema** — Create Table (F4), Alter Table (F6), Manage Indexes (F7),
+  Foreign Keys (F10), Rename / Drop / Truncate / Duplicate Table, Create /
+  Drop / Copy Database.
+- **Export** — Backup database as a SQL dump; export a result set as CSV.
+- **Themes** — light (SQLyog "Flat" palette) and dark.
 
-Learn about why you should consider upgrading from the Community edition to the Ultimate edition [here](https://www.idera.com/resourcecentral/infographics/sqlyog-ultimate-edition-vs-sqlyog-community-edition).
+See `FEATURES.md` for the full parity tracker and `plan.md` for the roadmap.
 
-Learn more about SQLyog’s commercial edition [here](https://webyog.com/product/?utm_source=Github&utm_medium=Referral&utm_content=combinationTrialForm&utm_campaign=Github_Comb_trail).
+## Build (Linux)
 
-Download a free, fully functional, 14-day trial of SQLyog’s commercial edition [here](https://webyog.com/product/?utm_source=Github&utm_medium=Referral&utm_content=combinationTrialForm&utm_campaign=Github_Comb_trail).
+Requires a C++17 compiler, CMake ≥ 3.21, Ninja, Qt 6, and MariaDB client
+headers. On Arch / CachyOS:
 
-Schedule a free product demonstration [here](https://webyog.com/product/?utm_source=Github&utm_medium=Referral&utm_content=combinationTrialForm&utm_campaign=Github_Comb_trail)
+```bash
+sudo pacman -S --needed base-devel cmake ninja qt6-base qt6-tools qt6-svg mariadb
 
-View prices and purchase SQLyog’s commercial edition [here](https://store.webyog.com/product/sqlyogpricing)
+cmake -S . -B build-cmake -G Ninja
+cmake --build build-cmake
 
-Learn more about the latest releases of SQLyog in Webyog’s [blog](https://blog.sqlyog.com/category/releases/).
+./build-cmake/openyog
+```
 
-Also learn more about Webyog’s GUI tool to monitor the performance of MySQL and MariaDB, [SQL DM for MySQL](https://webyog.com/product/monyog/).
+A Windows build via mingw-w64 is planned; the core already compiles portably.
+
+## Licensing
+
+- This project: **GPL-3.0-or-later** (upstream is GPL-2.0-or-later; GPL-3 was
+  chosen for compatibility with the bundled OpenSSL 3 / Apache-2.0).
+- Upstream copyright and GPL notices are preserved. Modifications are recorded
+  in `WORKLOG.md`.
+- The proprietary `htmlayout` component that shipped with SQLyog is **not**
+  included and is never linked; panes that used it are being rebuilt with
+  native Qt widgets.
+
+## Credits
+
+Built on the SQLyog Community Edition source released by Webyog under the GPL.
+The `wy*` portable core, SQL maker, and connection layer are reused largely
+unchanged; the `qt/` tree is new.
