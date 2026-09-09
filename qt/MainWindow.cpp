@@ -419,8 +419,10 @@ MainWindow::MainWindow(QWidget *parent)
         QStringLiteral("&Import CSV Data Using LOAD LOCAL…\tCtrl+Shift+M"));
     connect(importCsv, &QAction::triggered, this,
             [onSelectedTable] { onSelectedTable(&ConnectionTab::promptImportCsv); });
-    addDisabled(tblImport,
+    QAction *importXml = tblImport->addAction(
         QStringLiteral("Import &XML Data Using LOAD LOCAL…\tCtrl+Shift+X"));
+    connect(importXml, &QAction::triggered, this,
+            [onSelectedTable] { onSelectedTable(&ConnectionTab::promptImportXml); });
     table->addSeparator();
     addDisabled(table, QStringLiteral("Create Tri&gger…"));
 
