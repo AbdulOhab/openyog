@@ -256,14 +256,18 @@ ConnectionTab::ConnectionTab(const ConnectionParams &params, QWidget *parent)
 
     m_historySearch = new QLineEdit(this);
     m_historySearch->setPlaceholderText(QStringLiteral("filter history…"));
-    m_historySearch->setClearButtonEnabled(true);
+    m_historySearch->setClearButtonEnabled(true);   /* its own ✕ clears the field */
     connect(m_historySearch, &QLineEdit::textChanged, this,
             &ConnectionTab::renderHistory);
-    auto *histClear = new QPushButton(QStringLiteral("Clear"), this);
+    /* explicit label + ellipsis: this wipes the saved log, not the filter box */
+    auto *histClear = new QPushButton(QStringLiteral("Clear History…"), this);
+    histClear->setToolTip(QStringLiteral("Delete the saved query history file"));
     connect(histClear, &QPushButton::clicked, this, &ConnectionTab::clearHistory);
     auto *histTop = new QHBoxLayout;
     histTop->setContentsMargins(3, 3, 3, 0);
+    histTop->addWidget(new QLabel(QStringLiteral("Filter:"), this));
     histTop->addWidget(m_historySearch, 1);
+    histTop->addSpacing(8);
     histTop->addWidget(histClear);
     m_historyPage = new QWidget(this);
     auto *histCol = new QVBoxLayout(m_historyPage);
