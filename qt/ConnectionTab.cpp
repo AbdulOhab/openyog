@@ -340,6 +340,8 @@ ConnectionTab::ConnectionTab(const ConnectionParams &params, QWidget *parent)
             [this](const QString &db) { promptCopyDatabase(db); });
     connect(m_browser, &ObjectBrowser::importCsvRequested, this,
             &ConnectionTab::promptImportCsv);
+    connect(m_browser, &ObjectBrowser::importXmlRequested, this,
+            &ConnectionTab::promptImportXml);
     connect(m_browser, &ObjectBrowser::truncateTableRequested, this,
             &ConnectionTab::truncateTable);
 
@@ -1292,6 +1294,93 @@ void ConnectionTab::promptUserManager()
 {
     if(m_conn)
         UserManagerDialog(m_conn, this).exec();
+}
+
+void ConnectionTab::promptImportXml(const QString &database, const QString &table)
+{
+    if(!m_conn)
+        return;
+    const QString db = database.isEmpty() ? m_params.database : database;
+
+    const QString file = QFileDialog::getOpenFileName(
+        this, QStringLiteral("Import XML — pick a file"), QString(),
+        QStringLiteral("XML (*.xml);;All files (*)"));
+    if(file.isEmpty())
+        return;
+
+    QStringList tbls;
+    wyString sq;
+    sq.Sprintf("SHOW TABLES FROM `%s`",
+               QString(db).replace('`', QStringLiteral("``")).toUtf8().constData());
+    if(mysql_query(m_conn, sq.GetString()) == 0) {
+        if(MYSQL_RES *res = mysql_store_result(m_conn)) {
+            while(MYSQL_ROW row = mysql_fetch_row(res))
+                if(row[0]) tbls << QString::fromUtf8(row[0]);
+            mysql_free_result(res);
+        }
+    }
+
+    QDialog dlg(this);
+    dlg.setWindowTitle(QStringLiteral("Import XML into `%1`").arg(db));
+    auto *tbl = new QComboBox(&dlg);
+    tbl->addItems(tbls);
+    if(!table.isEmpty())
+        tbl->setCurrentText(table);
+    auto *rowTag = new QLineEdit(QStringLiteral("row"), &dlg);
+    auto *truncate = new QCheckBox(QStringLiteral("Empty the table first"), &dlg);
+    auto *replace = new QCheckBox(QStringLiteral("REPLACE existing rows (by key)"), &dlg);
+    auto *form = new QFormLayout;
+    form->addRow(QStringLiteral("Target table"), tbl);
+    form->addRow(QStringLiteral("Rows identified by  <tag>"), rowTag);
+    form->addRow(QString(), truncate);
+    form->addRow(QString(), replace);
+    auto *buttons = new QDialogButtonBox(
+        QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
+    buttons->button(QDialogButtonBox::Ok)->setText(QStringLiteral("Import"));
+    connect(buttons, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
+    auto *lay = new QVBoxLayout(&dlg);
+    lay->addLayout(form);
+    lay->addWidget(new QLabel(QStringLiteral(
+        "Uses LOAD XML LOCAL INFILE — the server must allow local-infile."),
+        &dlg));
+    lay->addWidget(buttons);
+    if(dlg.exec() != QDialog::Accepted || tbl->currentText().isEmpty())
+        return;
+
+    const QString target = tbl->currentText();
+    const auto esc = [](QString s) {
+        return s.replace('\\', QStringLiteral("\\\\"))
+                .replace('\'', QStringLiteral("\\'"));
+    };
+    const QString tag = rowTag->text().trimmed().isEmpty()
+        ? QStringLiteral("row") : rowTag->text().trimmed();
+    if(truncate->isChecked())
+        execDdl(QStringLiteral("TRUNCATE TABLE `%1`.`%2`").arg(db, target));
+
+    const QString sql = QStringLiteral(
+        "LOAD XML LOCAL INFILE '%1' %2 INTO TABLE `%3`.`%4` "
+        "CHARACTER SET utf8mb4 ROWS IDENTIFIED BY '<%5>'")
+        .arg(esc(file),
+             replace->isChecked() ? QStringLiteral("REPLACE") : QStringLiteral("IGNORE"),
+             db, target, esc(tag));
+    wyString q;
+    q.SetAs(sql.toUtf8().constData());
+    if(mysql_query(m_conn, q.GetString()) != 0) {
+        m_messages->setPlainText(QStringLiteral("XML import failed: %1")
+                                     .arg(QString::fromUtf8(mysql_error(m_conn))));
+    } else {
+        const char *info = mysql_info(m_conn);
+        m_messages->setPlainText(QStringLiteral("Imported into `%1`.`%2` — %3")
+            .arg(db, target,
+                 info ? QString::fromUtf8(info)
+                      : QStringLiteral("%1 row(s)")
+                            .arg((long long)mysql_affected_rows(m_conn))));
+        if(m_tableData->loadedTable() == target)
+            m_tableData->load(m_conn, db, target);
+    }
+    m_resultTabs->setCurrentWidget(m_messages);
+    refreshBrowser();
 }
 
 void ConnectionTab::promptImportCsv(const QString &database, const QString &table)
