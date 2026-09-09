@@ -2,6 +2,7 @@
 #include "ObjectBrowser.h"
 #include "TableDataView.h"
 #include "SqlHighlighter.h"
+#include "CreateTableDialog.h"
 #include "Icons.h"
 #include "wyString.h"
 
@@ -253,6 +254,8 @@ ConnectionTab::ConnectionTab(const ConnectionParams &params, QWidget *parent)
         execDdl(QStringLiteral("DROP TABLE `%1`.`%2`").arg(db, table));
         m_tableData->clear();
     });
+    connect(m_browser, &ObjectBrowser::createTableRequested, this,
+            [this](const QString &db) { promptCreateTable(db); });
     connect(m_browser, &ObjectBrowser::truncateTableRequested, this,
             [this](const QString &db, const QString &table) {
         if(QMessageBox::question(this, QStringLiteral("Truncate Table"),
@@ -536,6 +539,24 @@ void ConnectionTab::openTableData(const QString &db, const QString &table)
         return;
     m_tableData->load(m_conn, db, table);
     m_resultTabs->setCurrentWidget(m_tableData);
+}
+
+void ConnectionTab::promptCreateTable(const QString &database)
+{
+    if(!m_conn)
+        return;
+    const QString db = database.isEmpty() ? m_params.database : database;
+    CreateTableDialog dlg(db, this);
+    if(dlg.exec() != QDialog::Accepted)
+        return;
+    const QString sql = dlg.buildSql();
+    if(sql.isEmpty()) {
+        QMessageBox::warning(this, QStringLiteral("Create Table"),
+            QStringLiteral("Nothing to create — a table name and at least "
+                           "one column are required."));
+        return;
+    }
+    execDdl(sql);   /* execDdl already refreshes the object browser on success */
 }
 
 bool ConnectionTab::execDdl(const QString &sql)

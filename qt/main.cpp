@@ -1,12 +1,14 @@
 /* OpenYog — application entry point.
  *
  * Selftest mode for CI/headless verification:
- *   openyog --screenshot=FILE.png          render main window to FILE, exit
- *   openyog --screenshot=FILE.png --dialog render connection dialog instead
+ *   openyog --screenshot=FILE.png              render main window to FILE, exit
+ *   openyog --screenshot=FILE.png --dialog     render the connection dialog
+ *   openyog --screenshot=FILE.png --createtable render the Create Table dialog
  */
 #include "MainWindow.h"
 #include "ConnectionDialog.h"
 #include "ConnectionParams.h"
+#include "CreateTableDialog.h"
 #include "Theme.h"
 
 #include <QApplication>
@@ -20,6 +22,7 @@ int main(int argc, char *argv[])
 {
     QString screenshot;
     bool shotDialog = false;
+    bool shotCreateTable = false;
     QPair<QString, QString> openTableParts;
     int editRow = -1, editCol = -1;
     QString editValue;
@@ -31,6 +34,8 @@ int main(int argc, char *argv[])
             screenshot = a.mid(QStringLiteral("--screenshot=").size());
         if(a == QStringLiteral("--dialog"))
             shotDialog = true;
+        if(a == QStringLiteral("--createtable"))
+            shotCreateTable = true;
         /* --opentable=db:table (selftest: opens the editable data grid) */
         /* --editcell=row:col:value (selftest: exercises the UPDATE path) */
         if(a.startsWith(QStringLiteral("--editcell="))) {
@@ -79,11 +84,14 @@ int main(int argc, char *argv[])
     int rc = 0;
 
     if(!screenshot.isEmpty()) {
-        if(shotDialog) {
-            ConnectionDialog dlg;
-            dlg.show();
-            QTimer::singleShot(200, [&dlg, screenshot] {
-                dlg.grab().save(screenshot);
+        if(shotDialog || shotCreateTable) {
+            QWidget *dlg = shotCreateTable
+                ? static_cast<QWidget *>(
+                      new CreateTableDialog(QStringLiteral("port_test")))
+                : static_cast<QWidget *>(new ConnectionDialog);
+            dlg->show();
+            QTimer::singleShot(200, [dlg, screenshot] {
+                dlg->grab().save(screenshot);
                 QApplication::quit();
             });
             QApplication::exec();

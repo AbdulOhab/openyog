@@ -28,6 +28,7 @@ signals:
     void tableActivated(const QString &db, const QString &table); /* → SELECT */
     void dropTableRequested(const QString &db, const QString &table);
     void truncateTableRequested(const QString &db, const QString &table);
+    void createTableRequested(const QString &db);
     void statusMessage(const QString &text);
 
 private slots:
