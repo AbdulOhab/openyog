@@ -94,6 +94,8 @@ public slots:
     void openSqlFile(const QString &path);
     void saveEditor();
     void showHistory();
+    void renderHistory();
+    void clearHistory();
     void exportResult();   /* CSV / HTML / JSON / Markdown, by chosen filter */
 
     /* editor Edit-menu ops on the active Query tab */
@@ -123,7 +125,10 @@ private:
     QComboBox        * m_limitCombo = nullptr;
     QTabWidget       * m_editorTabs = nullptr;
     CodeEditor       * m_editor     = nullptr;
+    QWidget          * m_historyPage = nullptr;
     QPlainTextEdit   * m_history    = nullptr;
+    class QLineEdit  * m_historySearch = nullptr;
+    QStringList        m_historyLines;
     FindBar          * m_findBar    = nullptr;
 
     QTabWidget       * m_resultTabs = nullptr;

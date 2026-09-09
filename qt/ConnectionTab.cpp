@@ -250,10 +250,28 @@ ConnectionTab::ConnectionTab(const ConnectionParams &params, QWidget *parent)
     m_history->setReadOnly(true);
     m_history->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
     /* previous sessions' history for this connection */
-    const QStringList past = loadHistoryFor(params.name, 500);
-    if(!past.isEmpty())
-        m_history->setPlainText(past.join(QLatin1Char('\n'))
-                                + QStringLiteral("\n——— this session ———"));
+    m_historyLines = loadHistoryFor(params.name, 500);
+    if(!m_historyLines.isEmpty())
+        m_historyLines << QStringLiteral("——— this session ———");
+
+    m_historySearch = new QLineEdit(this);
+    m_historySearch->setPlaceholderText(QStringLiteral("filter history…"));
+    m_historySearch->setClearButtonEnabled(true);
+    connect(m_historySearch, &QLineEdit::textChanged, this,
+            &ConnectionTab::renderHistory);
+    auto *histClear = new QPushButton(QStringLiteral("Clear"), this);
+    connect(histClear, &QPushButton::clicked, this, &ConnectionTab::clearHistory);
+    auto *histTop = new QHBoxLayout;
+    histTop->setContentsMargins(3, 3, 3, 0);
+    histTop->addWidget(m_historySearch, 1);
+    histTop->addWidget(histClear);
+    m_historyPage = new QWidget(this);
+    auto *histCol = new QVBoxLayout(m_historyPage);
+    histCol->setContentsMargins(0, 0, 0, 0);
+    histCol->setSpacing(2);
+    histCol->addLayout(histTop);
+    histCol->addWidget(m_history, 1);
+    renderHistory();
 
     m_editorTabs = new QTabWidget(this);
     m_editorTabs->setObjectName(QStringLiteral("editorTabs"));
@@ -273,7 +291,7 @@ ConnectionTab::ConnectionTab(const ConnectionParams &params, QWidget *parent)
         }(), Qt::TopRightCorner);
     m_editorTabs->addTab(m_editor, Icons::get(QStringLiteral("query_16.ico")),
                          QStringLiteral("Query 1"));
-    m_editorTabs->addTab(m_history, Icons::get(QStringLiteral("history.ico")),
+    m_editorTabs->addTab(m_historyPage, Icons::get(QStringLiteral("history.ico")),
                          QStringLiteral("History"));
 
     /* ---- right-bottom: result tabs -------------------------------- */
@@ -495,10 +513,32 @@ void ConnectionTab::addEditorTab()
 
 void ConnectionTab::logHistory(const QString &sql)
 {
-    m_history->appendPlainText(
-        QStringLiteral("[%1] %2")
-            .arg(QTime::currentTime().toString(QStringLiteral("hh:mm:ss")), sql));
+    m_historyLines << QStringLiteral("[%1] %2")
+        .arg(QTime::currentTime().toString(QStringLiteral("hh:mm:ss")), sql);
+    renderHistory();
     appendHistoryLine(m_params.name, sql);
+}
+
+void ConnectionTab::renderHistory()
+{
+    const QString filter = m_historySearch->text().trimmed();
+    QStringList shown;
+    for(const QString &l : std::as_const(m_historyLines))
+        if(filter.isEmpty() || l.contains(filter, Qt::CaseInsensitive))
+            shown << l;
+    m_history->setPlainText(shown.join(QLatin1Char('\n')));
+    m_history->moveCursor(QTextCursor::End);
+}
+
+void ConnectionTab::clearHistory()
+{
+    if(QMessageBox::question(this, QStringLiteral("Clear History"),
+           QStringLiteral("Delete all saved query history for every connection?"))
+           != QMessageBox::Yes)
+        return;
+    QFile(historyPath()).resize(0);
+    m_historyLines.clear();
+    renderHistory();
 }
 
 void ConnectionTab::runQuery()
@@ -650,7 +690,7 @@ void ConnectionTab::saveEditor()
 
 void ConnectionTab::showHistory()
 {
-    m_editorTabs->setCurrentWidget(m_history);
+    m_editorTabs->setCurrentWidget(m_historyPage);
 }
 
 void ConnectionTab::exportResult()
