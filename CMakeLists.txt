@@ -57,6 +57,7 @@ add_executable(openyog
     qt/ConnectionStore.h   qt/ConnectionStore.cpp
     qt/ObjectBrowser.h     qt/ObjectBrowser.cpp
     qt/CreateTableDialog.h qt/CreateTableDialog.cpp
+    qt/IndexDialog.h       qt/IndexDialog.cpp
     qt/SqlDump.h           qt/SqlDump.cpp
     qt/CodeEditor.h        qt/CodeEditor.cpp
     qt/TableDataView.h     qt/TableDataView.cpp
