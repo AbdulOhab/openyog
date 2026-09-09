@@ -25,6 +25,7 @@
 
 class ObjectBrowser;
 class TableDataView;
+class FindBar;
 class QPlainTextEdit;
 
 /* one statement's outcome, collected on the worker thread */
@@ -119,6 +120,7 @@ private:
     QTabWidget       * m_editorTabs = nullptr;
     CodeEditor       * m_editor     = nullptr;
     QPlainTextEdit   * m_history    = nullptr;
+    FindBar          * m_findBar    = nullptr;
 
     QTabWidget       * m_resultTabs = nullptr;
     QPlainTextEdit   * m_messages   = nullptr;

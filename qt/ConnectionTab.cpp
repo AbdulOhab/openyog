@@ -3,6 +3,7 @@
 #include "TableDataView.h"
 #include "SqlHighlighter.h"
 #include "CreateTableDialog.h"
+#include "FindBar.h"
 #include "IndexDialog.h"
 #include "ForeignKeyDialog.h"
 #include "SqlDump.h"
@@ -246,12 +247,15 @@ ConnectionTab::ConnectionTab(const ConnectionParams &params, QWidget *parent)
     m_infoBar = new QLabel(this);
     m_infoBar->setObjectName(QStringLiteral("infoStrip"));
 
+    m_findBar = new FindBar([this] { return currentEditor(); }, this);
+
     auto *editorSide = new QWidget(this);
     auto *editorCol = new QVBoxLayout(editorSide);
     editorCol->setContentsMargins(0, 0, 0, 0);
     editorCol->setSpacing(0);
     editorCol->addWidget(m_infoBar);
     editorCol->addWidget(m_editorTabs, 1);
+    editorCol->addWidget(m_findBar);
 
     auto *rightSplit = new QSplitter(Qt::Vertical, this);
     rightSplit->addWidget(editorSide);
@@ -667,26 +671,12 @@ void ConnectionTab::refreshBrowser()
 
 void ConnectionTab::promptFind()
 {
-    auto *ed = currentEditor();
-    if(!ed)
-        return;
-    bool ok = false;
-    const QString sel = ed->textCursor().selectedText();
-    const QString needle = QInputDialog::getText(
-        this, QStringLiteral("Find"), QStringLiteral("Find what:"),
-        QLineEdit::Normal, sel.isEmpty() ? m_lastFind : sel, &ok);
-    if(!ok || needle.isEmpty())
-        return;
-    m_lastFind = needle;
-    if(!ed->findText(needle, false, false))
-        emit executed(QStringLiteral("Find: \"%1\" not found").arg(needle));
+    m_findBar->activate();
 }
 
 void ConnectionTab::findNext()
 {
-    auto *ed = currentEditor();
-    if(ed && !m_lastFind.isEmpty() && !ed->findText(m_lastFind, false, false))
-        emit executed(QStringLiteral("Find: \"%1\" not found").arg(m_lastFind));
+    m_findBar->findNext(false);
 }
 
 void ConnectionTab::promptReplace()
