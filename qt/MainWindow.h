@@ -48,6 +48,7 @@ private:
     ConnectionTab *currentTab() const;
     QAction *addDisabled(QMenu *menu, const QString &text);
 
+    class QStackedWidget *m_stack = nullptr;
     QTabWidget *m_tabs    = nullptr;
     QComboBox  *m_dbCombo = nullptr;
     QLabel     *m_statusMsg        = nullptr;

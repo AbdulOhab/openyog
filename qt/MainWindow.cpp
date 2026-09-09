@@ -24,8 +24,10 @@
 #include <QPushButton>
 #include <QFrame>
 #include <QStatusBar>
+#include <QStackedWidget>
 #include <QTabWidget>
 #include <QToolBar>
+#include <QVBoxLayout>
 
 namespace {
 /* apply clipboard/undo/redo/case ops to whatever editor has focus */
@@ -62,7 +64,39 @@ MainWindow::MainWindow(QWidget *parent)
         "QPushButton:hover { background: #E8F2FA; }"));
     connect(plus, &QPushButton::clicked, this, &MainWindow::newConnection);
     m_tabs->setCornerWidget(plus, Qt::TopRightCorner);
-    setCentralWidget(m_tabs);
+
+    /* welcome page shown while no connection is open — the empty QTabWidget
+     * pane was just a blank rectangle; SQLyog's MDI area is the blue strip */
+    auto *welcome = new QWidget(this);
+    welcome->setStyleSheet(QStringLiteral("background:#3B7DBB;"));
+    auto *wl = new QVBoxLayout(welcome);
+    wl->setAlignment(Qt::AlignCenter);
+    auto *wIcon = new QLabel(welcome);
+    wIcon->setPixmap(QIcon(QStringLiteral(":/resources/openyog-256.png"))
+                         .pixmap(96, 96));
+    wIcon->setAlignment(Qt::AlignCenter);
+    auto *wText = new QLabel(
+        QStringLiteral("<div style='color:#EAF2FB;text-align:center'>"
+                       "<h2 style='margin:6px'>OpenYog</h2>"
+                       "No connection open.<br>"
+                       "<b>File → New Connection</b> (Ctrl+M), or the "
+                       "<b>+</b> at the top-right."
+                       "</div>"), welcome);
+    wText->setTextFormat(Qt::RichText);
+    wText->setAlignment(Qt::AlignCenter);
+    auto *wBtn = new QPushButton(QStringLiteral("New Connection…"), welcome);
+    wBtn->setFixedWidth(160);
+    connect(wBtn, &QPushButton::clicked, this, &MainWindow::newConnection);
+    wl->addWidget(wIcon);
+    wl->addSpacing(8);
+    wl->addWidget(wText);
+    wl->addSpacing(12);
+    wl->addWidget(wBtn, 0, Qt::AlignCenter);
+
+    m_stack = new QStackedWidget(this);
+    m_stack->addWidget(welcome);
+    m_stack->addWidget(m_tabs);
+    setCentralWidget(m_stack);
 
     connect(m_tabs, &QTabWidget::tabCloseRequested, this, &MainWindow::closeTab);
     connect(m_tabs, &QTabWidget::currentChanged, this,
@@ -620,6 +654,7 @@ ConnectionTab *MainWindow::currentTab() const
 void MainWindow::syncToolbarToCurrentTab()
 {
     auto *tab = currentTab();
+    m_stack->setCurrentIndex(m_tabs->count() > 0 ? 1 : 0);
 
     m_dbCombo->blockSignals(true);
     m_dbCombo->clear();
