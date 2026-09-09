@@ -54,6 +54,7 @@ private:
     QString whereFromOrigRow(int row) const;
 
     void reload();
+    QByteArray fetchCellBytes(int row, int col) const;   /* raw bytes for hex view */
 
     struct ColumnInfo { QString name; bool nullable = true; bool autoInc = false; };
 
