@@ -30,14 +30,16 @@ ObjectBrowser::ObjectBrowser(QWidget *parent)
     : QWidget(parent)
 {
     m_filterLabel = new QLabel(this);
+    m_filterLabel->setObjectName(QStringLiteral("obFilterLabel"));
     m_filter = new QLineEdit(this);
     m_filter->setClearButtonEnabled(true);
+    m_filter->setPlaceholderText(QStringLiteral("Filter (Ctrl+Shift+B)"));
     connect(m_filter, &QLineEdit::textChanged, this, &ObjectBrowser::applyFilter);
 
     m_tree = new QTreeWidget(this);
     m_tree->setHeaderHidden(true);
-    m_tree->setIndentation(12);
-    m_tree->setIconSize(QSize(14, 14));
+    m_tree->setIndentation(14);            /* spec §4 */
+    m_tree->setIconSize(QSize(16, 16));    /* spec §4: 16x16 image list */
     m_tree->setUniformRowHeights(true);
     m_tree->setContextMenuPolicy(Qt::CustomContextMenu);
     connect(m_tree, &QTreeWidget::itemExpanded, this, &ObjectBrowser::onItemExpanded);
@@ -72,8 +74,8 @@ ObjectBrowser::ObjectBrowser(QWidget *parent)
             });
 
     auto *layout = new QVBoxLayout(this);
-    layout->setContentsMargins(3, 3, 3, 3);
-    layout->setSpacing(3);
+    layout->setContentsMargins(0, 0, 0, 0);
+    layout->setSpacing(2);
     layout->addWidget(m_filterLabel);
     layout->addWidget(m_filter);
     layout->addWidget(m_tree, 1);

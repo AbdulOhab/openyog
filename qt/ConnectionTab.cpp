@@ -135,17 +135,18 @@ ConnectionTab::ConnectionTab(const ConnectionParams &params, QWidget *parent)
     m_history->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
 
     m_editorTabs = new QTabWidget(this);
+    m_editorTabs->setObjectName(QStringLiteral("editorTabs"));
     m_editorTabs->setDocumentMode(true);
-    m_editorTabs->tabBar()->setExpanding(true);   /* SQLyog: full-width blue strip */
+    m_editorTabs->tabBar()->setExpanding(false);   /* SQLyog left-aligns tabs */
     m_editorTabs->setCornerWidget(
         [&] {
             auto *plus = new QPushButton(QStringLiteral("+"), this);
             plus->setFlat(true);
-            plus->setFixedSize(24, 20);
+            plus->setFixedSize(22, 20);
             plus->setStyleSheet(QStringLiteral(
-                "QPushButton { background: transparent; color: white; "
+                "QPushButton { background: transparent; color: #3B7DBB; "
                 "border: none; font-weight: bold; }"
-                "QPushButton:hover { background: #2A5D9F; }"));
+                "QPushButton:hover { background: #E8F2FA; }"));
             connect(plus, &QPushButton::clicked, this, &ConnectionTab::addEditorTab);
             return plus;
         }(), Qt::TopRightCorner);
@@ -163,42 +164,58 @@ ConnectionTab::ConnectionTab(const ConnectionParams &params, QWidget *parent)
     m_info->setWordWrap(true);
 
     m_resultTabs = new QTabWidget(this);
+    m_resultTabs->setObjectName(QStringLiteral("resultTabs"));
     m_resultTabs->setDocumentMode(true);
     m_resultTabs->setTabPosition(QTabWidget::North);
-    m_resultTabs->tabBar()->setExpanding(true);   /* full-width blue strip */
+    m_resultTabs->tabBar()->setExpanding(false);   /* SQLyog left-aligns tabs */
     m_tableData = new TableDataView(this);
 
-    m_resultTabs->addTab(m_messages,   QStringLiteral("1_Messages"));
-    m_resultTabs->addTab(m_tableData,  QStringLiteral("2_Table Data"));
-    m_resultTabs->addTab(m_info,       QStringLiteral("3_Info"));
+    m_resultTabs->addTab(m_messages,   QStringLiteral("1 Messages"));
+    m_resultTabs->addTab(m_tableData,  QStringLiteral("2 Table Data"));
+    m_resultTabs->addTab(m_info,       QStringLiteral("3 Info"));
     m_resultTabs->setCurrentIndex(0);
 
+    /* nag-bar replacement — solid blue strip above the editor (Flat theme) */
     m_infoBar = new QLabel(this);
-    m_infoBar->setStyleSheet(
-        QStringLiteral("background:#3B7DBB; color:white; padding:1px 8px;"));
+    m_infoBar->setObjectName(QStringLiteral("infoStrip"));
+
+    auto *editorSide = new QWidget(this);
+    auto *editorCol = new QVBoxLayout(editorSide);
+    editorCol->setContentsMargins(0, 0, 0, 0);
+    editorCol->setSpacing(0);
+    editorCol->addWidget(m_infoBar);
+    editorCol->addWidget(m_editorTabs, 1);
 
     auto *rightSplit = new QSplitter(Qt::Vertical, this);
-    rightSplit->addWidget(m_infoBar);       /* SQLyog-style blue strip */
-    rightSplit->addWidget(m_editorTabs);
+    rightSplit->addWidget(editorSide);
     rightSplit->addWidget(m_resultTabs);
     rightSplit->setStretchFactor(0, 1);
     rightSplit->setStretchFactor(1, 1);
+    rightSplit->setSizes({360, 360});
 
     auto *mainSplit = new QSplitter(Qt::Horizontal, this);
     mainSplit->addWidget(m_browser);
     mainSplit->addWidget(rightSplit);
     mainSplit->setStretchFactor(0, 0);
     mainSplit->setStretchFactor(1, 1);
-    mainSplit->setSizes({260, 900});
+    mainSplit->setSizes({215, 985});   /* spec: object browser ~1/5 width */
+
+    /* bottom LIMIT strip — solid blue, "All" combo hard left (Flat theme) */
+    m_limitCombo = new QComboBox(this);
+    m_limitCombo->addItems({ QStringLiteral("All"), QStringLiteral("1000"),
+                             QStringLiteral("5000"), QStringLiteral("10000") });
+    auto *limitStrip = new QFrame(this);
+    limitStrip->setObjectName(QStringLiteral("limitStrip"));
+    auto *limitRow = new QHBoxLayout(limitStrip);
+    limitRow->setContentsMargins(4, 2, 4, 2);
+    limitRow->addWidget(m_limitCombo);
+    limitRow->addStretch(1);
 
     auto *layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
-    layout->addWidget(mainSplit);
-    auto *bottomRow = new QHBoxLayout;
-    bottomRow->setContentsMargins(4, 2, 4, 2);
-    bottomRow->addWidget(m_limitCombo);
-    bottomRow->addStretch(1);
-    layout->addLayout(bottomRow);
+    layout->setSpacing(0);
+    layout->addWidget(mainSplit, 1);
+    layout->addWidget(limitStrip);
 
     /* ---- open the connection ------------------------------------- */
     m_conn = mysql_init(nullptr);

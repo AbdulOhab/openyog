@@ -9,6 +9,19 @@
 #include <QStandardPaths>
 #include <QStyle>
 
+/* Palette + metrics come from the upstream "Flat" theme and the frame code.
+ * All values are documented in xnote/2026-09-09-ui-shell-spec.md:
+ *   SQLyog blue   #3B7DBB   strips, splitters, result/table tab bars
+ *   selection     #89BCED / wash #E8F2FA
+ *   toolbar bg    #F5F5F5   menu/conn-tab bg #FFFFFF
+ *   menu text     #424242 active / #A2A2A2 disabled
+ * Object names set by the widgets so one sheet can style each strip:
+ *   QTabWidget#connTabs   connection tabs  — white strip, blue underline
+ *   QTabWidget#editorTabs Query/History    — white strip
+ *   QTabWidget#resultTabs Messages/Data/…  — solid blue strip
+ *   QLabel#infoStrip      nag-bar replacement — solid blue
+ *   QFrame#limitStrip     bottom LIMIT combo row — solid blue          */
+
 namespace {
 QString themePath()
 {
@@ -16,6 +29,94 @@ QString themePath()
     dir.mkpath(".");
     return dir.filePath("OpenYog.ini");
 }
+
+const char *kLightSheet = R"QSS(
+* { font-size: 9pt; }
+
+QMainWindow, QMenuBar, QStatusBar, QToolBar { background: #FFFFFF; }
+
+QMenuBar { border-bottom: 1px solid #D9D9D9; }
+QMenuBar::item { padding: 3px 8px; background: transparent; color: #424242; }
+QMenuBar::item:selected { background: #E8F2FA; }
+QMenu { background: #FFFFFF; border: 1px solid #B9B9B9; }
+QMenu::item { padding: 3px 24px; color: #424242; }
+QMenu::item:disabled { color: #A2A2A2; }
+QMenu::item:selected { background: #89BCED; color: #1E1E1E; }
+QMenu::separator { height: 1px; background: #E0E0E0; margin: 3px 0; }
+
+QToolBar { border: 0; border-bottom: 1px solid #D9D9D9; padding: 2px; spacing: 2px; }
+QToolBar::separator { width: 1px; background: #D0D0D0; margin: 2px 4px; }
+QToolButton { border: 1px solid transparent; border-radius: 2px; padding: 2px; }
+QToolButton:hover { background: #E8F2FA; border-color: #89BCED; }
+QToolButton:pressed, QToolButton:checked { background: #89BCED; }
+
+QTabWidget::pane { border: 0; }
+QTabBar::tab { padding: 3px 12px; margin: 0; border: 0; }
+QTabBar::tab:!selected { margin-top: 0; }
+
+/* connection tabs — white strip with the SQLyog blue underline */
+QTabWidget#connTabs > QTabBar { background: #FFFFFF; qproperty-drawBase: 0;
+    border-bottom: 2px solid #3B7DBB; }
+QTabWidget#connTabs > QTabBar::tab { background: #F0F0F0; color: #3B7DBB;
+    border: 1px solid #C8C8C8; border-bottom: 0; margin-right: 2px;
+    padding: 3px 10px; }
+QTabWidget#connTabs > QTabBar::tab:selected { background: #FFFFFF;
+    color: #1E1E1E; }
+
+/* editor tabs (Query N / History) — white strip */
+QTabWidget#editorTabs > QTabBar { background: #FFFFFF; qproperty-drawBase: 0;
+    border-bottom: 1px solid #C8D6E5; }
+QTabWidget#editorTabs > QTabBar::tab { background: #FFFFFF; color: #3B7DBB;
+    border-right: 1px solid #E0E0E0; padding: 3px 14px; }
+QTabWidget#editorTabs > QTabBar::tab:selected { background: #FFFFFF;
+    color: #1E1E1E; border-bottom: 2px solid #3B7DBB; }
+
+/* result tabs (Messages / Table Data / Info + result grids) — solid blue */
+QTabWidget#resultTabs > QTabBar { background: #3B7DBB; qproperty-drawBase: 0; }
+QTabWidget#resultTabs > QTabBar::tab { background: #3B7DBB; color: #FFFFFF;
+    border-right: 1px solid #5A93C8; padding: 3px 14px; }
+QTabWidget#resultTabs > QTabBar::tab:selected { background: #FFFFFF;
+    color: #000000; }
+
+QLabel#infoStrip { background: #3B7DBB; color: #FFFFFF; padding: 2px 8px; }
+QFrame#limitStrip { background: #3B7DBB; }
+QFrame#limitStrip QComboBox { min-width: 90px; }
+
+QSplitter::handle { background: #3B7DBB; }
+QSplitter::handle:horizontal { width: 4px; }
+QSplitter::handle:vertical { height: 4px; }
+
+QTreeView { background: #FFFFFF; border: 0; outline: 0; }
+QTreeView::item { height: 18px; }
+QTreeView::item:selected { background: #89BCED; color: #1E1E1E; }
+QTreeView::branch:selected { background: #89BCED; }
+
+QLabel#obFilterLabel { color: #606060; padding: 2px 2px 0 2px; }
+
+QTableView { background: #FFFFFF; gridline-color: #E2E2E2;
+    selection-background-color: #89BCED; selection-color: #1E1E1E; }
+QHeaderView::section { background: #F0F0F0; color: #424242;
+    border: 0; border-right: 1px solid #D6D6D6; border-bottom: 1px solid #D6D6D6;
+    padding: 3px 6px; }
+
+QStatusBar { border-top: 1px solid #D9D9D9; }
+QStatusBar QLabel { color: #424242; }
+QStatusBar::item { border: 0; }
+)QSS";
+
+const char *kDarkTabSheet = R"QSS(
+QTabWidget::pane { border: none; }
+QTabBar { background: #3C3F41; }
+QTabBar::tab { background: #3C3F41; color: #C8C8C8; padding: 3px 12px;
+    margin-right: 1px; font-size: 9pt; }
+QTabBar::tab:selected { background: #2A5D9F; color: white; }
+QLabel#infoStrip { background: #2A5D9F; color: white; padding: 2px 8px; }
+QFrame#limitStrip { background: #2A5D9F; }
+QSplitter::handle { background: #2A5D9F; }
+QSplitter::handle:horizontal { width: 4px; }
+QSplitter::handle:vertical { height: 4px; }
+QTreeView::item { height: 18px; }
+)QSS";
 } // namespace
 
 QString Theme::load()
@@ -56,23 +157,18 @@ void Theme::apply(QApplication &app, const QString &theme)
         p.setColor(QPalette::Disabled, QPalette::ButtonText,  disabled);
         p.setColor(QPalette::Disabled, QPalette::WindowText,  disabled);
         app.setPalette(p);
-        app.setStyleSheet(QStringLiteral(
-            "QTabWidget::pane { border: none; }"
-            "QTabBar { background: #3C3F41; }"
-            "QTabBar::tab { background: #3C3F41; color: #C8C8C8; "
-            "  padding: 2px 12px; margin-right: 1px; font-size: 12px; }"
-            "QTabBar::tab:selected { background: #2A5D9F; color: white; }"));
+        app.setStyleSheet(QString::fromUtf8(kDarkTabSheet));
     } else {
         /* explicit light palette — never derive from the system style, which
          * may itself be dark (that's the "toggle stays dark" bug) */
         QPalette p;
-        const QColor window(0xF0, 0xF0, 0xF0), base(Qt::white),
-                     text(0x1E, 0x1E, 0x1E), button(0xF0, 0xF0, 0xF0),
-                     disabled(0x90, 0x90, 0x90), highlight(0x2A, 0x5D, 0x9F);
+        const QColor window(0xFF, 0xFF, 0xFF), base(Qt::white),
+                     text(0x1E, 0x1E, 0x1E), button(0xFF, 0xFF, 0xFF),
+                     disabled(0xA2, 0xA2, 0xA2), highlight(0x89, 0xBC, 0xED);
         p.setColor(QPalette::Window,          window);
         p.setColor(QPalette::WindowText,      text);
         p.setColor(QPalette::Base,            base);
-        p.setColor(QPalette::AlternateBase,   QColor(0xF7, 0xF7, 0xF7));
+        p.setColor(QPalette::AlternateBase,   QColor(0xF5, 0xF9, 0xFD));
         p.setColor(QPalette::Text,            text);
         p.setColor(QPalette::Button,          button);
         p.setColor(QPalette::ButtonText,      text);
@@ -80,18 +176,11 @@ void Theme::apply(QApplication &app, const QString &theme)
         p.setColor(QPalette::ToolTipText,     text);
         p.setColor(QPalette::PlaceholderText, disabled);
         p.setColor(QPalette::Highlight,       highlight);
-        p.setColor(QPalette::HighlightedText, Qt::white);
+        p.setColor(QPalette::HighlightedText, QColor(0x1E, 0x1E, 0x1E));
         p.setColor(QPalette::Disabled, QPalette::Text,        disabled);
         p.setColor(QPalette::Disabled, QPalette::ButtonText,  disabled);
         p.setColor(QPalette::Disabled, QPalette::WindowText,  disabled);
         app.setPalette(p);
-        /* Flat theme palette — values from include/Flat.xml, see
-         * xnote/2026-09-09-ui-shell-spec.md §2 */
-        app.setStyleSheet(QStringLiteral(
-            "QTabWidget::pane { border: none; }"
-            "QTabBar { background: #3B7DBB; }"
-            "QTabBar::tab { background: #3B7DBB; color: white; "
-            "  padding: 2px 10px; margin-right: 1px; font-size: 12px; }"
-            "QTabBar::tab:selected { background: #FFFFFF; color: black; }"));
+        app.setStyleSheet(QString::fromUtf8(kLightSheet));
     }
 }
