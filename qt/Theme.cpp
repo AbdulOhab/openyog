@@ -57,10 +57,10 @@ void Theme::apply(QApplication &app, const QString &theme)
         p.setColor(QPalette::Disabled, QPalette::WindowText,  disabled);
         app.setPalette(p);
         app.setStyleSheet(QStringLiteral(
-            "QTabWidget::pane { border: 1px solid #555555; }"
+            "QTabWidget::pane { border: none; }"
             "QTabBar { background: #3C3F41; }"
-            "QTabBar::tab { background: #3C3F41; color: #D4D4D4; "
-            "  padding: 3px 12px; margin-right: 1px; }"
+            "QTabBar::tab { background: #3C3F41; color: #C8C8C8; "
+            "  padding: 2px 12px; margin-right: 1px; font-size: 12px; }"
             "QTabBar::tab:selected { background: #2A5D9F; color: white; }"));
     } else {
         /* explicit light palette — never derive from the system style, which
@@ -86,10 +86,10 @@ void Theme::apply(QApplication &app, const QString &theme)
         p.setColor(QPalette::Disabled, QPalette::WindowText,  disabled);
         app.setPalette(p);
         app.setStyleSheet(QStringLiteral(
-            "QTabWidget::pane { border: 1px solid #8FA8C8; }"
+            "QTabWidget::pane { border: none; }"
             "QTabBar { background: #4A7EBB; }"
             "QTabBar::tab { background: #4A7EBB; color: white; "
-            "  padding: 3px 12px; margin-right: 1px; }"
+            "  padding: 2px 10px; margin-right: 1px; font-size: 12px; }"
             "QTabBar::tab:selected { background: #EAF0F8; color: black; }"));
     }
 }

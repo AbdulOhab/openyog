@@ -136,11 +136,16 @@ ConnectionTab::ConnectionTab(const ConnectionParams &params, QWidget *parent)
 
     m_editorTabs = new QTabWidget(this);
     m_editorTabs->setDocumentMode(true);
+    m_editorTabs->tabBar()->setExpanding(true);   /* SQLyog: full-width blue strip */
     m_editorTabs->setCornerWidget(
         [&] {
             auto *plus = new QPushButton(QStringLiteral("+"), this);
             plus->setFlat(true);
             plus->setFixedSize(24, 20);
+            plus->setStyleSheet(QStringLiteral(
+                "QPushButton { background: transparent; color: white; "
+                "border: none; font-weight: bold; }"
+                "QPushButton:hover { background: #2A5D9F; }"));
             connect(plus, &QPushButton::clicked, this, &ConnectionTab::addEditorTab);
             return plus;
         }(), Qt::TopRightCorner);
@@ -160,6 +165,7 @@ ConnectionTab::ConnectionTab(const ConnectionParams &params, QWidget *parent)
     m_resultTabs = new QTabWidget(this);
     m_resultTabs->setDocumentMode(true);
     m_resultTabs->setTabPosition(QTabWidget::North);
+    m_resultTabs->tabBar()->setExpanding(true);   /* full-width blue strip */
     m_tableData = new TableDataView(this);
 
     m_resultTabs->addTab(m_messages,   QStringLiteral("1_Messages"));
@@ -169,7 +175,7 @@ ConnectionTab::ConnectionTab(const ConnectionParams &params, QWidget *parent)
 
     m_infoBar = new QLabel(this);
     m_infoBar->setStyleSheet(
-        QStringLiteral("background:#4A7EBB; color:white; padding:2px 8px;"));
+        QStringLiteral("background:#4A7EBB; color:white; padding:1px 8px;"));
 
     auto *rightSplit = new QSplitter(Qt::Vertical, this);
     rightSplit->addWidget(m_infoBar);       /* SQLyog-style blue strip */
