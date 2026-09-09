@@ -19,6 +19,9 @@ public:
     void setConnectionLabel(const QString &label);
     void loadDatabases(MYSQL *conn, const QString &currentDb);
 
+    /* [db, table] of the currently selected table item, else empty */
+    QStringList currentTableInfo() const;
+
 signals:
     void databaseActivated(const QString &db);      /* double click → USE */
     void tableActivated(const QString &db, const QString &table); /* → SELECT */
