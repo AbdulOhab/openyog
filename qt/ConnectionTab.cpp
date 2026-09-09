@@ -32,6 +32,7 @@
 #include <QMessageBox>
 #include <QMetaObject>
 #include <QPushButton>
+#include <QSpinBox>
 #include <QSplitter>
 #include <QTabBar>
 #include <QTextStream>
@@ -946,6 +947,14 @@ void ConnectionTab::promptCopyDatabase(const QString &database)
 
     QDialog dlg(this);
     dlg.setWindowTitle(QStringLiteral("Copy Database `%1`").arg(srcDb));
+    auto *tHost = new QLineEdit(m_params.host, &dlg);
+    auto *tPort = new QSpinBox(&dlg);
+    tPort->setRange(1, 65535);
+    tPort->setValue(m_params.port);
+    tPort->setLocale(QLocale::c());
+    auto *tUser = new QLineEdit(m_params.user, &dlg);
+    auto *tPass = new QLineEdit(m_params.password, &dlg);
+    tPass->setEchoMode(QLineEdit::Password);
     auto *name = new QLineEdit(srcDb + QStringLiteral("_copy"), &dlg);
     auto *wantData = new QCheckBox(QStringLiteral("Copy table data"), &dlg);
     wantData->setChecked(true);
@@ -955,6 +964,10 @@ void ConnectionTab::promptCopyDatabase(const QString &database)
         QStringLiteral("Also copy views, routines, triggers, events"), &dlg);
     wantRoutines->setChecked(true);
     auto *form = new QFormLayout;
+    form->addRow(QStringLiteral("Target host"), tHost);
+    form->addRow(QStringLiteral("Target port"), tPort);
+    form->addRow(QStringLiteral("Target user"), tUser);
+    form->addRow(QStringLiteral("Target password"), tPass);
     form->addRow(QStringLiteral("New database name"), name);
     form->addRow(QString(), wantData);
     form->addRow(QString(), wantRoutines);
@@ -967,25 +980,76 @@ void ConnectionTab::promptCopyDatabase(const QString &database)
     auto *lay = new QVBoxLayout(&dlg);
     lay->addLayout(form);
     lay->addWidget(new QLabel(QStringLiteral(
-        "Same server only. DEFINER clauses are stripped from copied "
-        "routines / views / events."), &dlg));
+        "Same host + port + user → fast CREATE … LIKE copy; a different target "
+        "streams a dump over a fresh connection. DEFINER clauses are stripped."),
+        &dlg));
     lay->addWidget(buttons);
     if(dlg.exec() != QDialog::Accepted)
         return;
 
     const QString tgt = name->text().trimmed();
-    if(tgt.isEmpty() || tgt == srcDb)
+    if(tgt.isEmpty())
         return;
+    const bool sameServer = tHost->text().trimmed() == m_params.host
+                            && tPort->value() == m_params.port
+                            && tUser->text().trimmed() == m_params.user;
+    if(sameServer && tgt == srcDb) {
+        QMessageBox::information(this, QStringLiteral("Copy Database"),
+            QStringLiteral("Target must differ from the source on the same server."));
+        return;
+    }
 
     QApplication::setOverrideCursor(Qt::WaitCursor);
     QString err;
-    const bool ok = copyDatabaseTo(srcDb, tgt, wantData->isChecked(),
-                                   dropFirst->isChecked(),
-                                   wantRoutines->isChecked(), &err);
+    bool ok;
+    if(sameServer) {
+        ok = copyDatabaseTo(srcDb, tgt, wantData->isChecked(),
+                            dropFirst->isChecked(), wantRoutines->isChecked(), &err);
+    } else {
+        MYSQL *dst = mysql_init(nullptr);
+        mysql_options(dst, MYSQL_SET_CHARSET_NAME, "utf8mb4");
+        if(!mysql_real_connect(dst, tHost->text().trimmed().toUtf8(),
+                               tUser->text().trimmed().toUtf8(),
+                               tPass->text().toUtf8(), nullptr,
+                               tPort->value(), nullptr, 0)) {
+            err = QStringLiteral("target connect failed: %1")
+                      .arg(QString::fromUtf8(mysql_error(dst)));
+            mysql_close(dst);
+            ok = false;
+        } else {
+            const QString tq = QString(tgt).replace('`', QStringLiteral("``"));
+            if(dropFirst->isChecked())
+                mysql_query(dst, QStringLiteral("DROP DATABASE IF EXISTS `%1`")
+                                     .arg(tq).toUtf8().constData());
+            mysql_query(dst, QStringLiteral("CREATE DATABASE IF NOT EXISTS `%1` "
+                                            "CHARACTER SET utf8mb4")
+                                 .arg(tq).toUtf8().constData());
+            mysql_query(dst, QStringLiteral("USE `%1`").arg(tq).toUtf8().constData());
+            SqlDump::Options opt;
+            opt.data = wantData->isChecked();
+            ok = SqlDump::forEachStatement(
+                m_conn, srcDb, {}, opt,
+                [&](const QString &stmt) {
+                    if(mysql_query(dst, stmt.toUtf8().constData()) == 0)
+                        return true;
+                    err = QStringLiteral("%1\n  at: %2")
+                              .arg(QString::fromUtf8(mysql_error(dst)),
+                                   stmt.left(120));
+                    return false;
+                },
+                err.isEmpty() ? &err : nullptr);
+            mysql_close(dst);
+        }
+    }
     QApplication::restoreOverrideCursor();
 
     m_messages->setPlainText(ok
-        ? QStringLiteral("Copied `%1` → `%2`.").arg(srcDb, tgt)
+        ? QStringLiteral("Copied `%1` → %2`%3`.")
+              .arg(srcDb,
+                   sameServer ? QString()
+                              : QStringLiteral("%1:%2/").arg(tHost->text().trimmed())
+                                    .arg(tPort->value()),
+                   tgt)
         : QStringLiteral("Copy failed:\n%1").arg(err));
     m_resultTabs->setCurrentWidget(m_messages);
     refreshBrowser();
