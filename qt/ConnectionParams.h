@@ -1,4 +1,4 @@
-/* OpenYog (working name — see plan.md) — connection parameter type shared by
+/* OpenYog — connection parameter type shared by
  * the connection dialog, the store and the connection tab. */
 #pragma once
 

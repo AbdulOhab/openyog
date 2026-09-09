@@ -1,4 +1,4 @@
-/* OpenYog (working name — plan.md) — application entry point.
+/* OpenYog — application entry point.
  *
  * Selftest mode for CI/headless verification:
  *   openyog --screenshot=FILE.png          render main window to FILE, exit

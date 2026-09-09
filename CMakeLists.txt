@@ -44,7 +44,7 @@ if(SQLITE3_LIBRARY)
 endif()
 target_compile_options(smoketest PRIVATE -Wall)
 
-# ---- Phase 2: the Qt 6 application shell (working name "OpenYog", see plan.md)
+# ---- Phase 2: the Qt 6 application shell ("OpenYog", name approved 2026-09-08)
 find_package(Qt6 REQUIRED COMPONENTS Widgets)
 set(CMAKE_AUTOMOC ON)
 
