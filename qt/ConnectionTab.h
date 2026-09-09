@@ -104,6 +104,7 @@ public slots:
     void promptReplace();
     void promptGoto();
     void commentSelection(bool add);
+    void listTags();               /* force the autocomplete popup */
     void formatQuery(int scope);   /* 0 = current stmt, 1 = selection, 2 = all */
 
 signals:

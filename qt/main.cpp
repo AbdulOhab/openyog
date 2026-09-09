@@ -10,6 +10,7 @@
  *   openyog --delconn=NAME                             delete a saved connection
  *   openyog --screenshot=FILE.png --indexdlg           render the Manage Indexes dialog
  *   openyog --fmtsql="SELECT …"                        print the formatted SQL, exit
+ *   openyog --comptest                                 autocomplete self-check
  */
 #include "MainWindow.h"
 #include "ConnectionDialog.h"
@@ -18,6 +19,7 @@
 #include "CreateTableDialog.h"
 #include "IndexDialog.h"
 #include "SqlFormat.h"
+#include "CodeEditor.h"
 #include "Theme.h"
 
 #include <QDebug>
@@ -78,6 +80,23 @@ int main(int argc, char *argv[])
         if(a.startsWith(QStringLiteral("--fmtsql="))) {
             QTextStream(stdout) << SqlFormat::pretty(a.mid(9)) << '\n';
             return 0;
+        }
+        if(a == QStringLiteral("--comptest")) {
+            qputenv("QT_QPA_PLATFORM", "offscreen");
+            QApplication app2(argc, argv);
+            CodeEditor ed;
+            ed.setCompletions({ QStringLiteral("employees"),
+                                QStringLiteral("emp_dept"),
+                                QStringLiteral("orders") });
+            ed.setPlainText(QStringLiteral("SELECT emp"));
+            QTextCursor c = ed.textCursor();
+            c.movePosition(QTextCursor::End);
+            ed.setTextCursor(c);
+            ed.triggerCompletion();
+            const int n = ed.completionCountForTest();
+            QTextStream(stdout) << "comptest: completions for 'emp' = " << n
+                                << (n >= 2 ? "  PASS\n" : "  FAIL\n");
+            return n >= 2 ? 0 : 1;
         }
         if(a.startsWith(QStringLiteral("--opentable="))) {
             const QStringList parts = a.mid(12).split(':');

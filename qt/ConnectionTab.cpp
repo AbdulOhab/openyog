@@ -859,6 +859,14 @@ void ConnectionTab::commentSelection(bool add)
         ed->toggleLineComment(add);
 }
 
+void ConnectionTab::listTags()
+{
+    if(auto *ed = currentEditor()) {
+        ed->setFocus();
+        ed->triggerCompletion();
+    }
+}
+
 void ConnectionTab::formatQuery(int scope)
 {
     auto *ed = currentEditor();
