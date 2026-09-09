@@ -11,6 +11,11 @@
 
 #include <QElapsedTimer>
 #include <QFileDialog>
+#include <QCheckBox>
+#include <QComboBox>
+#include <QDialog>
+#include <QDialogButtonBox>
+#include <QFormLayout>
 #include <QInputDialog>
 #include <QLineEdit>
 #include <QFontDatabase>
@@ -261,6 +266,8 @@ ConnectionTab::ConnectionTab(const ConnectionParams &params, QWidget *parent)
     });
     connect(m_browser, &ObjectBrowser::renameTableRequested, this,
             &ConnectionTab::promptRenameTable);
+    connect(m_browser, &ObjectBrowser::copyTableRequested, this,
+            &ConnectionTab::promptCopyTable);
     connect(m_browser, &ObjectBrowser::dumpDatabaseRequested, this,
             [this](const QString &db) { promptDumpDatabase(db); });
     connect(m_browser, &ObjectBrowser::truncateTableRequested, this,
@@ -604,6 +611,54 @@ void ConnectionTab::promptRenameTable(const QString &database,
                 .arg(db, table, name.trimmed()));
     if(m_tableData->loadedTable() == table)
         m_tableData->load(m_conn, db, name.trimmed());
+}
+
+void ConnectionTab::promptCopyTable(const QString &database, const QString &table)
+{
+    if(!m_conn || table.isEmpty())
+        return;
+    const QString srcDb = database.isEmpty() ? m_params.database : database;
+
+    QDialog dlg(this);
+    dlg.setWindowTitle(QStringLiteral("Duplicate Table `%1`").arg(table));
+    auto *name = new QLineEdit(table + QStringLiteral("_copy"), &dlg);
+    auto *targetDb = new QComboBox(&dlg);
+    targetDb->addItems(m_databases.isEmpty() ? QStringList{ srcDb } : m_databases);
+    targetDb->setCurrentText(srcDb);
+    auto *wantStructure = new QCheckBox(QStringLiteral("Structure"), &dlg);
+    auto *wantData = new QCheckBox(QStringLiteral("Data"), &dlg);
+    wantStructure->setChecked(true);
+    wantData->setChecked(true);
+
+    auto *form = new QFormLayout;
+    form->addRow(QStringLiteral("New table name"), name);
+    form->addRow(QStringLiteral("Target database"), targetDb);
+    form->addRow(QString(), wantStructure);
+    form->addRow(QString(), wantData);
+    auto *buttons = new QDialogButtonBox(
+        QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
+    buttons->button(QDialogButtonBox::Ok)->setText(QStringLiteral("Duplicate"));
+    connect(buttons, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
+    auto *lay = new QVBoxLayout(&dlg);
+    lay->addLayout(form);
+    lay->addWidget(buttons);
+    if(dlg.exec() != QDialog::Accepted)
+        return;
+
+    const QString tgt = name->text().trimmed();
+    const QString tgtDb = targetDb->currentText();
+    if(tgt.isEmpty())
+        return;
+    const QString src = QStringLiteral("`%1`.`%2`").arg(srcDb, table);
+    const QString dst = QStringLiteral("`%1`.`%2`").arg(tgtDb, tgt);
+
+    if(wantStructure->isChecked()) {
+        if(!execDdl(QStringLiteral("CREATE TABLE %1 LIKE %2").arg(dst, src)))
+            return;
+    }
+    if(wantData->isChecked())
+        execDdl(QStringLiteral("INSERT INTO %1 SELECT * FROM %2").arg(dst, src));
 }
 
 void ConnectionTab::promptAlterTable(const QString &database,

@@ -70,6 +70,7 @@ public slots:
     void promptCreateTable(const QString &database = {});
     void promptAlterTable(const QString &database, const QString &table);
     void promptRenameTable(const QString &database, const QString &table);
+    void promptCopyTable(const QString &database, const QString &table);
     void dropTable(const QString &database, const QString &table);
     void truncateTable(const QString &database, const QString &table);
     void promptDumpDatabase(const QString &database = {});
