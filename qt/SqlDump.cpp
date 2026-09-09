@@ -2,6 +2,7 @@
 
 #include <QDateTime>
 #include <QIODevice>
+#include <QRegularExpression>
 
 namespace {
 
@@ -223,6 +224,94 @@ bool SqlDump::forEachStatement(
         mysql_free_result(res);
         if(!ok)
             return false;
+    }
+
+    if(opt.routines) {
+        static const QRegularExpression kDefiner(
+            QStringLiteral("DEFINER=`[^`]*`@`[^`]*` "));
+        /* strip DEFINER and the source-db qualifier — the caller has USE'd
+         * the target db, so unqualified names land there */
+        const auto clean = [&](QString s) {
+            return s.remove(kDefiner)
+                    .replace(QStringLiteral("`%1`.").arg(db), QString());
+        };
+        const auto names = [&](const QString &sql, int col) {
+            QStringList out;
+            if(query(conn, sql.toUtf8(), error)) {
+                if(MYSQL_RES *r = mysql_store_result(conn)) {
+                    while(MYSQL_ROW row = mysql_fetch_row(r))
+                        if(row[col]) out << QString::fromUtf8(row[col]);
+                    mysql_free_result(r);
+                }
+            }
+            return out;
+        };
+        const auto one = [&](const QString &sql, int col) {
+            QString v;
+            if(query(conn, sql.toUtf8(), error)) {
+                if(MYSQL_RES *r = mysql_store_result(conn)) {
+                    if(MYSQL_ROW row = mysql_fetch_row(r))
+                        v = QString::fromUtf8(row[col] ? row[col] : "");
+                    mysql_free_result(r);
+                }
+            }
+            return v;
+        };
+        const QString dq = QString(db).replace('`', QStringLiteral("``"));
+
+        for(const QString &v : names(
+                QStringLiteral("SHOW FULL TABLES FROM `%1` WHERE Table_type='VIEW'").arg(dq), 0)) {
+            const QString ddl = clean(one(
+                QStringLiteral("SHOW CREATE VIEW `%1`.`%2`").arg(dq, v), 1));
+            if(!ddl.isEmpty() && !exec(ddl))
+                return false;
+        }
+        if(query(conn, QStringLiteral("SELECT ROUTINE_NAME, ROUTINE_TYPE FROM "
+                     "information_schema.ROUTINES WHERE ROUTINE_SCHEMA='%1'")
+                     .arg(dq).toUtf8(), error)) {
+            QList<QPair<QString, QString>> rs;
+            if(MYSQL_RES *r = mysql_store_result(conn)) {
+                while(MYSQL_ROW row = mysql_fetch_row(r))
+                    if(row[0] && row[1])
+                        rs << qMakePair(QString::fromUtf8(row[0]),
+                                        QString::fromUtf8(row[1]));
+                mysql_free_result(r);
+            }
+            for(const auto &rt : std::as_const(rs)) {
+                const QString kw = rt.second == QStringLiteral("PROCEDURE")
+                    ? QStringLiteral("PROCEDURE") : QStringLiteral("FUNCTION");
+                const QString ddl = clean(one(
+                    QStringLiteral("SHOW CREATE %1 `%2`.`%3`").arg(kw, dq, rt.first), 2));
+                if(!ddl.isEmpty() && !exec(ddl))
+                    return false;
+            }
+        }
+        if(query(conn, QStringLiteral("SHOW TRIGGERS FROM `%1`").arg(dq).toUtf8(), error)) {
+            QStringList trg;
+            if(MYSQL_RES *r = mysql_store_result(conn)) {
+                while(MYSQL_ROW row = mysql_fetch_row(r)) {
+                    if(!row[0]) continue;
+                    trg << QStringLiteral("CREATE TRIGGER `%1` %2 %3 ON `%4` "
+                                          "FOR EACH ROW %5")
+                        .arg(QString::fromUtf8(row[0]),
+                             QString::fromUtf8(row[4] ? row[4] : ""),
+                             QString::fromUtf8(row[1] ? row[1] : ""),
+                             QString::fromUtf8(row[2] ? row[2] : ""),
+                             QString::fromUtf8(row[3] ? row[3] : ""));
+                }
+                mysql_free_result(r);
+            }
+            for(const QString &s : std::as_const(trg))
+                if(!exec(s))
+                    return false;
+        }
+        for(const QString &e : names(
+                QStringLiteral("SHOW EVENTS FROM `%1`").arg(dq), 1)) {
+            const QString ddl = clean(one(
+                QStringLiteral("SHOW CREATE EVENT `%1`.`%2`").arg(dq, e), 3));
+            if(!ddl.isEmpty() && !exec(ddl))
+                return false;
+        }
     }
 
     return exec(QStringLiteral("SET FOREIGN_KEY_CHECKS=1"));
