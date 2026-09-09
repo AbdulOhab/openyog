@@ -4,6 +4,7 @@
 #include "SqlHighlighter.h"
 #include "CreateTableDialog.h"
 #include "IndexDialog.h"
+#include "ForeignKeyDialog.h"
 #include "SqlDump.h"
 #include "Icons.h"
 #include "wyString.h"
@@ -271,6 +272,8 @@ ConnectionTab::ConnectionTab(const ConnectionParams &params, QWidget *parent)
             &ConnectionTab::promptCopyTable);
     connect(m_browser, &ObjectBrowser::manageIndexesRequested, this,
             &ConnectionTab::promptManageIndexes);
+    connect(m_browser, &ObjectBrowser::manageForeignKeysRequested, this,
+            &ConnectionTab::promptManageForeignKeys);
     connect(m_browser, &ObjectBrowser::dumpDatabaseRequested, this,
             [this](const QString &db) { promptDumpDatabase(db); });
     connect(m_browser, &ObjectBrowser::truncateTableRequested, this,
@@ -723,6 +726,87 @@ void ConnectionTab::promptManageIndexes(const QString &database,
     const QString sql = dlg.buildSql();
     if(sql.isEmpty()) {
         QMessageBox::information(this, QStringLiteral("Manage Indexes"),
+                                QStringLiteral("No changes to apply."));
+        return;
+    }
+    execDdl(sql);
+}
+
+void ConnectionTab::promptManageForeignKeys(const QString &database,
+                                            const QString &table)
+{
+    if(!m_conn || table.isEmpty())
+        return;
+    const QString db = database.isEmpty() ? m_params.database : database;
+
+    QList<ForeignKeyDialog::FkDef> fks;
+    const auto find = [&](const QString &n) -> ForeignKeyDialog::FkDef * {
+        for(auto &f : fks)
+            if(f.name == n)
+                return &f;
+        return nullptr;
+    };
+    wyString q;
+    q.Sprintf(
+        "SELECT k.CONSTRAINT_NAME, k.COLUMN_NAME, k.REFERENCED_TABLE_NAME, "
+        "k.REFERENCED_COLUMN_NAME, r.DELETE_RULE, r.UPDATE_RULE "
+        "FROM information_schema.KEY_COLUMN_USAGE k "
+        "JOIN information_schema.REFERENTIAL_CONSTRAINTS r "
+        "  ON r.CONSTRAINT_SCHEMA=k.CONSTRAINT_SCHEMA "
+        "  AND r.CONSTRAINT_NAME=k.CONSTRAINT_NAME "
+        "WHERE k.TABLE_SCHEMA='%s' AND k.TABLE_NAME='%s' "
+        "  AND k.REFERENCED_TABLE_NAME IS NOT NULL "
+        "ORDER BY k.CONSTRAINT_NAME, k.ORDINAL_POSITION",
+        db.toUtf8().constData(), table.toUtf8().constData());
+    if(mysql_query(m_conn, q.GetString()) != 0) {
+        QMessageBox::warning(this, QStringLiteral("Foreign Keys"),
+                             QString::fromUtf8(mysql_error(m_conn)));
+        return;
+    }
+    if(MYSQL_RES *res = mysql_store_result(m_conn)) {
+        while(MYSQL_ROW row = mysql_fetch_row(res)) {
+            const QString name = QString::fromUtf8(row[0] ? row[0] : "");
+            ForeignKeyDialog::FkDef *f = find(name);
+            if(!f) {
+                ForeignKeyDialog::FkDef nf;
+                nf.name = name;
+                nf.refTable = QString::fromUtf8(row[2] ? row[2] : "");
+                nf.onDelete = QString::fromUtf8(row[4] ? row[4] : "RESTRICT");
+                nf.onUpdate = QString::fromUtf8(row[5] ? row[5] : "RESTRICT");
+                fks << nf;
+                f = &fks.last();
+            }
+            f->columns << QString::fromUtf8(row[1] ? row[1] : "");
+            f->refColumns << QString::fromUtf8(row[3] ? row[3] : "");
+        }
+        mysql_free_result(res);
+    }
+
+    QStringList cols, tables;
+    q.Sprintf("SHOW COLUMNS FROM `%s`.`%s`", db.toUtf8().constData(),
+              table.toUtf8().constData());
+    if(mysql_query(m_conn, q.GetString()) == 0) {
+        if(MYSQL_RES *res = mysql_store_result(m_conn)) {
+            while(MYSQL_ROW row = mysql_fetch_row(res))
+                if(row[0]) cols << QString::fromUtf8(row[0]);
+            mysql_free_result(res);
+        }
+    }
+    q.Sprintf("SHOW TABLES FROM `%s`", db.toUtf8().constData());
+    if(mysql_query(m_conn, q.GetString()) == 0) {
+        if(MYSQL_RES *res = mysql_store_result(m_conn)) {
+            while(MYSQL_ROW row = mysql_fetch_row(res))
+                if(row[0]) tables << QString::fromUtf8(row[0]);
+            mysql_free_result(res);
+        }
+    }
+
+    ForeignKeyDialog dlg(db, table, fks, cols, tables, this);
+    if(dlg.exec() != QDialog::Accepted)
+        return;
+    const QString sql = dlg.buildSql();
+    if(sql.isEmpty()) {
+        QMessageBox::information(this, QStringLiteral("Foreign Keys"),
                                 QStringLiteral("No changes to apply."));
         return;
     }

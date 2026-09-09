@@ -94,6 +94,8 @@ ObjectBrowser::ObjectBrowser(QWidget *parent)
                            [this, db, table] { emit alterTableRequested(db, table); });
             menu.addAction(QStringLiteral("&Manage Indexes…"), this,
                            [this, db, table] { emit manageIndexesRequested(db, table); });
+            menu.addAction(QStringLiteral("&Foreign Keys…"), this,
+                           [this, db, table] { emit manageForeignKeysRequested(db, table); });
             menu.addAction(QStringLiteral("&Rename Table…"), this,
                            [this, db, table] { emit renameTableRequested(db, table); });
             menu.addAction(QStringLiteral("D&uplicate Table…"), this,
