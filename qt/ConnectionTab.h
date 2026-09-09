@@ -137,6 +137,8 @@ private:
 
     QStringList         m_databases;
     QString             m_lastFind;       /* for Find Next / F3 */
+    QStringList         m_completions;    /* schema identifiers for autocomplete */
+    void updateCompletions();
 
     /* selected table in the browser: [db, table] or empty */
     QStringList currentTableInfo() const;
