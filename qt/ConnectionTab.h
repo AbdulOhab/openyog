@@ -73,6 +73,7 @@ public slots:
     void promptRenameTable(const QString &database, const QString &table);
     void promptCopyTable(const QString &database, const QString &table);
     void promptCopyDatabase(const QString &database = {});
+    void promptImportCsv(const QString &database, const QString &table);
     /* non-interactive core, also used by the --copydb selftest */
     bool copyDatabaseTo(const QString &srcDb, const QString &tgtDb,
                         bool withData, bool dropFirst, bool withRoutines,

@@ -35,6 +35,7 @@ signals:
     void manageIndexesRequested(const QString &db, const QString &table);
     void manageForeignKeysRequested(const QString &db, const QString &table);
     void copyDatabaseRequested(const QString &db);
+    void importCsvRequested(const QString &db, const QString &table);
     void dumpDatabaseRequested(const QString &db);
     void statusMessage(const QString &text);
 
