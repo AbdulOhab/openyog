@@ -13,6 +13,8 @@
 
 #include <QApplication>
 
+#include <QDateTime>
+#include <QDir>
 #include <QElapsedTimer>
 #include <QFileDialog>
 #include <QCheckBox>
@@ -33,6 +35,7 @@
 #include <QMetaObject>
 #include <QPushButton>
 #include <QSpinBox>
+#include <QStandardPaths>
 #include <QSplitter>
 #include <QTabBar>
 #include <QTextStream>
@@ -53,6 +56,47 @@
 #include <thread>
 
 namespace {
+
+/* persistent query history: <AppConfig>/history.log, tab-separated
+ * "<iso datetime>\t<connection name>\t<sql, newlines flattened>" */
+QString historyPath()
+{
+    QDir dir(QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation));
+    dir.mkpath(QStringLiteral("."));
+    return dir.filePath(QStringLiteral("history.log"));
+}
+
+void appendHistoryLine(const QString &conn, const QString &sql)
+{
+    QFile f(historyPath());
+    if(!f.open(QIODevice::Append | QIODevice::Text))
+        return;
+    QString one = sql;
+    one.replace('\n', QLatin1Char(' ')).replace('\r', QString());
+    QTextStream(&f) << QDateTime::currentDateTime().toString(Qt::ISODate)
+                    << '\t' << conn << '\t' << one << '\n';
+}
+
+/* the last `max` history lines for `conn`, oldest first, as "[time date] sql" */
+QStringList loadHistoryFor(const QString &conn, int max)
+{
+    QFile f(historyPath());
+    if(!f.open(QIODevice::ReadOnly | QIODevice::Text))
+        return {};
+    QStringList out;
+    QTextStream in(&f);
+    while(!in.atEnd()) {
+        const QStringList p = in.readLine().split('\t');
+        if(p.size() < 3 || p[1] != conn)
+            continue;
+        const QDateTime dt = QDateTime::fromString(p[0], Qt::ISODate);
+        out << QStringLiteral("[%1] %2")
+                   .arg(dt.isValid() ? dt.toString(QStringLiteral("MMM d  hh:mm:ss"))
+                                     : p[0],
+                        p.mid(2).join(QLatin1Char('\t')));
+    }
+    return out.mid(qMax(0, out.size() - max));
+}
 
 /* result-grid sort: numeric when both cells parse as numbers, NULL last */
 class GridSortProxy : public QSortFilterProxyModel
@@ -203,6 +247,11 @@ ConnectionTab::ConnectionTab(const ConnectionParams &params, QWidget *parent)
     m_history = new QPlainTextEdit(this);
     m_history->setReadOnly(true);
     m_history->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
+    /* previous sessions' history for this connection */
+    const QStringList past = loadHistoryFor(params.name, 500);
+    if(!past.isEmpty())
+        m_history->setPlainText(past.join(QLatin1Char('\n'))
+                                + QStringLiteral("\n——— this session ———"));
 
     m_editorTabs = new QTabWidget(this);
     m_editorTabs->setObjectName(QStringLiteral("editorTabs"));
@@ -418,6 +467,7 @@ void ConnectionTab::logHistory(const QString &sql)
     m_history->appendPlainText(
         QStringLiteral("[%1] %2")
             .arg(QTime::currentTime().toString(QStringLiteral("hh:mm:ss")), sql));
+    appendHistoryLine(m_params.name, sql);
 }
 
 void ConnectionTab::runQuery()
