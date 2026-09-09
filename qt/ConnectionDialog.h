@@ -1,13 +1,21 @@
-/* OpenYog — connection dialog (plan.md Phase 2).
- * Prefills from the last saved connection; saving is done by the caller via
- * ConnectionStore (wyIni-backed, SQLyog-style INI). */
+/* OpenYog — connection dialog, laid out after SQLyog's "Connect to MySQL Host"
+ * (include/SQLyog.rc IDD_CONNECT, see xnote/2026-09-09-ui-shell-spec.md §5 and
+ * xnote/ref-sqlyog-flat-connection-page.png):
+ *   left image strip | New/Clone/Save/Rename/Delete row | Saved Connections
+ *   combo | MySQL/HTTP/SSH/SSL/Advanced tabs | Connect / Cancel / Test.
+ * HTTP/SSH/SSL/Advanced are placeholders until Phase 6. Persistence is via
+ * ConnectionStore (wyIni, SQLyog-style INI). */
 #pragma once
 
 #include "ConnectionParams.h"
 
 #include <QDialog>
 
+class QCheckBox;
+class QComboBox;
 class QLineEdit;
+class QPushButton;
+class QRadioButton;
 class QSpinBox;
 
 class ConnectionDialog : public QDialog
@@ -18,13 +26,30 @@ public:
 
     ConnectionParams params() const;
 
-private:
-    void loadLastUsed();
+private slots:
+    void reloadSavedList();
+    void loadSelected();
+    void newConnection();
+    void saveConnection();
+    void testConnection();
 
-    QLineEdit *m_name     = nullptr;
-    QLineEdit *m_host     = nullptr;
-    QSpinBox  *m_port     = nullptr;
-    QLineEdit *m_user     = nullptr;
-    QLineEdit *m_password = nullptr;
-    QLineEdit *m_database = nullptr;
+private:
+    void setParams(const ConnectionParams &p);
+
+    QComboBox    *m_saved    = nullptr;
+    QPushButton  *m_clone    = nullptr;
+    QPushButton  *m_save     = nullptr;
+    QPushButton  *m_rename   = nullptr;
+    QPushButton  *m_delete   = nullptr;
+
+    QLineEdit    *m_host     = nullptr;
+    QLineEdit    *m_user     = nullptr;
+    QLineEdit    *m_password = nullptr;
+    QCheckBox    *m_savePw   = nullptr;
+    QSpinBox     *m_port     = nullptr;
+    QLineEdit    *m_database = nullptr;
+    QCheckBox    *m_compress = nullptr;
+    QRadioButton *m_idleDefault = nullptr;
+    QSpinBox     *m_idleSecs = nullptr;
+    QSpinBox     *m_keepAlive = nullptr;
 };
