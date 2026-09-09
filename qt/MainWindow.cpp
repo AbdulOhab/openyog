@@ -190,9 +190,20 @@ MainWindow::MainWindow(QWidget *parent)
     addDisabled(explain, QStringLiteral("EXPLAIN EXTENDED <Query>"));
     edit->addSeparator();
     QMenu *formatter = edit->addMenu(QStringLiteral("S&QL Formatter"));
-    addDisabled(formatter, QStringLiteral("Format &Current Query\tF12"));
-    addDisabled(formatter, QStringLiteral("Format &Selected Query\tCtrl+F12"));
-    addDisabled(formatter, QStringLiteral("Format &All Queries\tShift+F12"));
+    const auto wireFormat = [this, formatter](const QString &label,
+                                              QKeySequence sc, int scope) {
+        QAction *a = formatter->addAction(label);
+        a->setShortcut(sc);
+        connect(a, &QAction::triggered, this, [this, scope] {
+            if(auto *t = currentTab()) t->formatQuery(scope);
+        });
+    };
+    wireFormat(QStringLiteral("Format &Current Query\tF12"),
+               QKeySequence(Qt::Key_F12), 0);
+    wireFormat(QStringLiteral("Format &Selected Query\tCtrl+F12"),
+               QKeySequence(Qt::CTRL | Qt::Key_F12), 1);
+    wireFormat(QStringLiteral("Format &All Queries\tShift+F12"),
+               QKeySequence(Qt::SHIFT | Qt::Key_F12), 2);
     addDisabled(edit, QStringLiteral("&Insert Templates…\tCtrl+Shift+T"));
     edit->addSeparator();
     QAction *undo = edit->addAction(QStringLiteral("&Undo\tCtrl+Z"));

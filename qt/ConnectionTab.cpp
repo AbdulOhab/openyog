@@ -4,6 +4,7 @@
 #include "SqlHighlighter.h"
 #include "CreateTableDialog.h"
 #include "FindBar.h"
+#include "SqlFormat.h"
 #include "UserManagerDialog.h"
 #include "IndexDialog.h"
 #include "ForeignKeyDialog.h"
@@ -784,6 +785,38 @@ void ConnectionTab::commentSelection(bool add)
 {
     if(auto *ed = currentEditor())
         ed->toggleLineComment(add);
+}
+
+void ConnectionTab::formatQuery(int scope)
+{
+    auto *ed = currentEditor();
+    if(!ed)
+        return;
+    QTextCursor c = ed->textCursor();
+
+    if(scope == 2) {                                   /* whole editor */
+        const QString f = SqlFormat::pretty(ed->toPlainText());
+        c.select(QTextCursor::Document);
+        c.insertText(f);
+        return;
+    }
+    if(scope == 1 && c.hasSelection()) {              /* selection */
+        c.insertText(SqlFormat::pretty(c.selectedText()
+                                          .replace(QChar::ParagraphSeparator, '\n')));
+        return;
+    }
+    /* current statement: expand to the surrounding ';' boundaries */
+    const QString all = ed->toPlainText();
+    int pos = c.position();
+    int start = all.lastIndexOf(';', qMax(0, pos - 1)) + 1;
+    int end = all.indexOf(';', pos);
+    if(end < 0)
+        end = all.size();
+    else
+        ++end;                                        /* include the ';' */
+    c.setPosition(start);
+    c.setPosition(end, QTextCursor::KeepAnchor);
+    c.insertText(SqlFormat::pretty(all.mid(start, end - start)));
 }
 
 void ConnectionTab::editTableCell(int row, int col, const QString &value, bool stageOnly)
