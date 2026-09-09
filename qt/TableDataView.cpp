@@ -15,6 +15,7 @@
 #include <QMessageBox>
 #include <QPlainTextEdit>
 #include <QPushButton>
+#include <QTabWidget>
 #include <QVBoxLayout>
 
 #include <cstring>
@@ -560,21 +561,82 @@ void TableDataView::setCellNull()
     m_model->stage(idx.row(), idx.column(), QStringLiteral("NULL"));
 }
 
+QByteArray TableDataView::fetchCellBytes(int row, int col) const
+{
+    QByteArray out;
+    if(!m_conn || m_columns.isEmpty())
+        return out;
+    const QString where = whereFromOrigRow(row);
+    if(where.isEmpty())
+        return out;
+    wyString q;
+    q.Sprintf("SELECT `%s` FROM `%s`.`%s` WHERE %s LIMIT 1",
+              m_columns[col].toUtf8().constData(), m_db.toUtf8().constData(),
+              m_table.toUtf8().constData(), where.toUtf8().constData());
+    if(mysql_query(m_conn, q.GetString()) != 0)
+        return out;
+    if(MYSQL_RES *res = mysql_store_result(m_conn)) {
+        if(MYSQL_ROW r = mysql_fetch_row(res)) {
+            unsigned long *len = mysql_fetch_lengths(res);
+            if(r[0] && len)
+                out = QByteArray(r[0], int(len[0]));
+        }
+        mysql_free_result(res);
+    }
+    return out;
+}
+
 void TableDataView::editCellInTextEditor()
 {
     const QModelIndex idx = m_grid->currentIndex();
     if(!m_valid || !idx.isValid())
         return;
-    const QString col = m_model->columns().value(idx.column());
+    const int row = idx.row(), c = idx.column();
+    const QString col = m_model->columns().value(c);
+    const bool isNull = idx.data().toString() == QStringLiteral("NULL");
 
     QDialog dlg(this);
-    dlg.setWindowTitle(QStringLiteral("Edit `%1` — row %2")
-                           .arg(col).arg(idx.row() + 1));
-    dlg.resize(560, 380);
-    auto *edit = new QPlainTextEdit(&dlg);
-    edit->setPlainText(idx.data().toString() == QStringLiteral("NULL")
-                           ? QString() : idx.data().toString());
+    dlg.setWindowTitle(QStringLiteral("Edit `%1` — row %2").arg(col).arg(row + 1));
+    dlg.resize(600, 420);
+
+    auto *tabs = new QTabWidget(&dlg);
+    auto *edit = new QPlainTextEdit(tabs);
+    edit->setPlainText(isNull ? QString() : idx.data().toString());
     edit->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
+    tabs->addTab(edit, QStringLiteral("Text"));
+
+    auto *hex = new QPlainTextEdit(tabs);
+    hex->setReadOnly(true);
+    hex->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
+    hex->setLineWrapMode(QPlainTextEdit::NoWrap);
+    tabs->addTab(hex, QStringLiteral("Hex"));
+    bool hexLoaded = false;
+    connect(tabs, &QTabWidget::currentChanged, &dlg, [&](int i) {
+        if(i != 1 || hexLoaded)
+            return;
+        hexLoaded = true;
+        const QByteArray b = m_model->rowState(row) == TableDataModel::Inserted
+            ? edit->toPlainText().toUtf8()
+            : fetchCellBytes(row, c);
+        QString dump;
+        for(int off = 0; off < b.size(); off += 16) {
+            QString h, a;
+            for(int j = 0; j < 16; ++j) {
+                if(off + j < b.size()) {
+                    const uchar ch = uchar(b[off + j]);
+                    h += QStringLiteral("%1 ").arg(ch, 2, 16, QLatin1Char('0'));
+                    a += (ch >= 0x20 && ch < 0x7f) ? QChar(ch) : QLatin1Char('.');
+                } else {
+                    h += QStringLiteral("   ");
+                }
+            }
+            dump += QStringLiteral("%1  %2 %3\n")
+                        .arg(off, 8, 16, QLatin1Char('0')).arg(h, a);
+        }
+        hex->setPlainText(b.isEmpty() ? QStringLiteral("(empty / NULL)") : dump);
+        hex->appendPlainText(QStringLiteral("\n%1 byte(s)").arg(b.size()));
+    });
+
     auto *buttons = new QDialogButtonBox(
         QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
     auto *nullBtn = buttons->addButton(QStringLiteral("Set &NULL"),
@@ -583,13 +645,14 @@ void TableDataView::editCellInTextEditor()
     connect(buttons, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
     bool toNull = false;
     connect(nullBtn, &QPushButton::clicked, &dlg, [&] { toNull = true; dlg.accept(); });
+
     auto *lay = new QVBoxLayout(&dlg);
-    lay->addWidget(edit, 1);
+    lay->addWidget(tabs, 1);
     lay->addWidget(buttons);
     if(dlg.exec() != QDialog::Accepted)
         return;
-    m_model->stage(idx.row(), idx.column(),
-                   toNull ? QStringLiteral("NULL") : edit->toPlainText());
+    /* only the Text tab is editable; the Hex view is read-only */
+    m_model->stage(row, c, toNull ? QStringLiteral("NULL") : edit->toPlainText());
 }
 
 void TableDataView::refresh()
