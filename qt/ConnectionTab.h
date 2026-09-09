@@ -52,6 +52,8 @@ public:
     {
         return m_params.host + ':' + QString::number(m_params.port);
     }
+    /* [db, table] of the browser's selected table, or empty */
+    QStringList selectedTableInfo() const;
 
 public slots:
     void runQuery();
@@ -66,6 +68,7 @@ public slots:
     void toggleEditorPane();
     void openSelectedTable();
     void promptCreateTable(const QString &database = {});
+    void promptAlterTable(const QString &database, const QString &table);
     void promptDumpDatabase(const QString &database = {});
     /* non-interactive core, also used by the --dumpdb selftest */
     bool dumpDatabaseToFile(const QString &database, const QString &path,

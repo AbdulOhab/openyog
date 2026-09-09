@@ -260,6 +260,10 @@ ConnectionTab::ConnectionTab(const ConnectionParams &params, QWidget *parent)
     });
     connect(m_browser, &ObjectBrowser::createTableRequested, this,
             [this](const QString &db) { promptCreateTable(db); });
+    connect(m_browser, &ObjectBrowser::alterTableRequested, this,
+            [this](const QString &db, const QString &table) {
+        promptAlterTable(db, table);
+    });
     connect(m_browser, &ObjectBrowser::dumpDatabaseRequested, this,
             [this](const QString &db) { promptDumpDatabase(db); });
     connect(m_browser, &ObjectBrowser::truncateTableRequested, this,
@@ -565,6 +569,83 @@ void ConnectionTab::promptCreateTable(const QString &database)
     execDdl(sql);   /* execDdl already refreshes the object browser on success */
 }
 
+void ConnectionTab::promptAlterTable(const QString &database,
+                                     const QString &table)
+{
+    if(!m_conn || table.isEmpty())
+        return;
+    const QString db = database.isEmpty() ? m_params.database : database;
+
+    /* columns via SHOW FULL COLUMNS: Field Type Collation Null Key Default
+     * Extra Privileges Comment */
+    QList<CreateTableDialog::ColumnDef> cols;
+    wyString q;
+    q.Sprintf("SHOW FULL COLUMNS FROM `%s`.`%s`", db.toUtf8().constData(),
+              table.toUtf8().constData());
+    if(mysql_query(m_conn, q.GetString()) != 0) {
+        QMessageBox::warning(this, QStringLiteral("Alter Table"),
+                             QString::fromUtf8(mysql_error(m_conn)));
+        return;
+    }
+    if(MYSQL_RES *res = mysql_store_result(m_conn)) {
+        while(MYSQL_ROW row = mysql_fetch_row(res)) {
+            CreateTableDialog::ColumnDef c;
+            c.name = QString::fromUtf8(row[0] ? row[0] : "");
+            QString type = QString::fromUtf8(row[1] ? row[1] : "").trimmed();
+            c.isUnsigned = type.contains(QStringLiteral(" unsigned"),
+                                         Qt::CaseInsensitive);
+            type.remove(QStringLiteral(" unsigned"), Qt::CaseInsensitive);
+            type.remove(QStringLiteral(" zerofill"), Qt::CaseInsensitive);
+            const int lp = type.indexOf('(');
+            if(lp >= 0 && type.endsWith(')')) {
+                c.length = type.mid(lp + 1, type.size() - lp - 2);
+                c.type = type.left(lp).toUpper();
+            } else {
+                c.type = type.toUpper();
+            }
+            c.notNull = QString::fromUtf8(row[3] ? row[3] : "") == QStringLiteral("NO");
+            c.pk = QString::fromUtf8(row[4] ? row[4] : "") == QStringLiteral("PRI");
+            c.def = QString::fromUtf8(row[5] ? row[5] : "");
+            c.autoInc = QString::fromUtf8(row[6] ? row[6] : "")
+                            .contains(QStringLiteral("auto_increment"),
+                                      Qt::CaseInsensitive);
+            c.comment = QString::fromUtf8(row[8] ? row[8] : "");
+            cols << c;
+        }
+        mysql_free_result(res);
+    }
+    if(cols.isEmpty())
+        return;
+
+    QString engine, charset;
+    q.Sprintf("SELECT ENGINE, SUBSTRING_INDEX(TABLE_COLLATION,'_',1) "
+              "FROM information_schema.TABLES "
+              "WHERE TABLE_SCHEMA='%s' AND TABLE_NAME='%s'",
+              db.toUtf8().constData(), table.toUtf8().constData());
+    if(mysql_query(m_conn, q.GetString()) == 0) {
+        if(MYSQL_RES *res = mysql_store_result(m_conn)) {
+            if(MYSQL_ROW row = mysql_fetch_row(res)) {
+                engine  = QString::fromUtf8(row[0] ? row[0] : "");
+                charset = QString::fromUtf8(row[1] ? row[1] : "");
+            }
+            mysql_free_result(res);
+        }
+    }
+
+    CreateTableDialog dlg(db, table, cols, engine, charset, this);
+    if(dlg.exec() != QDialog::Accepted)
+        return;
+    const QString sql = dlg.buildSql();
+    if(sql.isEmpty()) {
+        QMessageBox::information(this, QStringLiteral("Alter Table"),
+            QStringLiteral("No changes to apply."));
+        return;
+    }
+    execDdl(sql);
+    if(m_tableData->loadedTable() == table)
+        m_tableData->load(m_conn, db, table);
+}
+
 void ConnectionTab::promptDumpDatabase(const QString &database)
 {
     if(!m_conn)
@@ -628,6 +709,11 @@ bool ConnectionTab::execDdl(const QString &sql)
 }
 
 QStringList ConnectionTab::currentTableInfo() const
+{
+    return m_browser->currentTableInfo();
+}
+
+QStringList ConnectionTab::selectedTableInfo() const
 {
     return m_browser->currentTableInfo();
 }
