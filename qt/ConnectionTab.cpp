@@ -835,25 +835,99 @@ bool ConnectionTab::copyDatabaseTo(const QString &srcDb, const QString &tgtDb,
                            QStringLiteral("`%1`.").arg(tgtDb));
     };
 
-    QStringList tables =
-        nameList(QStringLiteral("SHOW FULL TABLES FROM `%1` WHERE Table_type='BASE TABLE'")
-                     .arg(sb), 0);
+    const auto bq = [](QString s) { return s.replace('`', QStringLiteral("``")); };
+    const QString tb = bq(tgtDb);
+
+    /* base tables — a failing SHOW here (e.g. no such source db) must abort,
+     * not silently "succeed" with an empty target */
+    QStringList tables;
+    {
+        const QByteArray q =
+            QStringLiteral("SHOW FULL TABLES FROM `%1` WHERE Table_type='BASE TABLE'")
+                .arg(sb).toUtf8();
+        if(mysql_query(m_conn, q.constData()) != 0) {
+            if(error)
+                *error = QString::fromUtf8(mysql_error(m_conn));
+            return false;
+        }
+        if(MYSQL_RES *r = mysql_store_result(m_conn)) {
+            while(MYSQL_ROW row = mysql_fetch_row(r))
+                if(row[0])
+                    tables << QString::fromUtf8(row[0]);
+            mysql_free_result(r);
+        }
+    }
 
     QStringList stmts;
     if(dropFirst)
-        stmts << QStringLiteral("DROP DATABASE IF EXISTS `%1`").arg(tgtDb);
-    stmts << QStringLiteral("CREATE DATABASE IF NOT EXISTS `%1`").arg(tgtDb);
+        stmts << QStringLiteral("DROP DATABASE IF EXISTS `%1`").arg(tb);
+    stmts << QStringLiteral("CREATE DATABASE IF NOT EXISTS `%1`").arg(tb);
     stmts << QStringLiteral("SET FOREIGN_KEY_CHECKS=0");
     for(const QString &t : std::as_const(tables)) {
+        const QString tq = bq(t);
         stmts << QStringLiteral("CREATE TABLE `%1`.`%2` LIKE `%3`.`%2`")
-                     .arg(tgtDb, t, srcDb);
+                     .arg(tb, tq, sb);
         if(withData)
             stmts << QStringLiteral("INSERT INTO `%1`.`%2` SELECT * FROM `%3`.`%2`")
-                         .arg(tgtDb, t, srcDb);
+                         .arg(tb, tq, sb);
+    }
+
+    /* CREATE TABLE … LIKE does not carry FK constraints (MariaDB) — copy them
+     * explicitly from information_schema once every table exists (FK checks
+     * are off, so create order is irrelevant) */
+    {
+        struct Fk { QString name, tbl, refTbl, onDel, onUpd; QStringList cols, refCols; };
+        QList<Fk> fks;
+        wyString fq;
+        fq.Sprintf(
+            "SELECT k.CONSTRAINT_NAME, k.TABLE_NAME, k.COLUMN_NAME, "
+            "k.REFERENCED_TABLE_NAME, k.REFERENCED_COLUMN_NAME, "
+            "r.DELETE_RULE, r.UPDATE_RULE "
+            "FROM information_schema.KEY_COLUMN_USAGE k "
+            "JOIN information_schema.REFERENTIAL_CONSTRAINTS r "
+            "  ON r.CONSTRAINT_SCHEMA=k.CONSTRAINT_SCHEMA "
+            "  AND r.CONSTRAINT_NAME=k.CONSTRAINT_NAME "
+            "WHERE k.TABLE_SCHEMA='%s' AND k.REFERENCED_TABLE_NAME IS NOT NULL "
+            "ORDER BY k.CONSTRAINT_NAME, k.ORDINAL_POSITION",
+            sb.toUtf8().constData());
+        if(mysql_query(m_conn, fq.GetString()) == 0) {
+            if(MYSQL_RES *r = mysql_store_result(m_conn)) {
+                while(MYSQL_ROW row = mysql_fetch_row(r)) {
+                    const QString name = QString::fromUtf8(row[0] ? row[0] : "");
+                    Fk *f = nullptr;
+                    for(auto &e : fks)
+                        if(e.name == name && e.tbl == QString::fromUtf8(row[1] ? row[1] : "")) {
+                            f = &e; break;
+                        }
+                    if(!f) {
+                        fks << Fk{ name, QString::fromUtf8(row[1] ? row[1] : ""),
+                                   QString::fromUtf8(row[3] ? row[3] : ""),
+                                   QString::fromUtf8(row[5] ? row[5] : "RESTRICT"),
+                                   QString::fromUtf8(row[6] ? row[6] : "RESTRICT"), {}, {} };
+                        f = &fks.last();
+                    }
+                    f->cols    << QString::fromUtf8(row[2] ? row[2] : "");
+                    f->refCols << QString::fromUtf8(row[4] ? row[4] : "");
+                }
+                mysql_free_result(r);
+            }
+        }
+        for(const Fk &f : std::as_const(fks)) {
+            const auto btlist = [&](const QStringList &l) {
+                QStringList o;
+                for(const QString &c : l) o << QStringLiteral("`%1`").arg(bq(c));
+                return o.join(QStringLiteral(", "));
+            };
+            stmts << QStringLiteral(
+                "ALTER TABLE `%1`.`%2` ADD CONSTRAINT `%3` FOREIGN KEY (%4) "
+                "REFERENCES `%1`.`%5` (%6) ON DELETE %7 ON UPDATE %8")
+                .arg(tb, bq(f.tbl), bq(f.name), btlist(f.cols),
+                     bq(f.refTbl), btlist(f.refCols), f.onDel, f.onUpd);
+        }
     }
 
     if(withRoutines) {
-        stmts << QStringLiteral("USE `%1`").arg(tgtDb);
+        stmts << QStringLiteral("USE `%1`").arg(tb);
 
         for(const QString &v : nameList(
                 QStringLiteral("SHOW FULL TABLES FROM `%1` WHERE Table_type='VIEW'")

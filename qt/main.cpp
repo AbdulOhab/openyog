@@ -101,7 +101,7 @@ int main(int argc, char *argv[])
     QApplication::setApplicationName(QStringLiteral("OpenYog"));
     QApplication::setOrganizationName(QStringLiteral("OpenYog"));
 
-    /* window / taskbar icon (qt/openyog.svg → qt/resources/*.png, via .qrc) */
+    /* window / taskbar icon — qt/openyog.svg rasterised into qt/resources, via the .qrc */
     QIcon appIcon;
     for(int sz : { 16, 32, 64, 256 })
         appIcon.addFile(QStringLiteral(":/resources/openyog-%1.png").arg(sz),
