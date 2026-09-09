@@ -29,6 +29,7 @@ signals:
     void dropTableRequested(const QString &db, const QString &table);
     void truncateTableRequested(const QString &db, const QString &table);
     void createTableRequested(const QString &db);
+    void alterTableRequested(const QString &db, const QString &table);
     void dumpDatabaseRequested(const QString &db);
     void statusMessage(const QString &text);
 

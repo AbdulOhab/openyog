@@ -68,6 +68,8 @@ ObjectBrowser::ObjectBrowser(QWidget *parent)
             const QString table = item->text(0);
             menu.addAction(QStringLiteral("Open Table &Data"), this,
                            [this, db, table] { emit tableActivated(db, table); });
+            menu.addAction(QStringLiteral("&Alter Table…"), this,
+                           [this, db, table] { emit alterTableRequested(db, table); });
             menu.addSeparator();
             menu.addAction(QStringLiteral("Create &Table…"), this,
                            [this, db] { emit createTableRequested(db); });
@@ -180,7 +182,9 @@ void ObjectBrowser::onItemExpanded(QTreeWidgetItem *item)
     };
     for(const QString &f : folders) {
         auto *folder = makeItem(KFolder, f, item->data(0, Qt::UserRole + 1).toString());
-        folder->setIcon(0, Icons::get(QStringLiteral("folder.ico")));
+        /* folder.ico is SQLyog's green expander arrow, not a folder — use the
+         * actual folder glyph */
+        folder->setIcon(0, Icons::get(QStringLiteral("closed_folder.ico")));
         item->addChild(folder);
     }
 }

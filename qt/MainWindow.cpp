@@ -298,7 +298,9 @@ MainWindow::MainWindow(QWidget *parent)
     QAction *createTbl = table->addAction(QStringLiteral("Create &Table\tF4"));
     createTbl->setShortcut(QKeySequence(Qt::Key_F4));
     connect(createTbl, &QAction::triggered, this, [this] { createTable(); });
-    addDisabled(table, QStringLiteral("&Alter Table\tF6"));
+    QAction *alterTbl = table->addAction(QStringLiteral("&Alter Table\tF6"));
+    alterTbl->setShortcut(QKeySequence(Qt::Key_F6));
+    connect(alterTbl, &QAction::triggered, this, &MainWindow::alterTable);
     addDisabled(table, QStringLiteral("&Manage Indexes\tF7"));
     addDisabled(table, QStringLiteral("Re&lationships/Foreign Keys\tF10"));
     QMenu *moreTable = table->addMenu(QStringLiteral("Mo&re Table Operations"));
@@ -605,6 +607,23 @@ void MainWindow::createTable(const QString &database)
     else
         QMessageBox::information(this, QStringLiteral("Create Table"),
             QStringLiteral("Open a connection first."));
+}
+
+void MainWindow::alterTable()
+{
+    auto *tab = currentTab();
+    if(!tab) {
+        QMessageBox::information(this, QStringLiteral("Alter Table"),
+            QStringLiteral("Open a connection first."));
+        return;
+    }
+    const QStringList info = tab->selectedTableInfo();
+    if(info.size() < 2) {
+        QMessageBox::information(this, QStringLiteral("Alter Table"),
+            QStringLiteral("Select a table in the object browser first."));
+        return;
+    }
+    tab->promptAlterTable(info[0], info[1]);
 }
 
 void MainWindow::dumpDatabase(const QString &database)
