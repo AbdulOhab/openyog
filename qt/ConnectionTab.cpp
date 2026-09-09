@@ -530,9 +530,12 @@ void ConnectionTab::refreshBrowser()
         m_browser->loadDatabases(m_conn, m_params.database);
 }
 
-void ConnectionTab::editTableCell(int row, int col, const QString &value)
+void ConnectionTab::editTableCell(int row, int col, const QString &value, bool stageOnly)
 {
-    m_tableData->editCell(row, col, value);
+    if(stageOnly)
+        m_tableData->stageCellOnly(row, col, value);
+    else
+        m_tableData->editCell(row, col, value);
 }
 
 void ConnectionTab::openSelectedTable()
