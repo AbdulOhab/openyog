@@ -32,6 +32,7 @@ public slots:
     void editCell(int row, int col, const QString &value);   /* selftest: stage+apply */
     void stageCellOnly(int row, int col, const QString &value); /* selftest: stage, no apply */
     void setCellNull();
+    void editCellInTextEditor();   /* big multi-line editor for the current cell */
     void refresh();
     void addRow();
     void insertRowWithValues();
