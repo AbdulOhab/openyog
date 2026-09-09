@@ -4,6 +4,8 @@
  *   │ (filter+tree) ├──────────────────────────────────┤
  *   │               │ [1_Messages][Result][Info]       │
  *   └───────────────┴──────────────────────────────────┘
+ * Queries execute on a worker thread with a dedicated connection, so the
+ * UI never freezes; results are marshalled back to the GUI thread.
  * Mirrors upstream FrameWindow/DataView structure (Phase 3 in plan.md). */
 #pragma once
 
@@ -12,12 +14,26 @@
 #include "QueryModel.h"
 
 #include <QLabel>
+#include <QPointer>
 #include <QTableView>
 #include <QTabWidget>
 #include <QWidget>
 
+#include <QStringList>
+#include <QVector>
+
 class ObjectBrowser;
 class QPlainTextEdit;
+
+/* one statement's outcome, collected on the worker thread */
+struct QueryResult
+{
+    bool     ok      = false;
+    double   secs    = 0.0;
+    QString  message;
+    QStringList      headers;
+    QVector<QStringList> rows;
+};
 
 class ConnectionTab : public QWidget
 {
@@ -37,6 +53,7 @@ public:
 
 public slots:
     void runQuery();
+    void openTable(const QString &db, const QString &table);
     void useDatabase(const QString &db);
 
 signals:
@@ -44,10 +61,13 @@ signals:
     void executed(const QString &info);      /* "Exec: 0.01 sec" etc. */
 
 private:
+    void runStatements(const QStringList &statements, const QString &tabPrefix);
+    void applyResults(const QVector<QueryResult> &results, const QString &tabPrefix);
     void logHistory(const QString &sql);
+    void addResultGrid(const QueryResult &r, const QString &title);
 
     ConnectionParams   m_params;
-    MYSQL            * m_conn       = nullptr;
+    MYSQL            * m_conn       = nullptr;   /* browsing (GUI thread) */
 
     ObjectBrowser    * m_browser    = nullptr;
     QTabWidget       * m_editorTabs = nullptr;
@@ -56,10 +76,11 @@ private:
 
     QTabWidget       * m_resultTabs = nullptr;
     QPlainTextEdit   * m_messages   = nullptr;
-    QueryModel       * m_model      = nullptr;
-    QTableView       * m_grid       = nullptr;
     QLabel           * m_info       = nullptr;
-    QStringList        m_databases;
 
-    double             m_execSecs   = 0.0;
+    QVector<QWidget*>   m_dynamicResultTabs;     /* cleared on each batch */
+    double              m_totalSecs = 0.0;
+    bool                m_running   = false;
+
+    QStringList         m_databases;
 };

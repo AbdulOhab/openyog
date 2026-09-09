@@ -55,6 +55,14 @@ bool QueryModel::execute(MYSQL *conn, const QString &query, QString *message)
     return true;
 }
 
+void QueryModel::setResultSet(const QStringList &headers, const QVector<QStringList> &rows)
+{
+    beginResetModel();
+    m_cols = headers;
+    m_rows = rows;
+    endResetModel();
+}
+
 int QueryModel::rowCount(const QModelIndex &) const { return (int)m_rows.size(); }
 int QueryModel::columnCount(const QModelIndex &) const { return (int)m_cols.size(); }
 
