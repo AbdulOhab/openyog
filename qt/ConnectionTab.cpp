@@ -175,7 +175,7 @@ ConnectionTab::ConnectionTab(const ConnectionParams &params, QWidget *parent)
 
     m_infoBar = new QLabel(this);
     m_infoBar->setStyleSheet(
-        QStringLiteral("background:#4A7EBB; color:white; padding:1px 8px;"));
+        QStringLiteral("background:#3B7DBB; color:white; padding:1px 8px;"));
 
     auto *rightSplit = new QSplitter(Qt::Vertical, this);
     rightSplit->addWidget(m_infoBar);       /* SQLyog-style blue strip */
