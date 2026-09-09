@@ -24,6 +24,8 @@ public:
 
     /* keyword + schema identifier list for autocomplete (Ctrl+Space / typing) */
     void setCompletions(const QStringList &words);
+    void triggerCompletion();               /* force the popup now */
+    int  completionCountForTest() const;    /* selftest only */
 
 protected:
     void resizeEvent(QResizeEvent *event) override;

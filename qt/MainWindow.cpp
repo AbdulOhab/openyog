@@ -248,7 +248,11 @@ MainWindow::MainWindow(QWidget *parent)
     connect(gotoAct, &QAction::triggered, this,
             [onEditor] { onEditor(&ConnectionTab::promptGoto); });
     edit->addSeparator();
-    addDisabled(edit, QStringLiteral("Li&st All Tags\tCtrl+Space"));
+    QAction *listTags = edit->addAction(
+        QStringLiteral("Li&st All Tags\tCtrl+Space"));
+    /* no setShortcut — the editor handles Ctrl+Space itself */
+    connect(listTags, &QAction::triggered, this,
+            [this] { if(auto *t = currentTab()) t->listTags(); });
     addDisabled(edit, QStringLiteral("List &Matching Tags\tCtrl+Enter"));
     edit->addSeparator();
     QAction *hideBrowser = edit->addAction(

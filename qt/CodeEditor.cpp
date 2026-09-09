@@ -78,6 +78,8 @@ void CodeEditor::insertCompletion(const QString &word)
 
 void CodeEditor::popupCompleter(bool force)
 {
+    if(m_completer->widget() != this)
+        m_completer->setWidget(this);
     const QString prefix = wordUnderCursor();
     if(!force && prefix.length() < 2) {
         m_completer->popup()->hide();
@@ -95,10 +97,22 @@ void CodeEditor::popupCompleter(bool force)
         m_completer->popup()->hide();
         return;
     }
-    QRect r = cursorRect();
+    /* cursorRect() is viewport-relative; QCompleter::complete wants
+     * widget-relative — shift past the line-number gutter */
+    QRect r = cursorRect().translated(lineNumberAreaWidth(), 0);
     r.setWidth(m_completer->popup()->sizeHintForColumn(0)
                + m_completer->popup()->verticalScrollBar()->sizeHint().width());
     m_completer->complete(r);
+}
+
+void CodeEditor::triggerCompletion()
+{
+    popupCompleter(true);
+}
+
+int CodeEditor::completionCountForTest() const
+{
+    return m_completer->completionCount();
 }
 
 void CodeEditor::focusInEvent(QFocusEvent *event)
@@ -133,12 +147,13 @@ void CodeEditor::keyPressEvent(QKeyEvent *event)
 
     QPlainTextEdit::keyPressEvent(event);
 
-    if(event->text().isEmpty())
+    if(event->text().isEmpty()
+       || (event->modifiers() & ~Qt::ShiftModifier))   /* Ctrl/Alt combos */
         return;
     const QChar ch = event->text().at(0);
     if(ch.isLetterOrNumber() || ch == '_')
         popupCompleter(false);
-    else
+    else if(ch != ' ')                                  /* keep popup while typing */
         popup->hide();
 }
 
