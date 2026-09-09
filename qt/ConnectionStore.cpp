@@ -65,6 +65,24 @@ void ConnectionStore::save(const ConnectionParams &params)
     free(b64);
 }
 
+void ConnectionStore::remove(const QString &name)
+{
+    wyIni::IniDeleteSection(toUtf8(name).constData(), iniPath().toUtf8());
+}
+
+bool ConnectionStore::rename(const QString &oldName, const QString &newName)
+{
+    if(oldName == newName || newName.trimmed().isEmpty())
+        return false;
+    ConnectionParams p;
+    if(!load(oldName, &p))
+        return false;
+    p.name = newName;
+    save(p);
+    remove(oldName);
+    return true;
+}
+
 QStringList ConnectionStore::storedNames()
 {
     /* NOTE: upstream wyIni::IniGetSection/GetAllSectionDetails only reports

@@ -4,10 +4,15 @@
  *   openyog --screenshot=FILE.png              render main window to FILE, exit
  *   openyog --screenshot=FILE.png --dialog     render the connection dialog
  *   openyog --screenshot=FILE.png --createtable render the Create Table dialog
+ *   openyog --autoconnect=h:p:u:pw:db [--opentable=db:t] [--editcell=r:c:v |
+ *           --stagecell=r:c:v] --screenshot=FILE.png   drive the data grid
+ *   openyog --autoconnect=… --dumpdb=FILE.sql          dump a database
+ *   openyog --delconn=NAME                             delete a saved connection
  */
 #include "MainWindow.h"
 #include "ConnectionDialog.h"
 #include "ConnectionParams.h"
+#include "ConnectionStore.h"
 #include "CreateTableDialog.h"
 #include "Theme.h"
 
@@ -30,6 +35,7 @@ int main(int argc, char *argv[])
     ConnectionParams autoConnect;
     bool doAutoConnect = false;
     QString dumpPath;
+    QString delConn;
     for(int i = 1; i < argc; ++i) {
         const QString a = QString::fromLocal8Bit(argv[i]);
         if(a.startsWith(QStringLiteral("--screenshot=")))
@@ -53,6 +59,8 @@ int main(int argc, char *argv[])
         }
         if(a.startsWith(QStringLiteral("--dumpdb=")))
             dumpPath = a.mid(QStringLiteral("--dumpdb=").size());
+        if(a.startsWith(QStringLiteral("--delconn=")))
+            delConn = a.mid(QStringLiteral("--delconn=").size());
         if(a.startsWith(QStringLiteral("--opentable="))) {
             const QStringList parts = a.mid(12).split(':');
             if(parts.size() == 2)
@@ -90,6 +98,17 @@ int main(int argc, char *argv[])
 
     mysql_library_init(0, nullptr, nullptr);
     int rc = 0;
+
+    /* --delconn=NAME selftest: delete a saved connection and exit */
+    if(!delConn.isEmpty()) {
+        const bool existed = ConnectionStore::storedNames().contains(delConn);
+        ConnectionStore::remove(delConn);
+        const bool gone = !ConnectionStore::storedNames().contains(delConn);
+        qInfo("delconn '%s': existed=%d removed=%d",
+              qPrintable(delConn), existed, gone);
+        mysql_library_end();
+        return (existed && gone) ? 0 : 1;
+    }
 
     /* --dumpdb=FILE selftest (headless, no screenshot): autoconnect, dump, exit */
     if(!dumpPath.isEmpty() && doAutoConnect) {
