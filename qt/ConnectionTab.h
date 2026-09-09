@@ -65,6 +65,7 @@ public slots:
     void toggleResultPane();
     void toggleEditorPane();
     void openSelectedTable();
+    void promptCreateTable(const QString &database = {});
     void addEditorTab();
     void openTableData(const QString &db, const QString &table);
     void editTableCell(int row, int col, const QString &value);

@@ -28,6 +28,7 @@ private slots:
     void executeCurrentTab();
     void refreshBrowser();
     void createDatabase();
+    void createTable(const QString &database = {});
     void editClipboard(const QString &what);
     void switchTab(int delta);
 

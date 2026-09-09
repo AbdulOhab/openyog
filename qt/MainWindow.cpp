@@ -242,7 +242,9 @@ MainWindow::MainWindow(QWidget *parent)
     connect(createDb, &QAction::triggered, this, &MainWindow::createDatabase);
     addDisabled(database, QStringLiteral("&Alter Database…\tF6"));
     QMenu *create = database->addMenu(QStringLiteral("C&reate"));
-    addDisabled(create, QStringLiteral("&Table"));
+    QAction *createTblFromDb = create->addAction(QStringLiteral("&Table"));
+    connect(createTblFromDb, &QAction::triggered, this,
+            [this] { createTable(); });
     addDisabled(create, QStringLiteral("&View…"));
     addDisabled(create, QStringLiteral("&Stored Procedure…"));
     addDisabled(create, QStringLiteral("&Function…"));
@@ -291,7 +293,9 @@ MainWindow::MainWindow(QWidget *parent)
             t->openSelectedTable();
     });
     addDisabled(table, QStringLiteral("Open Table in &New Tab\tCtrl+F11"));
-    addDisabled(table, QStringLiteral("Create &Table\tF4"));
+    QAction *createTbl = table->addAction(QStringLiteral("Create &Table\tF4"));
+    createTbl->setShortcut(QKeySequence(Qt::Key_F4));
+    connect(createTbl, &QAction::triggered, this, [this] { createTable(); });
     addDisabled(table, QStringLiteral("&Alter Table\tF6"));
     addDisabled(table, QStringLiteral("&Manage Indexes\tF7"));
     addDisabled(table, QStringLiteral("Re&lationships/Foreign Keys\tF10"));
@@ -588,6 +592,15 @@ void MainWindow::createDatabase()
         return;
     tab->execDdl(QStringLiteral("CREATE DATABASE `%1` CHARACTER SET utf8mb4")
                      .arg(name));
+}
+
+void MainWindow::createTable(const QString &database)
+{
+    if(auto *tab = currentTab())
+        tab->promptCreateTable(database);
+    else
+        QMessageBox::information(this, QStringLiteral("Create Table"),
+            QStringLiteral("Open a connection first."));
 }
 
 void MainWindow::editClipboard(const QString &what)

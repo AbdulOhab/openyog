@@ -46,22 +46,35 @@ ObjectBrowser::ObjectBrowser(QWidget *parent)
     connect(m_tree, &QTreeWidget::customContextMenuRequested, this,
             [this](const QPoint &pos) {
         QTreeWidgetItem *item = m_tree->itemAt(pos);
-        if(!item || item->data(0, Qt::UserRole).toInt() != KTable)
+        if(!item)
             return;
-        const QString db = item->data(0, Qt::UserRole + 1).toString();
-        const QString table = item->text(0);
-
+        const int kind = item->data(0, Qt::UserRole).toInt();
         QMenu menu(this);
-        menu.addAction(QStringLiteral("Open Table &Data"), this, [this, db, table] {
-            emit tableActivated(db, table);
-        });
-        menu.addSeparator();
-        menu.addAction(QStringLiteral("&Drop Table…"), this, [this, db, table] {
-            emit dropTableRequested(db, table);
-        });
-        menu.addAction(QStringLiteral("&Truncate Table…"), this,
-                       [this, db, table] { emit truncateTableRequested(db, table); });
-        menu.exec(m_tree->viewport()->mapToGlobal(pos));
+
+        if(kind == KDatabase) {
+            const QString db = item->text(0);
+            menu.addAction(QStringLiteral("Create &Table…"), this,
+                           [this, db] { emit createTableRequested(db); });
+        } else if(kind == KFolder
+                  && item->text(0) == QStringLiteral("Tables")) {
+            const QString db = item->data(0, Qt::UserRole + 1).toString();
+            menu.addAction(QStringLiteral("Create &Table…"), this,
+                           [this, db] { emit createTableRequested(db); });
+        } else if(kind == KTable) {
+            const QString db = item->data(0, Qt::UserRole + 1).toString();
+            const QString table = item->text(0);
+            menu.addAction(QStringLiteral("Open Table &Data"), this,
+                           [this, db, table] { emit tableActivated(db, table); });
+            menu.addSeparator();
+            menu.addAction(QStringLiteral("Create &Table…"), this,
+                           [this, db] { emit createTableRequested(db); });
+            menu.addAction(QStringLiteral("&Drop Table…"), this,
+                           [this, db, table] { emit dropTableRequested(db, table); });
+            menu.addAction(QStringLiteral("&Truncate Table…"), this,
+                           [this, db, table] { emit truncateTableRequested(db, table); });
+        }
+        if(!menu.isEmpty())
+            menu.exec(m_tree->viewport()->mapToGlobal(pos));
     });
     connect(m_tree, &QTreeWidget::itemDoubleClicked, this,
             [this](QTreeWidgetItem *item, int) {
