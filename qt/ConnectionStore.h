@@ -19,4 +19,11 @@ namespace ConnectionStore
 
     /* Names of all stored sections that look like connections. */
     QStringList storedNames();
+
+    /* Deletes one stored connection. No-op if it doesn't exist. */
+    void remove(const QString &name);
+
+    /* Renames a stored connection (load → save under newName → remove old).
+     * Returns false if `oldName` doesn't exist. */
+    bool rename(const QString &oldName, const QString &newName);
 }

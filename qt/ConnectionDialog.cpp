@@ -8,6 +8,7 @@
 #include <QFormLayout>
 #include <QGroupBox>
 #include <QHBoxLayout>
+#include <QInputDialog>
 #include <QLabel>
 #include <QLineEdit>
 #include <QMessageBox>
@@ -54,10 +55,11 @@ ConnectionDialog::ConnectionDialog(QWidget *parent)
     m_save   = new QPushButton(QStringLiteral("&Save"), this);
     m_rename = new QPushButton(QStringLiteral("&Rename…"), this);
     m_delete = new QPushButton(QStringLiteral("&Delete"), this);
-    for(QPushButton *b : { m_clone, m_rename, m_delete })
-        b->setEnabled(false);   /* visible-but-disabled, like SQLyog with no sel */
     connect(newBtn, &QPushButton::clicked, this, &ConnectionDialog::newConnection);
     connect(m_save, &QPushButton::clicked, this, &ConnectionDialog::saveConnection);
+    connect(m_clone, &QPushButton::clicked, this, &ConnectionDialog::cloneConnection);
+    connect(m_rename, &QPushButton::clicked, this, &ConnectionDialog::renameConnection);
+    connect(m_delete, &QPushButton::clicked, this, &ConnectionDialog::deleteConnection);
     auto *btnRow = new QHBoxLayout;
     for(QPushButton *b : { newBtn, m_clone, m_save, m_rename, m_delete })
         btnRow->addWidget(b);
@@ -179,6 +181,16 @@ ConnectionDialog::ConnectionDialog(QWidget *parent)
     reloadSavedList();
     if(m_saved->count())
         loadSelected();
+    updateButtonState();
+}
+
+void ConnectionDialog::updateButtonState()
+{
+    const bool haveSel = m_saved->count() > 0
+                         && !m_saved->currentText().trimmed().isEmpty();
+    m_clone->setEnabled(haveSel);
+    m_rename->setEnabled(haveSel);
+    m_delete->setEnabled(haveSel);
 }
 
 void ConnectionDialog::reloadSavedList()
@@ -190,6 +202,7 @@ void ConnectionDialog::reloadSavedList()
     const int i = m_saved->findText(keep);
     m_saved->setCurrentIndex(i >= 0 ? i : 0);
     m_saved->blockSignals(false);
+    updateButtonState();
 }
 
 void ConnectionDialog::loadSelected()
@@ -213,6 +226,62 @@ void ConnectionDialog::saveConnection()
     const int i = m_saved->findText(params().name);
     if(i >= 0)
         m_saved->setCurrentIndex(i);
+}
+
+void ConnectionDialog::cloneConnection()
+{
+    bool ok = false;
+    const QString name = QInputDialog::getText(
+        this, QStringLiteral("Clone Connection"),
+        QStringLiteral("Name for the copy:"), QLineEdit::Normal,
+        m_saved->currentText() + QStringLiteral(" (copy)"), &ok);
+    if(!ok || name.trimmed().isEmpty())
+        return;
+    ConnectionParams p = params();
+    p.name = name.trimmed();
+    ConnectionStore::save(p);
+    reloadSavedList();
+    if(int i = m_saved->findText(p.name); i >= 0)
+        m_saved->setCurrentIndex(i);
+}
+
+void ConnectionDialog::renameConnection()
+{
+    const QString oldName = m_saved->currentText();
+    if(oldName.isEmpty())
+        return;
+    bool ok = false;
+    const QString name = QInputDialog::getText(
+        this, QStringLiteral("Rename Connection"),
+        QStringLiteral("New name:"), QLineEdit::Normal, oldName, &ok);
+    if(!ok || name.trimmed().isEmpty() || name == oldName)
+        return;
+    if(!ConnectionStore::rename(oldName, name.trimmed())) {
+        QMessageBox::warning(this, QStringLiteral("Rename Connection"),
+            QStringLiteral("Could not rename '%1'.").arg(oldName));
+        return;
+    }
+    reloadSavedList();
+    if(int i = m_saved->findText(name.trimmed()); i >= 0)
+        m_saved->setCurrentIndex(i);
+    loadSelected();
+}
+
+void ConnectionDialog::deleteConnection()
+{
+    const QString name = m_saved->currentText();
+    if(name.isEmpty())
+        return;
+    if(QMessageBox::question(this, QStringLiteral("Delete Connection"),
+           QStringLiteral("Delete the saved connection '%1'?").arg(name))
+           != QMessageBox::Yes)
+        return;
+    ConnectionStore::remove(name);
+    reloadSavedList();
+    if(m_saved->count())
+        loadSelected();
+    else
+        newConnection();
 }
 
 void ConnectionDialog::testConnection()

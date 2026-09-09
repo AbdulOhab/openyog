@@ -31,7 +31,13 @@ private slots:
     void loadSelected();
     void newConnection();
     void saveConnection();
+    void cloneConnection();
+    void renameConnection();
+    void deleteConnection();
     void testConnection();
+
+private:
+    void updateButtonState();
 
 private:
     void setParams(const ConnectionParams &p);
