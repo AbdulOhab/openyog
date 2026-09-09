@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- OpenYog application icon. Original mark (no SQLyog branding):
+     a database cylinder on the app's signature blue, with a green
+     "run" chevron echoing the toolbar's execute icons. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#4A8FCB"/>
+      <stop offset="1" stop-color="#2F6FA8"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="8" y="8" width="240" height="240" rx="48" fill="url(#bg)"/>
+
+  <!-- database cylinder -->
+  <g transform="translate(-8 -6)">
+    <g fill="#FFFFFF">
+      <ellipse cx="112" cy="72" rx="58" ry="21"/>
+      <path d="M54 72 v44 a58 21 0 0 0 116 0 V72 a58 21 0 0 1 -116 0 z" opacity="0.94"/>
+      <path d="M54 116 v44 a58 21 0 0 0 116 0 v-44 a58 21 0 0 1 -116 0 z" opacity="0.82"/>
+    </g>
+    <g fill="none" stroke="#2F6FA8" stroke-width="5" opacity="0.30">
+      <path d="M54 72 a58 21 0 0 0 116 0"/>
+      <path d="M54 116 a58 21 0 0 0 116 0"/>
+    </g>
+  </g>
+
+  <!-- green "run" chevron -->
+  <path d="M150 156 l60 34 -60 34 z" fill="#3FB950"
+        stroke="#2F6FA8" stroke-width="7" stroke-linejoin="round"/>
+</svg>

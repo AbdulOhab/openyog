@@ -47,9 +47,11 @@ target_compile_options(smoketest PRIVATE -Wall)
 # ---- Phase 2: the Qt 6 application shell ("OpenYog", name approved 2026-09-08)
 find_package(Qt6 REQUIRED COMPONENTS Widgets)
 set(CMAKE_AUTOMOC ON)
+set(CMAKE_AUTORCC ON)
 
 add_executable(openyog
     qt/main.cpp
+    qt/openyog.qrc
     qt/MainWindow.h        qt/MainWindow.cpp
     qt/ConnectionDialog.h  qt/ConnectionDialog.cpp
     qt/ConnectionTab.h     qt/ConnectionTab.cpp
