@@ -665,6 +665,80 @@ void ConnectionTab::refreshBrowser()
         m_browser->loadDatabases(m_conn, m_params.database);
 }
 
+void ConnectionTab::promptFind()
+{
+    auto *ed = currentEditor();
+    if(!ed)
+        return;
+    bool ok = false;
+    const QString sel = ed->textCursor().selectedText();
+    const QString needle = QInputDialog::getText(
+        this, QStringLiteral("Find"), QStringLiteral("Find what:"),
+        QLineEdit::Normal, sel.isEmpty() ? m_lastFind : sel, &ok);
+    if(!ok || needle.isEmpty())
+        return;
+    m_lastFind = needle;
+    if(!ed->findText(needle, false, false))
+        emit executed(QStringLiteral("Find: \"%1\" not found").arg(needle));
+}
+
+void ConnectionTab::findNext()
+{
+    auto *ed = currentEditor();
+    if(ed && !m_lastFind.isEmpty() && !ed->findText(m_lastFind, false, false))
+        emit executed(QStringLiteral("Find: \"%1\" not found").arg(m_lastFind));
+}
+
+void ConnectionTab::promptReplace()
+{
+    auto *ed = currentEditor();
+    if(!ed)
+        return;
+    bool ok = false;
+    const QString from = QInputDialog::getText(
+        this, QStringLiteral("Replace"), QStringLiteral("Find what:"),
+        QLineEdit::Normal, m_lastFind, &ok);
+    if(!ok || from.isEmpty())
+        return;
+    const QString to = QInputDialog::getText(
+        this, QStringLiteral("Replace"), QStringLiteral("Replace with:"),
+        QLineEdit::Normal, QString(), &ok);
+    if(!ok)
+        return;
+    m_lastFind = from;
+    QString text = ed->toPlainText();
+    const int n = text.count(from);
+    if(n == 0) {
+        emit executed(QStringLiteral("Replace: \"%1\" not found").arg(from));
+        return;
+    }
+    text.replace(from, to);
+    QTextCursor c = ed->textCursor();
+    c.select(QTextCursor::Document);
+    c.insertText(text);
+    emit executed(QStringLiteral("Replaced %1 occurrence(s)").arg(n));
+}
+
+void ConnectionTab::promptGoto()
+{
+    auto *ed = currentEditor();
+    if(!ed)
+        return;
+    bool ok = false;
+    const int line = QInputDialog::getInt(
+        this, QStringLiteral("Go To Line"), QStringLiteral("Line number:"),
+        ed->textCursor().blockNumber() + 1, 1,
+        ed->document()->blockCount(), 1, &ok);
+    if(ok)
+        ed->gotoLine(line);
+}
+
+void ConnectionTab::commentSelection(bool add)
+{
+    if(auto *ed = currentEditor())
+        ed->toggleLineComment(add);
+}
+
 void ConnectionTab::editTableCell(int row, int col, const QString &value, bool stageOnly)
 {
     if(stageOnly)
