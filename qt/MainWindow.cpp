@@ -719,10 +719,10 @@ bool MainWindow::openAndRun(const ConnectionParams &params)
     return true;
 }
 
-void MainWindow::editTableCell(int row, int col, const QString &value)
+void MainWindow::editTableCell(int row, int col, const QString &value, bool stageOnly)
 {
     if(auto *tab = currentTab())
-        tab->editTableCell(row, col, value);
+        tab->editTableCell(row, col, value, stageOnly);
 }
 
 bool MainWindow::selftestDump(const QString &path)

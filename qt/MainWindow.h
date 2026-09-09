@@ -38,7 +38,7 @@ public:
     /* programmatic path used by the --autoconnect selftest (main.cpp) */
     bool openAndRun(const ConnectionParams &params);
     void openTableData(const QString &db, const QString &table);
-    void editTableCell(int row, int col, const QString &value);
+    void editTableCell(int row, int col, const QString &value, bool stageOnly = false);
     /* --dumpdb=FILE selftest: dump the active connection's default db */
     bool selftestDump(const QString &path);
 

@@ -25,6 +25,7 @@ int main(int argc, char *argv[])
     bool shotCreateTable = false;
     QPair<QString, QString> openTableParts;
     int editRow = -1, editCol = -1;
+    bool stageOnly = false;
     QString editValue;
     ConnectionParams autoConnect;
     bool doAutoConnect = false;
@@ -38,9 +39,12 @@ int main(int argc, char *argv[])
         if(a == QStringLiteral("--createtable"))
             shotCreateTable = true;
         /* --opentable=db:table (selftest: opens the editable data grid) */
-        /* --editcell=row:col:value (selftest: exercises the UPDATE path) */
-        if(a.startsWith(QStringLiteral("--editcell="))) {
-            const QStringList parts = a.mid(11).split(':');
+        /* --editcell=row:col:value  stage the edit AND apply it (UPDATE path) */
+        /* --stagecell=row:col:value stage only (shows the amber cell + Apply bar) */
+        if(a.startsWith(QStringLiteral("--editcell="))
+           || a.startsWith(QStringLiteral("--stagecell="))) {
+            stageOnly = a.startsWith(QStringLiteral("--stagecell="));
+            const QStringList parts = a.section('=', 1).split(':');
             if(parts.size() == 3) {
                 editRow = parts[0].toInt();
                 editCol = parts[1].toInt();
@@ -123,7 +127,7 @@ int main(int argc, char *argv[])
                     w->openTableData(openTableParts.first, openTableParts.second);
                 QTimer::singleShot(400, [&, w] {
                     if(editRow >= 0)
-                        w->editTableCell(editRow, editCol, editValue);
+                        w->editTableCell(editRow, editCol, editValue, stageOnly);
                     QTimer::singleShot(600, [w, screenshot] {
                         w->grab().save(screenshot);
                         QApplication::quit();

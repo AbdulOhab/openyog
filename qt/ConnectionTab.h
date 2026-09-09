@@ -75,7 +75,7 @@ public slots:
                             QString *error);
     void addEditorTab();
     void openTableData(const QString &db, const QString &table);
-    void editTableCell(int row, int col, const QString &value);
+    void editTableCell(int row, int col, const QString &value, bool stageOnly = false);
     void openSqlFile(const QString &path);
     void saveEditor();
     void showHistory();
