@@ -4,6 +4,7 @@
  * expand; folders other than Tables arrive in later phases. */
 #pragma once
 
+#include <QLabel>
 #include <QLineEdit>
 #include <QTreeWidget>
 #include <QWidget>
@@ -37,6 +38,7 @@ private:
     enum ItemRole { RoleKind = Qt::UserRole + 1, RoleName };
     enum Kind { KindConnection, KindDatabase, KindFolder, KindTable };
 
+    QLabel       *m_filterLabel = nullptr;
     QLineEdit    *m_filter = nullptr;
     QTreeWidget  *m_tree   = nullptr;
     MYSQL        *m_conn   = nullptr;
