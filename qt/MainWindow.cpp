@@ -789,7 +789,7 @@ bool MainWindow::selftestCopyDb(const QString &src, const QString &tgt)
     if(!tab)
         return false;
     QString err;
-    const bool ok = tab->copyDatabaseTo(src, tgt, true, true, &err);
+    const bool ok = tab->copyDatabaseTo(src, tgt, true, true, true, &err);
     if(!ok)
         qWarning("copydb failed: %s", qPrintable(err));
     return ok;

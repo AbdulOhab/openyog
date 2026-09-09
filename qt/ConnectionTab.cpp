@@ -19,6 +19,7 @@
 #include <QDialogButtonBox>
 #include <QFormLayout>
 #include <QInputDialog>
+#include <QRegularExpression>
 #include <QLineEdit>
 #include <QFontDatabase>
 #include <QTextStream>
@@ -752,9 +753,13 @@ void ConnectionTab::promptCopyDatabase(const QString &database)
     wantData->setChecked(true);
     auto *dropFirst = new QCheckBox(
         QStringLiteral("Drop target database first if it exists"), &dlg);
+    auto *wantRoutines = new QCheckBox(
+        QStringLiteral("Also copy views, routines, triggers, events"), &dlg);
+    wantRoutines->setChecked(true);
     auto *form = new QFormLayout;
     form->addRow(QStringLiteral("New database name"), name);
     form->addRow(QString(), wantData);
+    form->addRow(QString(), wantRoutines);
     form->addRow(QString(), dropFirst);
     auto *buttons = new QDialogButtonBox(
         QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
@@ -764,8 +769,8 @@ void ConnectionTab::promptCopyDatabase(const QString &database)
     auto *lay = new QVBoxLayout(&dlg);
     lay->addLayout(form);
     lay->addWidget(new QLabel(QStringLiteral(
-        "Same server only. Base tables (structure + data); views, routines and "
-        "triggers are not copied yet."), &dlg));
+        "Same server only. DEFINER clauses are stripped from copied "
+        "routines / views / events."), &dlg));
     lay->addWidget(buttons);
     if(dlg.exec() != QDialog::Accepted)
         return;
@@ -777,7 +782,8 @@ void ConnectionTab::promptCopyDatabase(const QString &database)
     QApplication::setOverrideCursor(Qt::WaitCursor);
     QString err;
     const bool ok = copyDatabaseTo(srcDb, tgt, wantData->isChecked(),
-                                   dropFirst->isChecked(), &err);
+                                   dropFirst->isChecked(),
+                                   wantRoutines->isChecked(), &err);
     QApplication::restoreOverrideCursor();
 
     m_messages->setPlainText(ok
@@ -788,25 +794,50 @@ void ConnectionTab::promptCopyDatabase(const QString &database)
 }
 
 bool ConnectionTab::copyDatabaseTo(const QString &srcDb, const QString &tgtDb,
-                                   bool withData, bool dropFirst, QString *error)
+                                   bool withData, bool dropFirst,
+                                   bool withRoutines, QString *error)
 {
     if(!m_conn || srcDb.isEmpty() || tgtDb.isEmpty() || srcDb == tgtDb) {
         if(error) *error = QStringLiteral("bad source/target");
         return false;
     }
+    const QString sb = QString(srcDb).replace('`', QStringLiteral("``"));
 
-    QStringList tables;
-    wyString q;
-    q.Sprintf("SHOW FULL TABLES FROM `%s` WHERE Table_type='BASE TABLE'",
-              QString(srcDb).replace('`', QStringLiteral("``")).toUtf8().constData());
-    if(mysql_query(m_conn, q.GetString()) == 0) {
-        if(MYSQL_RES *res = mysql_store_result(m_conn)) {
-            while(MYSQL_ROW row = mysql_fetch_row(res))
-                if(row[0])
-                    tables << QString::fromUtf8(row[0]);
-            mysql_free_result(res);
+    /* one-row helper: run `sql`, return column `col` of the first row */
+    const auto oneRow = [&](const QString &sql, int col) -> QString {
+        QString out;
+        if(mysql_query(m_conn, sql.toUtf8().constData()) == 0) {
+            if(MYSQL_RES *r = mysql_store_result(m_conn)) {
+                if(MYSQL_ROW row = mysql_fetch_row(r))
+                    out = QString::fromUtf8(row[col] ? row[col] : "");
+                mysql_free_result(r);
+            }
         }
-    }
+        return out;
+    };
+    /* names from a single-column query */
+    const auto nameList = [&](const QString &sql, int col) {
+        QStringList out;
+        if(mysql_query(m_conn, sql.toUtf8().constData()) == 0) {
+            if(MYSQL_RES *r = mysql_store_result(m_conn)) {
+                while(MYSQL_ROW row = mysql_fetch_row(r))
+                    if(row[col]) out << QString::fromUtf8(row[col]);
+                mysql_free_result(r);
+            }
+        }
+        return out;
+    };
+    static const QRegularExpression kDefiner(
+        QStringLiteral("DEFINER=`[^`]*`@`[^`]*` "));
+    const auto retarget = [&](QString ddl) {
+        return ddl.remove(kDefiner)
+                  .replace(QStringLiteral("`%1`.").arg(srcDb),
+                           QStringLiteral("`%1`.").arg(tgtDb));
+    };
+
+    QStringList tables =
+        nameList(QStringLiteral("SHOW FULL TABLES FROM `%1` WHERE Table_type='BASE TABLE'")
+                     .arg(sb), 0);
 
     QStringList stmts;
     if(dropFirst)
@@ -820,6 +851,84 @@ bool ConnectionTab::copyDatabaseTo(const QString &srcDb, const QString &tgtDb,
             stmts << QStringLiteral("INSERT INTO `%1`.`%2` SELECT * FROM `%3`.`%2`")
                          .arg(tgtDb, t, srcDb);
     }
+
+    if(withRoutines) {
+        stmts << QStringLiteral("USE `%1`").arg(tgtDb);
+
+        for(const QString &v : nameList(
+                QStringLiteral("SHOW FULL TABLES FROM `%1` WHERE Table_type='VIEW'")
+                    .arg(sb), 0)) {
+            QString ddl = retarget(oneRow(
+                QStringLiteral("SHOW CREATE VIEW `%1`.`%2`").arg(srcDb, v), 1));
+            ddl.replace(QStringLiteral(" VIEW `%1` ").arg(v),
+                        QStringLiteral(" VIEW `%1`.`%2` ").arg(tgtDb, v));
+            if(!ddl.isEmpty())
+                stmts << ddl;
+        }
+
+        /* procedures + functions */
+        struct R { QString name, type; };
+        QList<R> routines;
+        if(mysql_query(m_conn,
+               QStringLiteral("SELECT ROUTINE_NAME, ROUTINE_TYPE FROM "
+                              "information_schema.ROUTINES WHERE ROUTINE_SCHEMA='%1'")
+                   .arg(sb).toUtf8().constData()) == 0) {
+            if(MYSQL_RES *r = mysql_store_result(m_conn)) {
+                while(MYSQL_ROW row = mysql_fetch_row(r))
+                    if(row[0] && row[1])
+                        routines << R{ QString::fromUtf8(row[0]),
+                                       QString::fromUtf8(row[1]) };
+                mysql_free_result(r);
+            }
+        }
+        for(const R &rt : std::as_const(routines)) {
+            const bool proc = rt.type == QStringLiteral("PROCEDURE");
+            QString ddl = retarget(oneRow(
+                QStringLiteral("SHOW CREATE %1 `%2`.`%3`")
+                    .arg(proc ? QStringLiteral("PROCEDURE")
+                              : QStringLiteral("FUNCTION"), srcDb, rt.name), 2));
+            ddl.replace(QStringLiteral("%1 `%2`")
+                            .arg(proc ? QStringLiteral("PROCEDURE")
+                                      : QStringLiteral("FUNCTION"), rt.name),
+                        QStringLiteral("%1 `%2`.`%3`")
+                            .arg(proc ? QStringLiteral("PROCEDURE")
+                                      : QStringLiteral("FUNCTION"), tgtDb, rt.name));
+            if(!ddl.isEmpty())
+                stmts << ddl;
+        }
+
+        /* triggers: SHOW TRIGGERS = Trigger,Event,Table,Statement,Timing,… */
+        if(mysql_query(m_conn,
+               QStringLiteral("SHOW TRIGGERS FROM `%1`").arg(sb)
+                   .toUtf8().constData()) == 0) {
+            if(MYSQL_RES *r = mysql_store_result(m_conn)) {
+                while(MYSQL_ROW row = mysql_fetch_row(r)) {
+                    if(!row[0])
+                        continue;
+                    stmts << QStringLiteral(
+                        "CREATE TRIGGER `%1`.`%2` %3 %4 ON `%1`.`%5` "
+                        "FOR EACH ROW %6")
+                        .arg(tgtDb, QString::fromUtf8(row[0]),
+                             QString::fromUtf8(row[4] ? row[4] : ""),
+                             QString::fromUtf8(row[1] ? row[1] : ""),
+                             QString::fromUtf8(row[2] ? row[2] : ""),
+                             QString::fromUtf8(row[3] ? row[3] : ""));
+                }
+                mysql_free_result(r);
+            }
+        }
+
+        for(const QString &e : nameList(
+                QStringLiteral("SHOW EVENTS FROM `%1`").arg(sb), 1)) {
+            QString ddl = retarget(oneRow(
+                QStringLiteral("SHOW CREATE EVENT `%1`.`%2`").arg(srcDb, e), 3));
+            ddl.replace(QStringLiteral(" EVENT `%1` ").arg(e),
+                        QStringLiteral(" EVENT `%1`.`%2` ").arg(tgtDb, e));
+            if(!ddl.isEmpty())
+                stmts << ddl;
+        }
+    }
+
     stmts << QStringLiteral("SET FOREIGN_KEY_CHECKS=1");
 
     bool ok = true;
@@ -833,6 +942,13 @@ bool ConnectionTab::copyDatabaseTo(const QString &srcDb, const QString &tgtDb,
         }
     }
     mysql_query(m_conn, "SET FOREIGN_KEY_CHECKS=1");
+    /* the "USE `tgt`" statement left the browsing connection on the target db;
+     * put it back on this tab's database */
+    if(!m_params.database.isEmpty()) {
+        wyString use;
+        use.Sprintf("USE `%s`", m_params.database.toUtf8().constData());
+        mysql_query(m_conn, use.GetString());
+    }
     return ok;
 }
 
