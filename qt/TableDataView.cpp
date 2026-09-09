@@ -3,7 +3,11 @@
 
 #include <QColor>
 #include <QContextMenuEvent>
+#include <QDialog>
+#include <QDialogButtonBox>
+#include <QFormLayout>
 #include <QHeaderView>
+#include <QLineEdit>
 #include <QMenu>
 #include <QVBoxLayout>
 
@@ -116,10 +120,18 @@ TableDataView::TableDataView(QWidget *parent)
         if(!m_valid || !m_grid->indexAt(pos).isValid())
             return;
         QMenu menu(this);
+        QAction *setNull = menu.addAction(QStringLiteral("Set Cell Value to &NULL"),
+                                          this, &TableDataView::setCellNull);
+        setNull->setEnabled(m_grid->currentIndex().isValid());
+        menu.addSeparator();
         menu.addAction(QStringLiteral("&Delete Row"), this,
                        &TableDataView::deleteSelectedRow);
         menu.addSeparator();
         menu.addAction(QStringLiteral("&Add Row"), this, &TableDataView::addRow);
+        menu.addAction(QStringLiteral("Add Row (with &values…)"), this,
+                       &TableDataView::insertRowWithValues);
+        menu.addSeparator();
+        menu.addAction(QStringLiteral("&Refresh"), this, &TableDataView::refresh);
         menu.exec(m_grid->viewport()->mapToGlobal(pos));
     });
 }
@@ -170,6 +182,7 @@ void TableDataView::reload()
     wyString cols;
     cols.Sprintf("SHOW COLUMNS FROM `%s`.`%s`", m_db.toUtf8().constData(),
                  m_table.toUtf8().constData());
+    m_colInfo.clear();
     if(m_conn && mysql_query(m_conn, cols.GetString()) == 0) {
         if(MYSQL_RES *res = mysql_store_result(m_conn)) {
             while(MYSQL_ROW row = mysql_fetch_row(res)) {
@@ -177,6 +190,11 @@ void TableDataView::reload()
                     continue;
                 m_columns << QString::fromUtf8(row[0]);
                 selects << row[0];
+                ColumnInfo ci;
+                ci.name = m_columns.last();
+                ci.nullable = row[3] && strcmp(row[3], "NO") != 0;
+                ci.autoInc  = row[5] && strstr(row[5], "auto_increment") != nullptr;
+                m_colInfo << ci;
             }
             mysql_free_result(res);
         }
@@ -340,6 +358,78 @@ void TableDataView::addRow()
         return;
     }
     reload();   /* picks up defaults/auto-increment from the server */
+}
+
+void TableDataView::setCellNull()
+{
+    const QModelIndex idx = m_grid->currentIndex();
+    if(!m_valid || !idx.isValid())
+        return;
+    applyCellEdit(idx.row(), idx.column(),
+                  m_model->index(idx.row(), idx.column()).data().toString(),
+                  QStringLiteral("NULL"));
+}
+
+void TableDataView::refresh()
+{
+    if(m_valid)
+        reload();
+}
+
+/* empty fields are skipped; nullable empty fields become NULL */
+void TableDataView::insertRowWithValues()
+{
+    if(!m_valid || !m_conn)
+        return;
+
+    QDialog dlg(this);
+    dlg.setWindowTitle(QStringLiteral("Add Row — %1.%2").arg(m_db, m_table));
+    auto *form = new QFormLayout(&dlg);
+    struct Field { QLineEdit *edit; const ColumnInfo *col; };
+    QVector<Field> fields;
+    for(const ColumnInfo &c : std::as_const(m_colInfo)) {
+        if(c.autoInc)
+            continue;                       /* let the server number it */
+        auto *edit = new QLineEdit(&dlg);
+        edit->setPlaceholderText(c.nullable ? QStringLiteral("NULL") : QString());
+        form->addRow(c.name + (c.nullable ? QString() : QStringLiteral(" *")), edit);
+        fields.append({edit, &c});
+    }
+    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok
+                                         | QDialogButtonBox::Cancel, &dlg);
+    connect(buttons, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
+    auto *layout = new QVBoxLayout(&dlg);
+    layout->addLayout(form);
+    layout->addWidget(buttons);
+    if(dlg.exec() != QDialog::Accepted)
+        return;
+
+    QStringList names, values;
+    for(const Field &f : fields) {
+        const QString v = f.edit->text();
+        if(v.isEmpty())
+            continue;                       /* not provided */
+        names << '`' + f.col->name + '`';
+        values << quoteValue(v);
+    }
+    if(names.isEmpty()) {
+        addRow();                           /* all defaults */
+        return;
+    }
+
+    wyString q;
+    q.Sprintf("INSERT INTO `%s`.`%s` (%s) VALUES (%s)",
+              m_db.toUtf8().constData(), m_table.toUtf8().constData(),
+              names.join(", ").toUtf8().constData(),
+              values.join(", ").toUtf8().constData());
+    if(mysql_query(m_conn, q.GetString()) != 0) {
+        emit statusMessage(QStringLiteral("INSERT failed: ")
+                           + mysql_error(m_conn));
+        return;
+    }
+    reload();
+    emit statusMessage(QStringLiteral("1 row inserted into %1.%2").arg(m_db, m_table));
 }
 
 #include "TableDataView.moc"

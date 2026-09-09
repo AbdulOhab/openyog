@@ -1,5 +1,6 @@
 #include "ObjectBrowser.h"
 
+#include <QMenu>
 #include <QVBoxLayout>
 
 #include <functional>
@@ -35,7 +36,28 @@ ObjectBrowser::ObjectBrowser(QWidget *parent)
     m_tree = new QTreeWidget(this);
     m_tree->setHeaderHidden(true);
     m_tree->setIndentation(14);
+    m_tree->setContextMenuPolicy(Qt::CustomContextMenu);
     connect(m_tree, &QTreeWidget::itemExpanded, this, &ObjectBrowser::onItemExpanded);
+    connect(m_tree, &QTreeWidget::customContextMenuRequested, this,
+            [this](const QPoint &pos) {
+        QTreeWidgetItem *item = m_tree->itemAt(pos);
+        if(!item || item->data(0, Qt::UserRole).toInt() != KTable)
+            return;
+        const QString db = item->data(0, Qt::UserRole + 1).toString();
+        const QString table = item->text(0);
+
+        QMenu menu(this);
+        menu.addAction(QStringLiteral("Open Table &Data"), this, [this, db, table] {
+            emit tableActivated(db, table);
+        });
+        menu.addSeparator();
+        menu.addAction(QStringLiteral("&Drop Table…"), this, [this, db, table] {
+            emit dropTableRequested(db, table);
+        });
+        menu.addAction(QStringLiteral("&Truncate Table…"), this,
+                       [this, db, table] { emit truncateTableRequested(db, table); });
+        menu.exec(m_tree->viewport()->mapToGlobal(pos));
+    });
     connect(m_tree, &QTreeWidget::itemDoubleClicked, this,
             [this](QTreeWidgetItem *item, int) {
                 const int kind = item->data(0, Qt::UserRole).toInt();
