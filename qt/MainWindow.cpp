@@ -28,13 +28,6 @@
 #include <QToolBar>
 
 namespace {
-QAction *addDisabled(QMenu *menu, const QString &text)
-{
-    QAction *a = menu->addAction(text);
-    a->setEnabled(false);
-    return a;
-}
-
 /* apply clipboard/undo/redo/case ops to whatever editor has focus */
 QPlainTextEdit *focusedEditor()
 {
