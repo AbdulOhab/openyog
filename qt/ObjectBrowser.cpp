@@ -90,6 +90,14 @@ void ObjectBrowser::loadDatabases(MYSQL *conn, const QString &currentDb)
     m_tree->expandItem(root);
 }
 
+QStringList ObjectBrowser::currentTableInfo() const
+{
+    QTreeWidgetItem *item = m_tree->currentItem();
+    if(!item || item->data(0, Qt::UserRole).toInt() != KTable)
+        return {};
+    return { item->data(0, Qt::UserRole + 1).toString(), item->text(0) };
+}
+
 void ObjectBrowser::onItemExpanded(QTreeWidgetItem *item)
 {
     const int kind = item->data(0, Qt::UserRole).toInt();

@@ -4,12 +4,16 @@
 #include "wyString.h"
 
 #include <QElapsedTimer>
+#include <QFileDialog>
 #include <QFontDatabase>
+#include <QTextStream>
 #include <QHeaderView>
 #include <QMetaObject>
 #include <QPushButton>
 #include <QSplitter>
 #include <QTabBar>
+#include <QTextStream>
+#include <QFile>
 #include <QTime>
 #include <QVBoxLayout>
 #include <utility>
@@ -215,11 +219,17 @@ void ConnectionTab::logHistory(const QString &sql)
 
 void ConnectionTab::runQuery()
 {
+    runStatements(splitStatements(m_editor->toPlainText()),
+                  QStringLiteral("Result"));
+}
+
+void ConnectionTab::runStatements(const QStringList &statements,
+                                  const QString &tabPrefix)
+{
     if(m_running) {
         m_messages->appendPlainText(QStringLiteral("a batch is already running…"));
         return;
     }
-    const QStringList statements = splitStatements(m_editor->toPlainText());
     if(statements.isEmpty())
         return;
 
@@ -234,11 +244,11 @@ void ConnectionTab::runQuery()
     /* worker thread: fresh connection, plain-data results */
     QPointer<ConnectionTab> guard(this);
     const ConnectionParams p = m_params;
-    std::thread([guard, p, statements] {
+    std::thread([guard, p, statements, tabPrefix] {
         const QVector<QueryResult> results = runOnConnection(p, statements);
-        QMetaObject::invokeMethod(guard, [guard, results] {
+        QMetaObject::invokeMethod(guard, [guard, results, tabPrefix] {
             if(guard)
-                guard->applyResults(results, QStringLiteral("Result"));
+                guard->applyResults(results, tabPrefix);
         }, Qt::QueuedConnection);
     }).detach();
 }
@@ -250,20 +260,8 @@ void ConnectionTab::openTable(const QString &db, const QString &table)
     const QString sql = QStringLiteral("SELECT * FROM `%1`.`%2` LIMIT 1000")
                             .arg(db, table);
     logHistory(sql);
-    m_running = true;
-    m_messages->setPlainText(QStringLiteral("Opening %1.%2…").arg(db, table));
-
-    QPointer<ConnectionTab> guard(this);
-    const ConnectionParams p = m_params;
-    std::thread([guard, p, sql, db, table] {
-        const QVector<QueryResult> results =
-            runOnConnection(p, QStringList{ sql });
-        QMetaObject::invokeMethod(guard, [guard, results, db, table] {
-            if(guard)
-                guard->applyResults(results,
-                                    QStringLiteral("%1.%2").arg(db, table));
-        }, Qt::QueuedConnection);
-    }).detach();
+    runStatements(QStringList{ sql },
+                  QStringLiteral("%1.%2").arg(db, table));
 }
 
 void ConnectionTab::applyResults(const QVector<QueryResult> &results,
@@ -330,6 +328,159 @@ void ConnectionTab::addResultGrid(const QueryResult &r, const QString &title)
 
     m_resultTabs->addTab(grid, title);
     m_dynamicResultTabs.append(grid);
+    m_lastGrid = grid;
+}
+
+void ConnectionTab::openSqlFile(const QString &path)
+{
+    QFile f(path);
+    if(!f.open(QIODevice::ReadOnly | QIODevice::Text))
+        return;
+    m_editor->setPlainText(QString::fromUtf8(f.readAll()));
+    m_editorTabs->setCurrentWidget(m_editor);
+}
+
+void ConnectionTab::saveEditor()
+{
+    const QString f = QFileDialog::getSaveFileName(
+        this, QStringLiteral("Save SQL"), QStringLiteral("query.sql"),
+        QStringLiteral("SQL (*.sql);;All (*)"));
+    if(f.isEmpty())
+        return;
+    QFile file(f);
+    if(file.open(QIODevice::WriteOnly | QIODevice::Text))
+        file.write(m_editor->toPlainText().toUtf8());
+}
+
+void ConnectionTab::showHistory()
+{
+    m_editorTabs->setCurrentWidget(m_history);
+}
+
+void ConnectionTab::exportResultCsv()
+{
+    QAbstractItemModel *m = m_lastGrid ? m_lastGrid->model() : nullptr;
+    if(!m || m->rowCount() == 0) {
+        m_messages->appendPlainText(QStringLiteral("no result set to export"));
+        return;
+    }
+    const QString f = QFileDialog::getSaveFileName(
+        this, QStringLiteral("Export result as CSV"),
+        QStringLiteral("result.csv"), QStringLiteral("CSV (*.csv)"));
+    if(f.isEmpty())
+        return;
+    QFile file(f);
+    if(!file.open(QIODevice::WriteOnly | QIODevice::Text))
+        return;
+    QTextStream out(&file);
+    QStringList header;
+    for(int c = 0; c < m->columnCount(); ++c)
+        header << '"' + m->headerData(c, Qt::Horizontal).toString() + '"';
+    out << header.join(',') << "\n";
+    for(int r = 0; r < m->rowCount(); ++r) {
+        QStringList row;
+        for(int c = 0; c < m->columnCount(); ++c)
+            row << '"' + m->index(r, c).data().toString() + '"';
+        out << row.join(',') << "\n";
+    }
+    m_messages->appendPlainText(
+        QStringLiteral("Exported %1 rows to %2").arg(m->rowCount()).arg(f));
+}
+
+void ConnectionTab::refreshBrowser()
+{
+    if(m_conn)
+        m_browser->loadDatabases(m_conn, m_params.database);
+}
+
+bool ConnectionTab::execDdl(const QString &sql)
+{
+    if(!m_conn)
+        return false;
+    wyString q;
+    q.SetAs(sql.toUtf8().constData());
+    const bool ok = mysql_query(m_conn, q.GetString()) == 0;
+    m_messages->appendPlainText(ok ? QStringLiteral("OK: ") + sql
+                                   : QStringLiteral("Error: ")
+                                         + mysql_error(m_conn));
+    m_resultTabs->setCurrentWidget(m_messages);
+    if(ok)
+        refreshBrowser();
+    return ok;
+}
+
+QStringList ConnectionTab::currentTableInfo() const
+{
+    return m_browser->currentTableInfo();
+}
+
+/* kinds follow Table > Paste SQL Statement (upstream ID_OBJECT_*STMT) */
+void ConnectionTab::pasteSqlTemplate(int kind)
+{
+    const QStringList info = currentTableInfo();
+    if(info.size() < 2)
+        return;
+    const QString db = info[0], table = info[1];
+
+    QStringList cols;
+    wyString q;
+    q.Sprintf("SHOW COLUMNS FROM `%s`.`%s`", db.toUtf8().constData(),
+              table.toUtf8().constData());
+    if(m_conn && mysql_query(m_conn, q.GetString()) == 0) {
+        if(MYSQL_RES *res = mysql_store_result(m_conn)) {
+            while(MYSQL_ROW row = mysql_fetch_row(res))
+                if(row[0])
+                    cols << QString::fromUtf8(row[0]);
+            mysql_free_result(res);
+        }
+    }
+    if(cols.isEmpty())
+        return;
+
+    const QString colsB = '`' + cols.join("`, `") + '`';
+    QString stmt;
+    switch(kind) {
+    case 0: {
+        QStringList marks;
+        for(int i = 0; i < cols.size(); ++i)
+            marks << QStringLiteral("?");
+        stmt = QStringLiteral("INSERT INTO `%1`.`%2` (%3)\nVALUES (%4);")
+                   .arg(db, table, colsB, marks.join(", "));
+        break;
+    }
+    case 1: {
+        QStringList sets;
+        for(const QString &c : cols)
+            sets << QStringLiteral("`%1` = '?'").arg(c);
+        stmt = QStringLiteral("UPDATE `%1`.`%2` SET %3\nWHERE <condition>;")
+                   .arg(db, table, sets.join(", "));
+        break;
+    }
+    case 2:
+        stmt = QStringLiteral("DELETE FROM `%1`.`%2`\nWHERE <condition>;")
+                   .arg(db, table);
+        break;
+    default:
+        stmt = QStringLiteral("SELECT %1\nFROM `%2`.`%3`;")
+                   .arg(colsB, db, table);
+    }
+    m_editor->setPlainText(stmt);
+    m_editorTabs->setCurrentWidget(m_editor);
+}
+
+void ConnectionTab::toggleBrowserPane()
+{
+    m_browser->setVisible(!m_browser->isVisible());
+}
+
+void ConnectionTab::toggleResultPane()
+{
+    m_resultTabs->setVisible(!m_resultTabs->isVisible());
+}
+
+void ConnectionTab::toggleEditorPane()
+{
+    m_editorTabs->setVisible(!m_editorTabs->isVisible());
 }
 
 void ConnectionTab::useDatabase(const QString &db)

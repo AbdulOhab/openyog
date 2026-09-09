@@ -53,15 +53,25 @@ public:
 
 public slots:
     void runQuery();
+    void runStatements(const QStringList &statements, const QString &tabPrefix);
     void openTable(const QString &db, const QString &table);
     void useDatabase(const QString &db);
+    void refreshBrowser();
+    bool execDdl(const QString &sql);
+    void pasteSqlTemplate(int kind);   /* 0=INSERT 1=UPDATE 2=DELETE 3=SELECT */
+    void toggleBrowserPane();
+    void toggleResultPane();
+    void toggleEditorPane();
+    void openSqlFile(const QString &path);
+    void saveEditor();
+    void showHistory();
+    void exportResultCsv();
 
 signals:
     void databasesChanged(const QStringList &dbs, const QString &current);
     void executed(const QString &info);      /* "Exec: 0.01 sec" etc. */
 
 private:
-    void runStatements(const QStringList &statements, const QString &tabPrefix);
     void applyResults(const QVector<QueryResult> &results, const QString &tabPrefix);
     void logHistory(const QString &sql);
     void addResultGrid(const QueryResult &r, const QString &title);
@@ -77,10 +87,14 @@ private:
     QTabWidget       * m_resultTabs = nullptr;
     QPlainTextEdit   * m_messages   = nullptr;
     QLabel           * m_info       = nullptr;
+    QTableView       * m_lastGrid   = nullptr;
 
     QVector<QWidget*>   m_dynamicResultTabs;     /* cleared on each batch */
     double              m_totalSecs = 0.0;
     bool                m_running   = false;
 
     QStringList         m_databases;
+
+    /* selected table in the browser: [db, table] or empty */
+    QStringList currentTableInfo() const;
 };

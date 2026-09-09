@@ -1,3 +1,8 @@
+/* OpenYog — main window.
+ * The menus are transcribed from the upstream resource script
+ * (include/SQLyog.rc, IDR_MAINMENU): labels, nesting and shortcuts are
+ * verbatim. Items whose functionality hasn't been ported yet stay visible but
+ * disabled — they mark the roadmap (FEATURES.md); working items are wired. */
 #include "MainWindow.h"
 #include "ConnectionDialog.h"
 #include "ConnectionStore.h"
@@ -7,12 +12,30 @@
 #include <QAction>
 #include <QApplication>
 #include <QComboBox>
+#include <QFileDialog>
+#include <QInputDialog>
 #include <QLabel>
 #include <QMenuBar>
 #include <QMessageBox>
+#include <QPlainTextEdit>
 #include <QStatusBar>
 #include <QTabWidget>
 #include <QToolBar>
+
+namespace {
+QAction *addDisabled(QMenu *menu, const QString &text)
+{
+    QAction *a = menu->addAction(text);
+    a->setEnabled(false);
+    return a;
+}
+
+/* apply clipboard/undo/redo/case ops to whatever editor has focus */
+QPlainTextEdit *focusedEditor()
+{
+    return qobject_cast<QPlainTextEdit *>(QApplication::focusWidget());
+}
+} // namespace
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -30,67 +53,384 @@ MainWindow::MainWindow(QWidget *parent)
     connect(m_tabs, &QTabWidget::currentChanged, this,
             [this](int) { syncToolbarToCurrentTab(); });
 
-    /* ---- menus, mirroring SQLyog's structure ---------------------- */
+    /* ================= File (IDR_MAINMENU) ========================== */
     QMenu *file = menuBar()->addMenu(QStringLiteral("&File"));
-    QAction *newConn = file->addAction(QStringLiteral("&New Connection…"));
-    newConn->setShortcut(QKeySequence::New);
+    QAction *newSame = file->addAction(
+        QStringLiteral("New Connection Using Current Settings\tCtrl+N"));
+    connect(newSame, &QAction::triggered, this, [this] {
+        if(auto *t = currentTab())
+            openAndRun([&] {
+                ConnectionParams p;
+                p.host     = t->property("host").toString();
+                p.port     = t->property("port").toInt();
+                p.user     = t->property("user").toString();
+                p.password = t->property("password").toString();
+                p.database = t->property("database").toString();
+                p.name     = t->title();
+                return p;
+            }());
+    });
+    QAction *newConn = file->addAction(QStringLiteral("New &Connection…\tCtrl+M"));
     connect(newConn, &QAction::triggered, this, &MainWindow::newConnection);
     file->addSeparator();
-    QAction *quit = file->addAction(QStringLiteral("E&xit"));
-    quit->setShortcut(QKeySequence::Quit);
+    addDisabled(file, QStringLiteral("New &Query Editor\tCtrl+T"));
+    addDisabled(file, QStringLiteral("New Query &Builder\tCtrl+K"));
+    addDisabled(file, QStringLiteral("Ne&w Schema Designer\tCtrl+Alt+D"));
+    addDisabled(file, QStringLiteral("New Data Searc&h\tCtrl+Shift+D"));
+    file->addSeparator();
+    QAction *closeTabAct = file->addAction(QStringLiteral("Close &Tab\tAlt+L"));
+    connect(closeTabAct, &QAction::triggered, this, [this] {
+        if(m_tabs->currentIndex() >= 0)
+            closeTab(m_tabs->currentIndex());
+    });
+    addDisabled(file, QStringLiteral("&Rename Tab\tAlt+F2"));
+    QAction *disconnect = file->addAction(QStringLiteral("&Disconnect\tCtrl+F4"));
+    connect(disconnect, &QAction::triggered, this, [this] {
+        if(m_tabs->currentIndex() >= 0)
+            closeTab(m_tabs->currentIndex());
+    });
+    QAction *disconnectAll = file->addAction(QStringLiteral("Disconnect Al&l"));
+    connect(disconnectAll, &QAction::triggered, this, [this] {
+        while(m_tabs->count())
+            closeTab(0);
+    });
+    file->addSeparator();
+    QAction *openSql = file->addAction(QStringLiteral("Open…\tCtrl+O"));
+    connect(openSql, &QAction::triggered, this, [this] {
+        if(auto *tab = currentTab()) {
+            const QString f = QFileDialog::getOpenFileName(
+                this, QStringLiteral("Open SQL file"), QString(),
+                QStringLiteral("SQL (*.sql);;All (*)"));
+            if(!f.isEmpty())
+                tab->openSqlFile(f);
+        }
+    });
+    QAction *saveSql = file->addAction(QStringLiteral("&Save…\tCtrl+S"));
+    connect(saveSql, &QAction::triggered, this, [this] {
+        if(auto *tab = currentTab())
+            tab->saveEditor();
+    });
+    addDisabled(file, QStringLiteral("S&ave As…"));
+    file->addSeparator();
+    addDisabled(file, QStringLiteral("Open Session Savepoint…\tCtrl+Shift+O"));
+    addDisabled(file, QStringLiteral("Save Session…\tCtrl+Shift+S"));
+    addDisabled(file, QStringLiteral("Save Session As…"));
+    addDisabled(file, QStringLiteral("End Session\tCtrl+Shift+X"));
+    file->addSeparator();
+    QMenu *recent = file->addMenu(QStringLiteral("&Recent Files"));
+    recent->addAction(QStringLiteral("(no recent files)"))->setEnabled(false);
+    file->addSeparator();
+    QAction *quit = file->addAction(QStringLiteral("E&xit\tAlt+F4"));
     connect(quit, &QAction::triggered, this, &MainWindow::close);
 
+    /* ================= Edit ========================================= */
     QMenu *edit = menuBar()->addMenu(QStringLiteral("&Edit"));
-    for(const char *name : { "&Undo", "&Redo" })
-        edit->addAction(QString::fromUtf8(name))->setEnabled(false);
+    QAction *refresh = edit->addAction(QStringLiteral("Refresh &Object Browser\tF5"));
+    connect(refresh, &QAction::triggered, this, &MainWindow::refreshBrowser);
+    addDisabled(edit, QStringLiteral("Change Objec&t Browser Color"));
+    addDisabled(edit, QStringLiteral("Collapse All in Object Browser\tShift+{-}"));
     edit->addSeparator();
-    for(const char *name : { "Cu&t", "&Copy", "&Paste", "Select &All" })
-        edit->addAction(QString::fromUtf8(name))->setEnabled(false);
+    QMenu *execMenu = edit->addMenu(QStringLiteral("Execute Quer&y"));
+    QAction *execQuery = execMenu->addAction(QStringLiteral("Exe&cute Query\tF9"));
+    connect(execQuery, &QAction::triggered, this, &MainWindow::executeCurrentTab);
+    QAction *execAll = execMenu->addAction(QStringLiteral("Execute &All Queries\tCtrl+F9"));
+    connect(execAll, &QAction::triggered, this, &MainWindow::executeCurrentTab);
+    addDisabled(execMenu, QStringLiteral("Execute And Edit &Resultset\tF8"));
+    QMenu *explain = edit->addMenu(QStringLiteral("Execute Explain"));
+    addDisabled(explain, QStringLiteral("EXPLAIN <Query>"));
+    addDisabled(explain, QStringLiteral("EXPLAIN EXTENDED <Query>"));
+    edit->addSeparator();
+    QMenu *formatter = edit->addMenu(QStringLiteral("S&QL Formatter"));
+    addDisabled(formatter, QStringLiteral("Format &Current Query\tF12"));
+    addDisabled(formatter, QStringLiteral("Format &Selected Query\tCtrl+F12"));
+    addDisabled(formatter, QStringLiteral("Format &All Queries\tShift+F12"));
+    addDisabled(edit, QStringLiteral("&Insert Templates…\tCtrl+Shift+T"));
+    edit->addSeparator();
+    QAction *undo = edit->addAction(QStringLiteral("&Undo\tCtrl+Z"));
+    connect(undo, &QAction::triggered, this,
+            [this] { editClipboard(QStringLiteral("undo")); });
+    QAction *redo = edit->addAction(QStringLiteral("&Redo\tCtrl+Y"));
+    connect(redo, &QAction::triggered, this,
+            [this] { editClipboard(QStringLiteral("redo")); });
+    edit->addSeparator();
+    QAction *cut = edit->addAction(QStringLiteral("Cu&t\tCtrl+X"));
+    connect(cut, &QAction::triggered, this,
+            [this] { editClipboard(QStringLiteral("cut")); });
+    QAction *copy = edit->addAction(QStringLiteral("&Copy\tCtrl+C"));
+    connect(copy, &QAction::triggered, this,
+            [this] { editClipboard(QStringLiteral("copy")); });
+    addDisabled(edit, QStringLiteral("Copy With Normalized &Whitespace\tAlt+C"));
+    QAction *paste = edit->addAction(QStringLiteral("&Paste\tCtrl+V"));
+    connect(paste, &QAction::triggered, this,
+            [this] { editClipboard(QStringLiteral("paste")); });
+    addDisabled(edit, QStringLiteral("Insert From Fi&le…"));
+    QAction *selAll = edit->addAction(QStringLiteral("Select &All\tCtrl+A"));
+    connect(selAll, &QAction::triggered, this,
+            [this] { editClipboard(QStringLiteral("selectall")); });
+    edit->addSeparator();
+    addDisabled(edit, QStringLiteral("&Find…\tCtrl+F"));
+    addDisabled(edit, QStringLiteral("Find Next\tF3"));
+    addDisabled(edit, QStringLiteral("R&eplace…\tCtrl+H"));
+    addDisabled(edit, QStringLiteral("&Go To…\tCtrl+G"));
+    edit->addSeparator();
+    addDisabled(edit, QStringLiteral("Li&st All Tags\tCtrl+Space"));
+    addDisabled(edit, QStringLiteral("List &Matching Tags\tCtrl+Enter"));
+    edit->addSeparator();
+    QAction *hideBrowser = edit->addAction(
+        QStringLiteral("Hide Object &Browser\tCtrl+Shift+1"));
+    connect(hideBrowser, &QAction::triggered, this, [this] {
+        if(auto *t = currentTab())
+            t->toggleBrowserPane();
+    });
+    QAction *hideResult = edit->addAction(
+        QStringLiteral("Hide Result Pa&ne\tCtrl+Shift+2"));
+    connect(hideResult, &QAction::triggered, this, [this] {
+        if(auto *t = currentTab())
+            t->toggleResultPane();
+    });
+    QAction *hideEditor = edit->addAction(
+        QStringLiteral("&Hide SQL Editor\tCtrl+Shift+3"));
+    connect(hideEditor, &QAction::triggered, this, [this] {
+        if(auto *t = currentTab())
+            t->toggleEditorPane();
+    });
+    QAction *prevTab = edit->addAction(
+        QStringLiteral("Switch To Pre&vious Tab\tCtrl+PgUp"));
+    connect(prevTab, &QAction::triggered, this, [this] { switchTab(-1); });
+    QAction *nextTab = edit->addAction(
+        QStringLiteral("Switch To Ne&xt Tab\tCtrl+PgDown"));
+    connect(nextTab, &QAction::triggered, this, [this] { switchTab(1); });
+    edit->addSeparator();
+    QMenu *advanced = edit->addMenu(QStringLiteral("A&dvanced"));
+    QAction *upper = advanced->addAction(
+        QStringLiteral("Make Selection &Uppercase\tCtrl+Shift+U"));
+    connect(upper, &QAction::triggered, this,
+            [this] { editClipboard(QStringLiteral("upper")); });
+    QAction *lower = advanced->addAction(
+        QStringLiteral("Make Selection &Lowercase\tCtrl+Shift+L"));
+    connect(lower, &QAction::triggered, this,
+            [this] { editClipboard(QStringLiteral("lower")); });
+    advanced->addSeparator();
+    addDisabled(advanced, QStringLiteral("&Comment Selection\tCtrl+Shift+C"));
+    addDisabled(advanced, QStringLiteral("&Remove Comment From Selection\tCtrl+Shift+R"));
 
-    QMenu *favorites = menuBar()->addMenu(QStringLiteral("&Favorites"));
-    favorites->addAction(QStringLiteral("Organize &Favorites…"))->setEnabled(false);
+    /* ================= Favorites ==================================== */
+    QMenu *favorites = menuBar()->addMenu(QStringLiteral("Fa&vorites"));
+    addDisabled(favorites, QStringLiteral("&Add To Favorites…\tCtrl+Shift+F"));
+    addDisabled(favorites, QStringLiteral("&Organize Favorites…"));
+    addDisabled(favorites, QStringLiteral("&Refresh Favorites"));
 
+    /* ================= Database ===================================== */
     QMenu *database = menuBar()->addMenu(QStringLiteral("&Database"));
-    QAction *refresh = database->addAction(QStringLiteral("&Refresh Objects"));
-    refresh->setShortcut(QKeySequence(QStringLiteral("F5")));
-    refresh->setEnabled(false);
-    database->addAction(QStringLiteral("&Create Database…"))->setEnabled(false);
-    database->addAction(QStringLiteral("&Drop Database…"))->setEnabled(false);
+    addDisabled(database,
+        QStringLiteral("&Copy Database To Different Host/Database…"));
+    QAction *createDb = database->addAction(
+        QStringLiteral("Create &Database…\tCtrl+D"));
+    connect(createDb, &QAction::triggered, this, &MainWindow::createDatabase);
+    addDisabled(database, QStringLiteral("&Alter Database…\tF6"));
+    QMenu *create = database->addMenu(QStringLiteral("C&reate"));
+    addDisabled(create, QStringLiteral("&Table"));
+    addDisabled(create, QStringLiteral("&View…"));
+    addDisabled(create, QStringLiteral("&Stored Procedure…"));
+    addDisabled(create, QStringLiteral("&Function…"));
+    addDisabled(create, QStringLiteral("Tri&gger…"));
+    addDisabled(create, QStringLiteral("&Event…"));
+    QMenu *dbOps = database->addMenu(QStringLiteral("More Database &Operations"));
+    addDisabled(dbOps, QStringLiteral("Dro&p Database…\tDel"));
+    addDisabled(dbOps, QStringLiteral("Tr&uncate Database…\tShift+Del"));
+    addDisabled(dbOps, QStringLiteral("E&mpty Database…"));
+    database->addSeparator();
+    QMenu *dbBackup = database->addMenu(QStringLiteral("&Backup/Export"));
+    addDisabled(dbBackup, QStringLiteral("&Scheduled Backups…\tCtrl+Alt+S"));
+    addDisabled(dbBackup, QStringLiteral("&Backup Database As SQL Dump…\tCtrl+Alt+E"));
+    QMenu *dbImport = database->addMenu(QStringLiteral("&Import "));
+    addDisabled(dbImport, QStringLiteral("Import E&xternal Data…\tCtrl+Alt+O"));
+    addDisabled(dbImport, QStringLiteral("&Execute SQL Script…\tCtrl+Shift+Q"));
+    database->addSeparator();
+    addDisabled(database,
+        QStringLiteral("Create Schema For Database In &HTML…\tCtrl+Shift+Alt+S"));
 
-    QMenu *table = menuBar()->addMenu(QStringLiteral("&Table"));
-    table->addAction(QStringLiteral("Create &Table…"))->setEnabled(false);
-    table->addAction(QStringLiteral("&Open Table"))->setEnabled(false);
+    /* ================= Table ======================================== */
+    QMenu *table = menuBar()->addMenu(QStringLiteral("T&able"));
+    QMenu *pasteSql = table->addMenu(QStringLiteral("&Paste SQL Statement"));
+    QAction *pasteIns = pasteSql->addAction(
+        QStringLiteral("&INSERT INTO <tablename>…\tAlt+Shift+I"));
+    QAction *pasteUpd = pasteSql->addAction(
+        QStringLiteral("&UPDATE <tablename> SET…\tAlt+Shift+U"));
+    QAction *pasteDel = pasteSql->addAction(
+        QStringLiteral("&DELETE FROM <tablename>…\tAlt+Shift+D"));
+    QAction *pasteSel = pasteSql->addAction(
+        QStringLiteral("&SELECT <col-1>…<col-n> FROM…\tAlt+Shift+S"));
+    connect(pasteIns, &QAction::triggered, this,
+            [this] { if(auto *t = currentTab()) t->pasteSqlTemplate(0); });
+    connect(pasteUpd, &QAction::triggered, this,
+            [this] { if(auto *t = currentTab()) t->pasteSqlTemplate(1); });
+    connect(pasteDel, &QAction::triggered, this,
+            [this] { if(auto *t = currentTab()) t->pasteSqlTemplate(2); });
+    connect(pasteSel, &QAction::triggered, this,
+            [this] { if(auto *t = currentTab()) t->pasteSqlTemplate(3); });
+    addDisabled(table,
+        QStringLiteral("&Copy Table(s) To Different Host/Database…"));
+    table->addSeparator();
+    addDisabled(table, QStringLiteral("&Open Table\tF11"));
+    addDisabled(table, QStringLiteral("Open Table in &New Tab\tCtrl+F11"));
+    addDisabled(table, QStringLiteral("Create &Table\tF4"));
+    addDisabled(table, QStringLiteral("&Alter Table\tF6"));
+    addDisabled(table, QStringLiteral("&Manage Indexes\tF7"));
+    addDisabled(table, QStringLiteral("Re&lationships/Foreign Keys\tF10"));
+    QMenu *moreTable = table->addMenu(QStringLiteral("Mo&re Table Operations"));
+    addDisabled(moreTable, QStringLiteral("&Rename Table\tF2"));
+    addDisabled(moreTable, QStringLiteral("Tru&ncate Table…\tShift+Del"));
+    addDisabled(moreTable, QStringLiteral("&Drop Table From Database…\tDel"));
+    addDisabled(moreTable, QStringLiteral("Re&order Column(s)\tCtrl+Alt+R"));
+    addDisabled(moreTable, QStringLiteral("Duplicate Table &Structure/Data…"));
+    addDisabled(moreTable, QStringLiteral("View &Table Properties"));
+    table->addSeparator();
+    QMenu *tblBackup = table->addMenu(QStringLiteral("&Backup/Export"));
+    addDisabled(tblBackup, QStringLiteral("&Scheduled Backups…\tCtrl+Alt+S"));
+    addDisabled(tblBackup, QStringLiteral("&Backup Table(s) As SQL Dump…\tCtrl+Alt+E"));
+    addDisabled(tblBackup, QStringLiteral("&Export Table Data As…\tCtrl+Alt+C"));
+    QMenu *tblImport = table->addMenu(QStringLiteral("&Import "));
+    addDisabled(tblImport, QStringLiteral("Import E&xternal Data…\tCtrl+Alt+O"));
+    addDisabled(tblImport,
+        QStringLiteral("&Import CSV Data Using LOAD LOCAL…\tCtrl+Shift+M"));
+    addDisabled(tblImport,
+        QStringLiteral("Import &XML Data Using LOAD LOCAL…\tCtrl+Shift+X"));
+    table->addSeparator();
+    addDisabled(table, QStringLiteral("Create Tri&gger…"));
 
+    /* ================= Others ======================================= */
     QMenu *others = menuBar()->addMenu(QStringLiteral("&Others"));
-    others->addAction(QStringLiteral("Copy Table…"))->setEnabled(false);
+    QMenu *columns = others->addMenu(QStringLiteral("&Columns"));
+    addDisabled(columns, QStringLiteral("Drop &Column…\tDel"));
+    addDisabled(columns, QStringLiteral("&Manage Columns\tF6"));
+    QMenu *indexes = others->addMenu(QStringLiteral("&Indexes"));
+    addDisabled(indexes, QStringLiteral("Create &Index\tF4"));
+    addDisabled(indexes, QStringLiteral("&Edit Index\tF6"));
 
+    /* ================= Tools ======================================== */
     QMenu *tools = menuBar()->addMenu(QStringLiteral("&Tools"));
+    QAction *exportRows = tools->addAction(
+        QStringLiteral("&Export All Rows Of Table Data/Result As…\tCtrl+Shift+E"));
+    connect(exportRows, &QAction::triggered, this, [this] {
+        if(auto *t = currentTab())
+            t->exportResultCsv();
+    });
+    addDisabled(tools, QStringLiteral("&Backup Database As SQL Dump…\tCtrl+Alt+E"));
+    QAction *runScript = tools->addAction(
+        QStringLiteral("Execute &SQL Script…\tCtrl+Shift+Q"));
+    connect(runScript, &QAction::triggered, this, [this] {
+        if(auto *t = currentTab()) {
+            const QString f = QFileDialog::getOpenFileName(
+                this, QStringLiteral("Execute SQL script"), QString(),
+                QStringLiteral("SQL (*.sql);;All (*)"));
+            if(!f.isEmpty())
+                t->openSqlFile(f);   /* loads, so the user sees what runs */
+        }
+    });
+    tools->addSeparator();
+    addDisabled(tools, QStringLiteral("&Flush…\tCtrl+Alt+F"));
+    addDisabled(tools, QStringLiteral("&Table Diagnostics…\tCtrl+Alt+T"));
+    QAction *history = tools->addAction(QStringLiteral("&History\tCtrl+Shift+H"));
+    connect(history, &QAction::triggered, this, [this] {
+        if(auto *t = currentTab())
+            t->showHistory();
+    });
+    addDisabled(tools, QStringLiteral("&Info\tCtrl+Shift+I"));
+    tools->addSeparator();
+    addDisabled(tools, QStringLiteral("&User Manager\tCtrl+U"));
+    QMenu *show = tools->addMenu(QStringLiteral("Sho&w"));
+    QAction *showVars = show->addAction(QStringLiteral("&Variables…"));
+    connect(showVars, &QAction::triggered, this, [this] {
+        if(auto *t = currentTab())
+            t->runStatements(QStringList{ QStringLiteral("SHOW VARIABLES") },
+                             QStringLiteral("Variables"));
+    });
+    QAction *showProc = show->addAction(QStringLiteral("&Processlist…"));
+    connect(showProc, &QAction::triggered, this, [this] {
+        if(auto *t = currentTab())
+            t->runStatements(QStringList{ QStringLiteral("SHOW FULL PROCESSLIST") },
+                             QStringLiteral("Processlist"));
+    });
+    QAction *showStatus = show->addAction(QStringLiteral("&Status…"));
+    connect(showStatus, &QAction::triggered, this, [this] {
+        if(auto *t = currentTab())
+            t->runStatements(QStringList{ QStringLiteral("SHOW STATUS") },
+                             QStringLiteral("Status"));
+    });
+    tools->addSeparator();
+    addDisabled(tools, QStringLiteral("Change &Language\tAlt+Shift+L"));
+    QMenu *connDetails =
+        tools->addMenu(QStringLiteral("Export/I&mport Connection Details"));
+    addDisabled(connDetails, QStringLiteral("&Export Connection Details…"));
+    addDisabled(connDetails, QStringLiteral("&Import Connection Details…"));
+    addDisabled(tools, QStringLiteral("&Preferences…"));
     QAction *darkTheme = tools->addAction(QStringLiteral("&Dark Theme"));
     darkTheme->setCheckable(true);
     darkTheme->setChecked(Theme::load() == QStringLiteral("dark"));
-    connect(darkTheme, &QAction::toggled, this, [this, darkTheme](bool checked) {
+    connect(darkTheme, &QAction::toggled, this, [](bool checked) {
         const QString theme = checked ? QStringLiteral("dark")
                                       : QStringLiteral("light");
         Theme::save(theme);
         Theme::apply(*qApp, theme);
     });
-    tools->addAction(QStringLiteral("&User Manager…"))->setEnabled(false);
-    tools->addAction(QStringLiteral("&Backup…"))->setEnabled(false);
 
+    /* ================= Powertools =================================== */
     QMenu *powertools = menuBar()->addMenu(QStringLiteral("&Powertools"));
-    powertools->addAction(QStringLiteral("&Data Sync…"))->setEnabled(false);
+    addDisabled(powertools,
+        QStringLiteral("Database S&ynchronization Wizard…\tCtrl+Alt+W"));
+    addDisabled(powertools,
+        QStringLiteral("&Visual Data Comparison Wizard…\tCtrl+Alt+Q"));
+    addDisabled(powertools, QStringLiteral("Schema &Synchronization Tool…\tCtrl+Q"));
+    powertools->addSeparator();
+    addDisabled(powertools, QStringLiteral("Import E&xternal Data…\tCtrl+Alt+O"));
+    addDisabled(powertools,
+        QStringLiteral("S&QL Scheduler and Reporting Wizard…\tCtrl+Alt+N"));
+    addDisabled(powertools, QStringLiteral("S&cheduled Backups…\tCtrl+Alt+S"));
+    powertools->addSeparator();
+    addDisabled(powertools, QStringLiteral("Scheduled &Jobs…"));
+    powertools->addSeparator();
+    addDisabled(powertools, QStringLiteral("&Rebuild tags"));
 
-    QMenu *transactions = menuBar()->addMenu(QStringLiteral("&Transactions"));
-    transactions->addAction(QStringLiteral("&Start Transaction"))->setEnabled(false);
+    /* ================= Transactions ================================= */
+    QMenu *transactions = menuBar()->addMenu(QStringLiteral("T&ransactions"));
+    addDisabled(transactions, QStringLiteral("Set Autocommit"));
+    QMenu *isolation = transactions->addMenu(QStringLiteral("Isolation Level"));
+    addDisabled(isolation, QStringLiteral("Repeatable Read"));
+    addDisabled(isolation, QStringLiteral("Read Committed"));
+    addDisabled(isolation, QStringLiteral("Read Uncommitted"));
+    addDisabled(isolation, QStringLiteral("Serializable"));
+    transactions->addSeparator();
+    QMenu *startTrx = transactions->addMenu(QStringLiteral("Start Transaction"));
+    addDisabled(startTrx, QStringLiteral("With no modifier"));
+    QMenu *snapshot = startTrx->addMenu(QStringLiteral("With Consistent Snapshot"));
+    addDisabled(snapshot, QStringLiteral("Read only"));
+    addDisabled(snapshot, QStringLiteral("Read Write"));
+    QMenu *commit = transactions->addMenu(QStringLiteral("Commit"));
+    addDisabled(commit, QStringLiteral("With no modifier"));
+    commit->addSeparator();
+    addDisabled(commit, QStringLiteral("And Chain"));
+    addDisabled(commit, QStringLiteral("And No Chain"));
+    commit->addSeparator();
+    addDisabled(commit, QStringLiteral("Release"));
+    addDisabled(commit, QStringLiteral("No Release"));
+    QMenu *rollback = transactions->addMenu(QStringLiteral("Rollback"));
+    addDisabled(rollback, QStringLiteral("To Savepoint"));
+    addDisabled(rollback, QStringLiteral("Transaction"));
 
+    /* ================= Window ======================================= */
     QMenu *window = menuBar()->addMenu(QStringLiteral("&Window"));
-    QAction *closeTabAct = window->addAction(QStringLiteral("&Close Tab"));
-    closeTabAct->setShortcut(QKeySequence(QStringLiteral("Ctrl+W")));
-    connect(closeTabAct, &QAction::triggered, this, [this] {
+    QAction *winClose = window->addAction(QStringLiteral("&Close Tab\tAlt+L"));
+    connect(winClose, &QAction::triggered, this, [this] {
         if(m_tabs->currentIndex() >= 0)
             closeTab(m_tabs->currentIndex());
     });
+    QAction *winNext = window->addAction(QStringLiteral("&Next Tab\tCtrl+PgDown"));
+    connect(winNext, &QAction::triggered, this, [this] { switchTab(1); });
+    QAction *winPrev = window->addAction(QStringLiteral("&Previous Tab\tCtrl+PgUp"));
+    connect(winPrev, &QAction::triggered, this, [this] { switchTab(-1); });
 
+    /* ================= Help ========================================= */
     QMenu *help = menuBar()->addMenu(QStringLiteral("&Help"));
     QAction *about = help->addAction(QStringLiteral("&About OpenYog"));
     connect(about, &QAction::triggered, this, [this] {
@@ -100,7 +440,7 @@ MainWindow::MainWindow(QWidget *parent)
                            "Not affiliated with Webyog/Idera."));
     });
 
-    /* ---- toolbar: actions + the database selector ----------------- */
+    /* ================= toolbar + status bar ========================= */
     auto *toolbar = addToolBar(QStringLiteral("main"));
     toolbar->setMovable(false);
     toolbar->addAction(newConn);
@@ -111,7 +451,6 @@ MainWindow::MainWindow(QWidget *parent)
     connect(m_dbCombo, &QComboBox::activated, this,
             [this](int index) { useDatabaseFromCombo(m_dbCombo->itemText(index)); });
 
-    /* ---- status bar: Ready | Exec | Total | Connections ----------- */
     auto *ready = new QLabel(QStringLiteral("Ready"), this);
     statusBar()->addWidget(ready, 1);
     m_execLabel = new QLabel(QStringLiteral("Exec: 0 sec"), this);
@@ -120,6 +459,13 @@ MainWindow::MainWindow(QWidget *parent)
     statusBar()->addWidget(m_connectionsLabel);
 
     syncToolbarToCurrentTab();
+}
+
+QAction *MainWindow::addDisabled(QMenu *menu, const QString &text)
+{
+    QAction *a = menu->addAction(text);
+    a->setEnabled(false);
+    return a;
 }
 
 ConnectionTab *MainWindow::currentTab() const
@@ -157,6 +503,61 @@ void MainWindow::useDatabaseFromCombo(const QString &db)
         tab->useDatabase(db);
 }
 
+void MainWindow::executeCurrentTab()
+{
+    if(auto *tab = currentTab())
+        tab->runQuery();
+}
+
+void MainWindow::refreshBrowser()
+{
+    if(auto *tab = currentTab())
+        tab->refreshBrowser();
+}
+
+void MainWindow::createDatabase()
+{
+    auto *tab = currentTab();
+    if(!tab)
+        return;
+    bool ok = false;
+    const QString name = QInputDialog::getText(
+        this, QStringLiteral("Create Database"),
+        QStringLiteral("Database name:"), QLineEdit::Normal, {}, &ok);
+    if(!ok || name.isEmpty())
+        return;
+    tab->execDdl(QStringLiteral("CREATE DATABASE `%1` CHARACTER SET utf8mb4")
+                     .arg(name));
+}
+
+void MainWindow::editClipboard(const QString &what)
+{
+    auto *ed = focusedEditor();
+    if(!ed)
+        return;
+    if(what == QStringLiteral("undo"))           ed->undo();
+    else if(what == QStringLiteral("redo"))      ed->redo();
+    else if(what == QStringLiteral("cut"))       ed->cut();
+    else if(what == QStringLiteral("copy"))      ed->copy();
+    else if(what == QStringLiteral("paste"))     ed->paste();
+    else if(what == QStringLiteral("selectall")) ed->selectAll();
+    else if(what == QStringLiteral("upper") || what == QStringLiteral("lower")) {
+        QTextCursor c = ed->textCursor();
+        const QString sel = c.selectedText();
+        if(!sel.isEmpty())
+            c.insertText(what == QStringLiteral("upper") ? sel.toUpper()
+                                                         : sel.toLower());
+    }
+}
+
+void MainWindow::switchTab(int delta)
+{
+    const int n = m_tabs->count();
+    if(!n)
+        return;
+    m_tabs->setCurrentIndex((m_tabs->currentIndex() + delta + n) % n);
+}
+
 void MainWindow::newConnection()
 {
     ConnectionDialog dlg(this);
@@ -182,7 +583,13 @@ bool MainWindow::openAndRun(const ConnectionParams &params)
     const int index = m_tabs->addTab(tab, tab->title());
     m_tabs->setCurrentIndex(index);
 
-    /* tab → toolbar/status wiring (only reacts when this tab is current) */
+    /* stash connection info for "New Connection Using Current Settings" */
+    tab->setProperty("host", params.host);
+    tab->setProperty("port", params.port);
+    tab->setProperty("user", params.user);
+    tab->setProperty("password", params.password);
+    tab->setProperty("database", params.database);
+
     connect(tab, &ConnectionTab::databasesChanged, this,
             [this, tab](const QStringList &, const QString &) {
         if(m_tabs->currentWidget() == tab)
