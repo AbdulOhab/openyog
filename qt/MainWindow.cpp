@@ -318,7 +318,11 @@ MainWindow::MainWindow(QWidget *parent)
     manageIdx->setShortcut(QKeySequence(Qt::Key_F7));
     connect(manageIdx, &QAction::triggered, this,
             [onSelectedTable] { onSelectedTable(&ConnectionTab::promptManageIndexes); });
-    addDisabled(table, QStringLiteral("Re&lationships/Foreign Keys\tF10"));
+    QAction *manageFk = table->addAction(
+        QStringLiteral("Re&lationships/Foreign Keys\tF10"));
+    manageFk->setShortcut(QKeySequence(Qt::Key_F10));
+    connect(manageFk, &QAction::triggered, this,
+            [onSelectedTable] { onSelectedTable(&ConnectionTab::promptManageForeignKeys); });
     QMenu *moreTable = table->addMenu(QStringLiteral("Mo&re Table Operations"));
     QAction *renameTbl = moreTable->addAction(QStringLiteral("&Rename Table\tF2"));
     renameTbl->setShortcut(QKeySequence(Qt::Key_F2));
