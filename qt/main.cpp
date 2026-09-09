@@ -52,6 +52,14 @@ int main(int argc, char *argv[])
     QApplication::setApplicationName(QStringLiteral("OpenYog"));
     QApplication::setOrganizationName(QStringLiteral("OpenYog"));
 
+    /* SQLyog-look: steel-blue tab bars with white captions */
+    app.setStyleSheet(QStringLiteral(
+        "QTabWidget::pane { border: 1px solid #8FA8C8; }"
+        "QTabBar { background: #4A7EBB; }"
+        "QTabBar::tab { background: #4A7EBB; color: white; "
+        "  padding: 3px 12px; margin-right: 1px; }"
+        "QTabBar::tab:selected { background: #EAF0F8; color: black; }"));
+
     mysql_library_init(0, nullptr, nullptr);
     int rc = 0;
 
