@@ -11,7 +11,9 @@
 #include <QHeaderView>
 #include <QLineEdit>
 #include <QMenu>
+#include <QFontDatabase>
 #include <QMessageBox>
+#include <QPlainTextEdit>
 #include <QPushButton>
 #include <QVBoxLayout>
 
@@ -266,6 +268,10 @@ TableDataView::TableDataView(QWidget *parent)
                                          &TableDataView::revertPendingEdits);
         apply->setEnabled(ops > 0);
         revert->setEnabled(ops > 0);
+        QAction *bigEdit = menu.addAction(
+            QStringLiteral("&Edit Cell in Text Editor…"), this,
+            &TableDataView::editCellInTextEditor);
+        bigEdit->setEnabled(m_grid->currentIndex().isValid() && !del);
         menu.addSeparator();
         menu.addAction(del ? QStringLiteral("&Undelete Row")
                            : QStringLiteral("Mark Row for &Deletion"),
@@ -552,6 +558,38 @@ void TableDataView::setCellNull()
     if(!m_valid || !idx.isValid())
         return;
     m_model->stage(idx.row(), idx.column(), QStringLiteral("NULL"));
+}
+
+void TableDataView::editCellInTextEditor()
+{
+    const QModelIndex idx = m_grid->currentIndex();
+    if(!m_valid || !idx.isValid())
+        return;
+    const QString col = m_model->columns().value(idx.column());
+
+    QDialog dlg(this);
+    dlg.setWindowTitle(QStringLiteral("Edit `%1` — row %2")
+                           .arg(col).arg(idx.row() + 1));
+    dlg.resize(560, 380);
+    auto *edit = new QPlainTextEdit(&dlg);
+    edit->setPlainText(idx.data().toString() == QStringLiteral("NULL")
+                           ? QString() : idx.data().toString());
+    edit->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
+    auto *buttons = new QDialogButtonBox(
+        QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
+    auto *nullBtn = buttons->addButton(QStringLiteral("Set &NULL"),
+                                       QDialogButtonBox::ActionRole);
+    connect(buttons, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
+    bool toNull = false;
+    connect(nullBtn, &QPushButton::clicked, &dlg, [&] { toNull = true; dlg.accept(); });
+    auto *lay = new QVBoxLayout(&dlg);
+    lay->addWidget(edit, 1);
+    lay->addWidget(buttons);
+    if(dlg.exec() != QDialog::Accepted)
+        return;
+    m_model->stage(idx.row(), idx.column(),
+                   toNull ? QStringLiteral("NULL") : edit->toPlainText());
 }
 
 void TableDataView::refresh()
