@@ -49,8 +49,13 @@ MainWindow::MainWindow(QWidget *parent)
     m_tabs->setTabsClosable(true);
     m_tabs->setMovable(true);
     m_tabs->setDocumentMode(true);
+    m_tabs->tabBar()->setExpanding(true);         /* full-width blue strip */
     auto *plus = new QPushButton(QStringLiteral("+"), this);
     plus->setFixedSize(24, 22);
+    plus->setStyleSheet(QStringLiteral(
+        "QPushButton { background: transparent; color: white; "
+        "border: none; font-weight: bold; }"
+        "QPushButton:hover { background: #2A5D9F; }"));
     connect(plus, &QPushButton::clicked, this, &MainWindow::newConnection);
     m_tabs->setCornerWidget(plus, Qt::TopLeftCorner);
     setCentralWidget(m_tabs);

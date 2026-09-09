@@ -36,7 +36,9 @@ ObjectBrowser::ObjectBrowser(QWidget *parent)
 
     m_tree = new QTreeWidget(this);
     m_tree->setHeaderHidden(true);
-    m_tree->setIndentation(14);
+    m_tree->setIndentation(12);
+    m_tree->setIconSize(QSize(14, 14));
+    m_tree->setUniformRowHeights(true);
     m_tree->setContextMenuPolicy(Qt::CustomContextMenu);
     connect(m_tree, &QTreeWidget::itemExpanded, this, &ObjectBrowser::onItemExpanded);
     connect(m_tree, &QTreeWidget::customContextMenuRequested, this,
