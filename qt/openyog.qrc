@@ -1,6 +1,7 @@
 <!DOCTYPE RCC><RCC version="1.0">
 <qresource prefix="/">
     <file>resources/openyog-16.png</file>
+    <file>resources/openyog-24.png</file>
     <file>resources/openyog-32.png</file>
     <file>resources/openyog-64.png</file>
     <file>resources/openyog-256.png</file>
