@@ -69,6 +69,9 @@ public slots:
     void openSelectedTable();
     void promptCreateTable(const QString &database = {});
     void promptAlterTable(const QString &database, const QString &table);
+    void promptRenameTable(const QString &database, const QString &table);
+    void dropTable(const QString &database, const QString &table);
+    void truncateTable(const QString &database, const QString &table);
     void promptDumpDatabase(const QString &database = {});
     /* non-interactive core, also used by the --dumpdb selftest */
     bool dumpDatabaseToFile(const QString &database, const QString &path,

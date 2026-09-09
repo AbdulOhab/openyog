@@ -304,9 +304,29 @@ MainWindow::MainWindow(QWidget *parent)
     addDisabled(table, QStringLiteral("&Manage Indexes\tF7"));
     addDisabled(table, QStringLiteral("Re&lationships/Foreign Keys\tF10"));
     QMenu *moreTable = table->addMenu(QStringLiteral("Mo&re Table Operations"));
-    addDisabled(moreTable, QStringLiteral("&Rename Table\tF2"));
-    addDisabled(moreTable, QStringLiteral("Tru&ncate Table…\tShift+Del"));
-    addDisabled(moreTable, QStringLiteral("&Drop Table From Database…\tDel"));
+    /* each acts on the object browser's selected table */
+    const auto onSelectedTable = [this](void (ConnectionTab::*fn)(const QString &,
+                                                                  const QString &)) {
+        auto *tab = currentTab();
+        if(!tab) { return; }
+        const QStringList info = tab->selectedTableInfo();
+        if(info.size() < 2) {
+            QMessageBox::information(this, QStringLiteral("OpenYog"),
+                QStringLiteral("Select a table in the object browser first."));
+            return;
+        }
+        (tab->*fn)(info[0], info[1]);
+    };
+    QAction *renameTbl = moreTable->addAction(QStringLiteral("&Rename Table\tF2"));
+    renameTbl->setShortcut(QKeySequence(Qt::Key_F2));
+    connect(renameTbl, &QAction::triggered, this,
+            [onSelectedTable] { onSelectedTable(&ConnectionTab::promptRenameTable); });
+    QAction *truncTbl = moreTable->addAction(QStringLiteral("Tru&ncate Table…\tShift+Del"));
+    connect(truncTbl, &QAction::triggered, this,
+            [onSelectedTable] { onSelectedTable(&ConnectionTab::truncateTable); });
+    QAction *dropTbl = moreTable->addAction(QStringLiteral("&Drop Table From Database…\tDel"));
+    connect(dropTbl, &QAction::triggered, this,
+            [onSelectedTable] { onSelectedTable(&ConnectionTab::dropTable); });
     addDisabled(moreTable, QStringLiteral("Re&order Column(s)\tCtrl+Alt+R"));
     addDisabled(moreTable, QStringLiteral("Duplicate Table &Structure/Data…"));
     addDisabled(moreTable, QStringLiteral("View &Table Properties"));

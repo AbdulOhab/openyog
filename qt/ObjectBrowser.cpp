@@ -70,6 +70,8 @@ ObjectBrowser::ObjectBrowser(QWidget *parent)
                            [this, db, table] { emit tableActivated(db, table); });
             menu.addAction(QStringLiteral("&Alter Table…"), this,
                            [this, db, table] { emit alterTableRequested(db, table); });
+            menu.addAction(QStringLiteral("&Rename Table…"), this,
+                           [this, db, table] { emit renameTableRequested(db, table); });
             menu.addSeparator();
             menu.addAction(QStringLiteral("Create &Table…"), this,
                            [this, db] { emit createTableRequested(db); });
