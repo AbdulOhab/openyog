@@ -4,6 +4,7 @@
 #include "SqlHighlighter.h"
 #include "CreateTableDialog.h"
 #include "FindBar.h"
+#include "UserManagerDialog.h"
 #include "IndexDialog.h"
 #include "ForeignKeyDialog.h"
 #include "SqlDump.h"
@@ -1221,6 +1222,12 @@ bool ConnectionTab::copyDatabaseTo(const QString &srcDb, const QString &tgtDb,
         mysql_query(m_conn, use.GetString());
     }
     return ok;
+}
+
+void ConnectionTab::promptUserManager()
+{
+    if(m_conn)
+        UserManagerDialog(m_conn, this).exec();
 }
 
 void ConnectionTab::promptImportCsv(const QString &database, const QString &table)
