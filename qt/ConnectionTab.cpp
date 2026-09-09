@@ -1,5 +1,6 @@
 #include "ConnectionTab.h"
 #include "ObjectBrowser.h"
+#include "TableDataView.h"
 #include "SqlHighlighter.h"
 #include "wyString.h"
 
@@ -147,8 +148,11 @@ ConnectionTab::ConnectionTab(const ConnectionParams &params, QWidget *parent)
     m_resultTabs = new QTabWidget(this);
     m_resultTabs->setDocumentMode(true);
     m_resultTabs->setTabPosition(QTabWidget::North);
-    m_resultTabs->addTab(m_messages, QStringLiteral("1_Messages"));
-    m_resultTabs->addTab(m_info,     QStringLiteral("3_Info"));
+    m_tableData = new TableDataView(this);
+
+    m_resultTabs->addTab(m_messages,   QStringLiteral("1_Messages"));
+    m_resultTabs->addTab(m_tableData,  QStringLiteral("2_Table Data"));
+    m_resultTabs->addTab(m_info,       QStringLiteral("3_Info"));
     m_resultTabs->setCurrentIndex(0);
 
     auto *rightSplit = new QSplitter(Qt::Vertical, this);
@@ -182,6 +186,18 @@ ConnectionTab::ConnectionTab(const ConnectionParams &params, QWidget *parent)
         m_conn = nullptr;
         return;
     }
+
+    connect(m_browser, &ObjectBrowser::tableActivated, this,
+            [this](const QString &db, const QString &table) {
+        if(m_conn) {
+            m_tableData->load(m_conn, db, table);
+            m_resultTabs->setCurrentWidget(m_tableData);
+        }
+    });
+    connect(m_tableData, &TableDataView::statusMessage, this,
+            [this](const QString &text) {
+        m_messages->appendPlainText(text);
+    });
 
     m_browser->setConnectionLabel(
         QStringLiteral("%1@%2").arg(m_params.user, m_params.host));
@@ -391,6 +407,27 @@ void ConnectionTab::refreshBrowser()
 {
     if(m_conn)
         m_browser->loadDatabases(m_conn, m_params.database);
+}
+
+void ConnectionTab::editTableCell(int row, int col, const QString &value)
+{
+    m_tableData->editCell(row, col, value);
+}
+
+void ConnectionTab::openSelectedTable()
+{
+    const QStringList info = currentTableInfo();
+    if(info.size() < 2 || !m_conn)
+        return;
+    openTableData(info[0], info[1]);
+}
+
+void ConnectionTab::openTableData(const QString &db, const QString &table)
+{
+    if(!m_conn)
+        return;
+    m_tableData->load(m_conn, db, table);
+    m_resultTabs->setCurrentWidget(m_tableData);
 }
 
 bool ConnectionTab::execDdl(const QString &sql)

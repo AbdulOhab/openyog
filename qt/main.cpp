@@ -20,6 +20,9 @@ int main(int argc, char *argv[])
 {
     QString screenshot;
     bool shotDialog = false;
+    QPair<QString, QString> openTableParts;
+    int editRow = -1, editCol = -1;
+    QString editValue;
     ConnectionParams autoConnect;
     bool doAutoConnect = false;
     for(int i = 1; i < argc; ++i) {
@@ -28,6 +31,21 @@ int main(int argc, char *argv[])
             screenshot = a.mid(QStringLiteral("--screenshot=").size());
         if(a == QStringLiteral("--dialog"))
             shotDialog = true;
+        /* --opentable=db:table (selftest: opens the editable data grid) */
+        /* --editcell=row:col:value (selftest: exercises the UPDATE path) */
+        if(a.startsWith(QStringLiteral("--editcell="))) {
+            const QStringList parts = a.mid(11).split(':');
+            if(parts.size() == 3) {
+                editRow = parts[0].toInt();
+                editCol = parts[1].toInt();
+                editValue = parts[2];
+            }
+        }
+        if(a.startsWith(QStringLiteral("--opentable="))) {
+            const QStringList parts = a.mid(12).split(':');
+            if(parts.size() == 2)
+                openTableParts = qMakePair(parts[0], parts[1]);
+        }
         /* --autoconnect=host:port:user:password:db */
         if(a.startsWith(QStringLiteral("--autoconnect="))) {
             const QStringList parts = a.mid(14).split(':');
@@ -78,9 +96,19 @@ int main(int argc, char *argv[])
         QTimer::singleShot(1500, [&, w = w.get()] {
             if(doAutoConnect)
                 w->openAndRun(autoConnect);
-            QTimer::singleShot(2500, [w, screenshot] {
-                w->grab().save(screenshot);
-                QApplication::quit();
+            /* open the table only after the batch's results have landed,
+             * so the data grid keeps the focus */
+            QTimer::singleShot(600, [&, w] {
+                if(!openTableParts.first.isEmpty())
+                    w->openTableData(openTableParts.first, openTableParts.second);
+                QTimer::singleShot(400, [&, w] {
+                    if(editRow >= 0)
+                        w->editTableCell(editRow, editCol, editValue);
+                    QTimer::singleShot(600, [w, screenshot] {
+                        w->grab().save(screenshot);
+                        QApplication::quit();
+                    });
+                });
             });
         });
         QApplication::exec();
