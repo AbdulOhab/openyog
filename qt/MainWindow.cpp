@@ -431,7 +431,13 @@ MainWindow::MainWindow(QWidget *parent)
     });
     addDisabled(tools, QStringLiteral("&Info\tCtrl+Shift+I"));
     tools->addSeparator();
-    addDisabled(tools, QStringLiteral("&User Manager\tCtrl+U"));
+    QAction *userMgr = tools->addAction(QStringLiteral("&User Manager\tCtrl+U"));
+    userMgr->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_U));
+    connect(userMgr, &QAction::triggered, this, [this] {
+        if(auto *t = currentTab()) t->promptUserManager();
+        else QMessageBox::information(this, QStringLiteral("User Manager"),
+                 QStringLiteral("Open a connection first."));
+    });
     QMenu *show = tools->addMenu(QStringLiteral("Sho&w"));
     QAction *showVars = show->addAction(QStringLiteral("&Variables…"));
     connect(showVars, &QAction::triggered, this, [this] {
@@ -579,8 +585,10 @@ MainWindow::MainWindow(QWidget *parent)
 
     QAction *userMgrTool = toolbar->addAction(
         Icons::get(QStringLiteral("usermanager.ICO")),
-        QStringLiteral("User Manager\tCtrl+U"));
-    userMgrTool->setEnabled(false);
+        QStringLiteral("User Manager (Ctrl+U)"));
+    connect(userMgrTool, &QAction::triggered, this, [this] {
+        if(auto *t = currentTab()) t->promptUserManager();
+    });
 
     m_statusMsg = new QLabel(QStringLiteral("Ready"), this);
     statusBar()->addWidget(m_statusMsg, 1);
