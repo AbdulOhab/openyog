@@ -19,6 +19,9 @@
 #include <QDialogButtonBox>
 #include <QFormLayout>
 #include <QInputDialog>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QRegularExpression>
 #include <QLineEdit>
 #include <QFontDatabase>
@@ -558,34 +561,102 @@ void ConnectionTab::showHistory()
     m_editorTabs->setCurrentWidget(m_history);
 }
 
-void ConnectionTab::exportResultCsv()
+void ConnectionTab::exportResult()
 {
     QAbstractItemModel *m = m_lastGrid ? m_lastGrid->model() : nullptr;
     if(!m || m->rowCount() == 0) {
         m_messages->appendPlainText(QStringLiteral("no result set to export"));
         return;
     }
-    const QString f = QFileDialog::getSaveFileName(
-        this, QStringLiteral("Export result as CSV"),
-        QStringLiteral("result.csv"), QStringLiteral("CSV (*.csv)"));
-    if(f.isEmpty())
+    QString filter;
+    const QString path = QFileDialog::getSaveFileName(
+        this, QStringLiteral("Export result as…"), QStringLiteral("result.csv"),
+        QStringLiteral("CSV (*.csv);;HTML (*.html *.htm);;JSON (*.json);;"
+                       "Markdown (*.md)"),
+        &filter);
+    if(path.isEmpty())
         return;
-    QFile file(f);
-    if(!file.open(QIODevice::WriteOnly | QIODevice::Text))
+    QFile file(path);
+    if(!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        m_messages->appendPlainText(QStringLiteral("cannot write ") + path);
         return;
+    }
+
+    const int cols = m->columnCount(), rows = m->rowCount();
+    QStringList headers;
+    for(int c = 0; c < cols; ++c)
+        headers << m->headerData(c, Qt::Horizontal).toString();
+    const auto cell = [&](int r, int c) { return m->index(r, c).data().toString(); };
+    const QString fmt = filter.startsWith(QStringLiteral("HTML"))     ? QStringLiteral("html")
+                      : filter.startsWith(QStringLiteral("JSON"))     ? QStringLiteral("json")
+                      : filter.startsWith(QStringLiteral("Markdown")) ? QStringLiteral("md")
+                      : path.endsWith(QStringLiteral(".html")) || path.endsWith(QStringLiteral(".htm"))
+                                                                     ? QStringLiteral("html")
+                      : path.endsWith(QStringLiteral(".json"))        ? QStringLiteral("json")
+                      : path.endsWith(QStringLiteral(".md"))          ? QStringLiteral("md")
+                                                                     : QStringLiteral("csv");
     QTextStream out(&file);
-    QStringList header;
-    for(int c = 0; c < m->columnCount(); ++c)
-        header << '"' + m->headerData(c, Qt::Horizontal).toString() + '"';
-    out << header.join(',') << "\n";
-    for(int r = 0; r < m->rowCount(); ++r) {
-        QStringList row;
-        for(int c = 0; c < m->columnCount(); ++c)
-            row << '"' + m->index(r, c).data().toString() + '"';
-        out << row.join(',') << "\n";
+
+    if(fmt == QStringLiteral("json")) {
+        QJsonArray arr;
+        for(int r = 0; r < rows; ++r) {
+            QJsonObject o;
+            for(int c = 0; c < cols; ++c) {
+                const QString v = cell(r, c);
+                o.insert(headers[c], v == QStringLiteral("NULL")
+                                         ? QJsonValue(QJsonValue::Null)
+                                         : QJsonValue(v));
+            }
+            arr.append(o);
+        }
+        out << QString::fromUtf8(QJsonDocument(arr).toJson(QJsonDocument::Indented));
+    } else if(fmt == QStringLiteral("html")) {
+        const auto esc = [](QString s) {
+            return s.replace('&', QStringLiteral("&amp;"))
+                    .replace('<', QStringLiteral("&lt;"))
+                    .replace('>', QStringLiteral("&gt;"));
+        };
+        out << "<!doctype html><meta charset=\"utf-8\">\n"
+               "<style>table{border-collapse:collapse;font:13px sans-serif}"
+               "th,td{border:1px solid #ccc;padding:3px 7px}"
+               "th{background:#3B7DBB;color:#fff}</style>\n<table>\n<tr>";
+        for(const QString &h : std::as_const(headers))
+            out << "<th>" << esc(h) << "</th>";
+        out << "</tr>\n";
+        for(int r = 0; r < rows; ++r) {
+            out << "<tr>";
+            for(int c = 0; c < cols; ++c)
+                out << "<td>" << esc(cell(r, c)) << "</td>";
+            out << "</tr>\n";
+        }
+        out << "</table>\n";
+    } else if(fmt == QStringLiteral("md")) {
+        const auto esc = [](QString s) { return s.replace('|', QStringLiteral("\\|")); };
+        out << "| " << [&] { QStringList h; for(const QString &x : std::as_const(headers)) h << esc(x); return h.join(QStringLiteral(" | ")); }() << " |\n";
+        out << "|" << QString(QStringLiteral(" --- |")).repeated(cols) << "\n";
+        for(int r = 0; r < rows; ++r) {
+            QStringList row;
+            for(int c = 0; c < cols; ++c)
+                row << esc(cell(r, c));
+            out << "| " << row.join(QStringLiteral(" | ")) << " |\n";
+        }
+    } else {   /* csv */
+        const auto q = [](QString s) {
+            if(s.contains('"') || s.contains(',') || s.contains('\n'))
+                return '"' + s.replace('"', QStringLiteral("\"\"")) + '"';
+            return s;
+        };
+        out << [&] { QStringList h; for(const QString &x : std::as_const(headers)) h << q(x); return h.join(QLatin1Char(',')); }() << "\r\n";
+        for(int r = 0; r < rows; ++r) {
+            QStringList row;
+            for(int c = 0; c < cols; ++c)
+                row << q(cell(r, c));
+            out << row.join(QLatin1Char(',')) << "\r\n";
+        }
     }
     m_messages->appendPlainText(
-        QStringLiteral("Exported %1 rows to %2").arg(m->rowCount()).arg(f));
+        QStringLiteral("Exported %1 row(s) as %2 → %3")
+            .arg(rows).arg(fmt.toUpper(), path));
 }
 
 void ConnectionTab::refreshBrowser()
