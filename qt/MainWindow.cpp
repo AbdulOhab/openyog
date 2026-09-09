@@ -328,7 +328,10 @@ MainWindow::MainWindow(QWidget *parent)
     connect(dropTbl, &QAction::triggered, this,
             [onSelectedTable] { onSelectedTable(&ConnectionTab::dropTable); });
     addDisabled(moreTable, QStringLiteral("Re&order Column(s)\tCtrl+Alt+R"));
-    addDisabled(moreTable, QStringLiteral("Duplicate Table &Structure/Data…"));
+    QAction *dupTbl = moreTable->addAction(
+        QStringLiteral("Duplicate Table &Structure/Data…"));
+    connect(dupTbl, &QAction::triggered, this,
+            [onSelectedTable] { onSelectedTable(&ConnectionTab::promptCopyTable); });
     addDisabled(moreTable, QStringLiteral("View &Table Properties"));
     table->addSeparator();
     QMenu *tblBackup = table->addMenu(QStringLiteral("&Backup/Export"));
