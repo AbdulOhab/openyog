@@ -63,6 +63,7 @@ add_executable(openyog
     qt/ForeignKeyDialog.h  qt/ForeignKeyDialog.cpp
     qt/SqlDump.h           qt/SqlDump.cpp
     qt/CodeEditor.h        qt/CodeEditor.cpp
+    qt/FindBar.h           qt/FindBar.cpp
     qt/TableDataView.h     qt/TableDataView.cpp
     qt/Theme.h             qt/Theme.cpp
     qt/SqlHighlighter.h

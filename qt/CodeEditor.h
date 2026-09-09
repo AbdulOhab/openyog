@@ -1,5 +1,6 @@
-/* OpenYog — query editor with the SQLyog-style line-number gutter.
- * Placeholder until the bundled Scintilla (Qt port) replaces it in Phase 3. */
+/* OpenYog — query editor with the SQLyog-style line-number gutter + SQL
+ * highlighter and a Find bar (qt/FindBar). A Scintilla swap is still on the
+ * roadmap (Phase 3) but needs a Qt6 QScintilla build. */
 #pragma once
 
 #include <QPlainTextEdit>
