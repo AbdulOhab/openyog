@@ -9,6 +9,7 @@
  *   openyog --autoconnect=… --dumpdb=FILE.sql          dump a database
  *   openyog --delconn=NAME                             delete a saved connection
  *   openyog --screenshot=FILE.png --indexdlg           render the Manage Indexes dialog
+ *   openyog --fmtsql="SELECT …"                        print the formatted SQL, exit
  */
 #include "MainWindow.h"
 #include "ConnectionDialog.h"
@@ -16,10 +17,14 @@
 #include "ConnectionStore.h"
 #include "CreateTableDialog.h"
 #include "IndexDialog.h"
+#include "SqlFormat.h"
 #include "Theme.h"
+
+#include <QDebug>
 
 #include <QApplication>
 #include <QIcon>
+#include <QTextStream>
 #include <QTimer>
 
 #include <memory>
@@ -70,6 +75,10 @@ int main(int argc, char *argv[])
             copyDbArg = a.mid(QStringLiteral("--copydb=").size());
         if(a.startsWith(QStringLiteral("--delconn=")))
             delConn = a.mid(QStringLiteral("--delconn=").size());
+        if(a.startsWith(QStringLiteral("--fmtsql="))) {
+            QTextStream(stdout) << SqlFormat::pretty(a.mid(9)) << '\n';
+            return 0;
+        }
         if(a.startsWith(QStringLiteral("--opentable="))) {
             const QStringList parts = a.mid(12).split(':');
             if(parts.size() == 2)

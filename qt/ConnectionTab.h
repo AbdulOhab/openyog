@@ -102,6 +102,7 @@ public slots:
     void promptReplace();
     void promptGoto();
     void commentSelection(bool add);
+    void formatQuery(int scope);   /* 0 = current stmt, 1 = selection, 2 = all */
 
 signals:
     void databasesChanged(const QStringList &dbs, const QString &current);
