@@ -55,6 +55,8 @@ add_executable(openyog
     qt/ConnectionTab.h     qt/ConnectionTab.cpp
     qt/QueryModel.h        qt/QueryModel.cpp
     qt/ConnectionStore.h   qt/ConnectionStore.cpp
+    qt/ObjectBrowser.h     qt/ObjectBrowser.cpp
+    qt/CodeEditor.h        qt/CodeEditor.cpp
 )
 target_link_libraries(openyog PRIVATE wycore Qt6::Widgets ${MARIADB_LIBRARY})
 target_compile_options(openyog PRIVATE -Wall)
