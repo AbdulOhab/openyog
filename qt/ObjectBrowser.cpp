@@ -55,6 +55,9 @@ ObjectBrowser::ObjectBrowser(QWidget *parent)
             const QString db = item->text(0);
             menu.addAction(QStringLiteral("Create &Table…"), this,
                            [this, db] { emit createTableRequested(db); });
+            menu.addSeparator();
+            menu.addAction(QStringLiteral("&Backup Database As SQL Dump…"), this,
+                           [this, db] { emit dumpDatabaseRequested(db); });
         } else if(kind == KFolder
                   && item->text(0) == QStringLiteral("Tables")) {
             const QString db = item->data(0, Qt::UserRole + 1).toString();

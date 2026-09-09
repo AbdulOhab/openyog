@@ -28,6 +28,7 @@ int main(int argc, char *argv[])
     QString editValue;
     ConnectionParams autoConnect;
     bool doAutoConnect = false;
+    QString dumpPath;
     for(int i = 1; i < argc; ++i) {
         const QString a = QString::fromLocal8Bit(argv[i]);
         if(a.startsWith(QStringLiteral("--screenshot=")))
@@ -46,6 +47,8 @@ int main(int argc, char *argv[])
                 editValue = parts[2];
             }
         }
+        if(a.startsWith(QStringLiteral("--dumpdb=")))
+            dumpPath = a.mid(QStringLiteral("--dumpdb=").size());
         if(a.startsWith(QStringLiteral("--opentable="))) {
             const QStringList parts = a.mid(12).split(':');
             if(parts.size() == 2)
@@ -69,7 +72,8 @@ int main(int argc, char *argv[])
     }
 
     /* headless rendering: needs to be set before QApplication starts */
-    if(!screenshot.isEmpty() && qEnvironmentVariableIsEmpty("QT_QPA_PLATFORM"))
+    if((!screenshot.isEmpty() || !dumpPath.isEmpty())
+       && qEnvironmentVariableIsEmpty("QT_QPA_PLATFORM"))
         qputenv("QT_QPA_PLATFORM", "offscreen");
 
     QApplication app(argc, argv);
@@ -82,6 +86,14 @@ int main(int argc, char *argv[])
 
     mysql_library_init(0, nullptr, nullptr);
     int rc = 0;
+
+    /* --dumpdb=FILE selftest (headless, no screenshot): autoconnect, dump, exit */
+    if(!dumpPath.isEmpty() && doAutoConnect) {
+        MainWindow w;
+        rc = (w.openAndRun(autoConnect) && w.selftestDump(dumpPath)) ? 0 : 1;
+        mysql_library_end();
+        return rc;
+    }
 
     if(!screenshot.isEmpty()) {
         if(shotDialog || shotCreateTable) {

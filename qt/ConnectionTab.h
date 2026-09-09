@@ -66,6 +66,10 @@ public slots:
     void toggleEditorPane();
     void openSelectedTable();
     void promptCreateTable(const QString &database = {});
+    void promptDumpDatabase(const QString &database = {});
+    /* non-interactive core, also used by the --dumpdb selftest */
+    bool dumpDatabaseToFile(const QString &database, const QString &path,
+                            QString *error);
     void addEditorTab();
     void openTableData(const QString &db, const QString &table);
     void editTableCell(int row, int col, const QString &value);

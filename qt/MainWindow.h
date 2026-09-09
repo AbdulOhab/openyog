@@ -29,6 +29,7 @@ private slots:
     void refreshBrowser();
     void createDatabase();
     void createTable(const QString &database = {});
+    void dumpDatabase(const QString &database = {});
     void editClipboard(const QString &what);
     void switchTab(int delta);
 
@@ -37,6 +38,8 @@ public:
     bool openAndRun(const ConnectionParams &params);
     void openTableData(const QString &db, const QString &table);
     void editTableCell(int row, int col, const QString &value);
+    /* --dumpdb=FILE selftest: dump the active connection's default db */
+    bool selftestDump(const QString &path);
 
 private:
     ConnectionTab *currentTab() const;

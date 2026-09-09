@@ -3,8 +3,11 @@
 #include "TableDataView.h"
 #include "SqlHighlighter.h"
 #include "CreateTableDialog.h"
+#include "SqlDump.h"
 #include "Icons.h"
 #include "wyString.h"
+
+#include <QApplication>
 
 #include <QElapsedTimer>
 #include <QFileDialog>
@@ -18,6 +21,7 @@
 #include <QTabBar>
 #include <QTextStream>
 #include <QFile>
+#include <QFileInfo>
 #include <QTime>
 #include <QVBoxLayout>
 #include <utility>
@@ -256,6 +260,8 @@ ConnectionTab::ConnectionTab(const ConnectionParams &params, QWidget *parent)
     });
     connect(m_browser, &ObjectBrowser::createTableRequested, this,
             [this](const QString &db) { promptCreateTable(db); });
+    connect(m_browser, &ObjectBrowser::dumpDatabaseRequested, this,
+            [this](const QString &db) { promptDumpDatabase(db); });
     connect(m_browser, &ObjectBrowser::truncateTableRequested, this,
             [this](const QString &db, const QString &table) {
         if(QMessageBox::question(this, QStringLiteral("Truncate Table"),
@@ -557,6 +563,52 @@ void ConnectionTab::promptCreateTable(const QString &database)
         return;
     }
     execDdl(sql);   /* execDdl already refreshes the object browser on success */
+}
+
+void ConnectionTab::promptDumpDatabase(const QString &database)
+{
+    if(!m_conn)
+        return;
+    const QString db = database.isEmpty() ? m_params.database : database;
+    if(db.isEmpty()) {
+        QMessageBox::information(this, QStringLiteral("Backup As SQL Dump"),
+            QStringLiteral("Select a database first."));
+        return;
+    }
+    const QString path = QFileDialog::getSaveFileName(
+        this, QStringLiteral("Backup `%1` as SQL dump").arg(db),
+        db + QStringLiteral(".sql"), QStringLiteral("SQL (*.sql);;All (*)"));
+    if(path.isEmpty())
+        return;
+
+    QApplication::setOverrideCursor(Qt::WaitCursor);
+    QString err;
+    const bool ok = dumpDatabaseToFile(db, path, &err);
+    QApplication::restoreOverrideCursor();
+
+    m_messages->setPlainText(ok
+        ? QStringLiteral("Dumped `%1` → %2  (%3 KB)")
+              .arg(db, path).arg((QFileInfo(path).size() + 1023) / 1024)
+        : QStringLiteral("Dump failed: %1").arg(err));
+    m_resultTabs->setCurrentWidget(m_messages);
+}
+
+bool ConnectionTab::dumpDatabaseToFile(const QString &database,
+                                      const QString &path, QString *error)
+{
+    if(!m_conn) {
+        if(error) *error = QStringLiteral("not connected");
+        return false;
+    }
+    const QString db = database.isEmpty() ? m_params.database : database;
+    QFile f(path);
+    if(!f.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        if(error) *error = QStringLiteral("cannot write %1").arg(path);
+        return false;
+    }
+    const bool ok = SqlDump::write(m_conn, db, {}, SqlDump::Options{}, &f, error);
+    f.close();
+    return ok;
 }
 
 bool ConnectionTab::execDdl(const QString &sql)

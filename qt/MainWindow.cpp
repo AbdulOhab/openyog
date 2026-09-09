@@ -257,7 +257,9 @@ MainWindow::MainWindow(QWidget *parent)
     database->addSeparator();
     QMenu *dbBackup = database->addMenu(QStringLiteral("&Backup/Export"));
     addDisabled(dbBackup, QStringLiteral("&Scheduled Backups…\tCtrl+Alt+S"));
-    addDisabled(dbBackup, QStringLiteral("&Backup Database As SQL Dump…\tCtrl+Alt+E"));
+    QAction *dbDump = dbBackup->addAction(
+        QStringLiteral("&Backup Database As SQL Dump…\tCtrl+Alt+E"));
+    connect(dbDump, &QAction::triggered, this, [this] { dumpDatabase(); });
     QMenu *dbImport = database->addMenu(QStringLiteral("&Import "));
     addDisabled(dbImport, QStringLiteral("Import E&xternal Data…\tCtrl+Alt+O"));
     addDisabled(dbImport, QStringLiteral("&Execute SQL Script…\tCtrl+Shift+Q"));
@@ -337,7 +339,9 @@ MainWindow::MainWindow(QWidget *parent)
         if(auto *t = currentTab())
             t->exportResultCsv();
     });
-    addDisabled(tools, QStringLiteral("&Backup Database As SQL Dump…\tCtrl+Alt+E"));
+    QAction *toolsDump = tools->addAction(
+        QStringLiteral("&Backup Database As SQL Dump…\tCtrl+Alt+E"));
+    connect(toolsDump, &QAction::triggered, this, [this] { dumpDatabase(); });
     QAction *runScript = tools->addAction(
         QStringLiteral("Execute &SQL Script…\tCtrl+Shift+Q"));
     connect(runScript, &QAction::triggered, this, [this] {
@@ -603,6 +607,15 @@ void MainWindow::createTable(const QString &database)
             QStringLiteral("Open a connection first."));
 }
 
+void MainWindow::dumpDatabase(const QString &database)
+{
+    if(auto *tab = currentTab())
+        tab->promptDumpDatabase(database);
+    else
+        QMessageBox::information(this, QStringLiteral("Backup As SQL Dump"),
+            QStringLiteral("Open a connection first."));
+}
+
 void MainWindow::editClipboard(const QString &what)
 {
     auto *ed = focusedEditor();
@@ -691,6 +704,18 @@ void MainWindow::editTableCell(int row, int col, const QString &value)
 {
     if(auto *tab = currentTab())
         tab->editTableCell(row, col, value);
+}
+
+bool MainWindow::selftestDump(const QString &path)
+{
+    auto *tab = currentTab();
+    if(!tab)
+        return false;
+    QString err;
+    const bool ok = tab->dumpDatabaseToFile({}, path, &err);
+    if(!ok)
+        qWarning("dump failed: %s", qPrintable(err));
+    return ok;
 }
 
 void MainWindow::openTableData(const QString &db, const QString &table)
