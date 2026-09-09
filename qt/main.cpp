@@ -39,6 +39,7 @@ int main(int argc, char *argv[])
     ConnectionParams autoConnect;
     bool doAutoConnect = false;
     QString dumpPath;
+    QString copyDbArg;
     QString delConn;
     for(int i = 1; i < argc; ++i) {
         const QString a = QString::fromLocal8Bit(argv[i]);
@@ -65,6 +66,8 @@ int main(int argc, char *argv[])
         }
         if(a.startsWith(QStringLiteral("--dumpdb=")))
             dumpPath = a.mid(QStringLiteral("--dumpdb=").size());
+        if(a.startsWith(QStringLiteral("--copydb=")))
+            copyDbArg = a.mid(QStringLiteral("--copydb=").size());
         if(a.startsWith(QStringLiteral("--delconn=")))
             delConn = a.mid(QStringLiteral("--delconn=").size());
         if(a.startsWith(QStringLiteral("--opentable="))) {
@@ -90,7 +93,7 @@ int main(int argc, char *argv[])
     }
 
     /* headless rendering: needs to be set before QApplication starts */
-    if((!screenshot.isEmpty() || !dumpPath.isEmpty())
+    if((!screenshot.isEmpty() || !dumpPath.isEmpty() || !copyDbArg.isEmpty())
        && qEnvironmentVariableIsEmpty("QT_QPA_PLATFORM"))
         qputenv("QT_QPA_PLATFORM", "offscreen");
 
@@ -127,6 +130,16 @@ int main(int argc, char *argv[])
     if(!dumpPath.isEmpty() && doAutoConnect) {
         MainWindow w;
         rc = (w.openAndRun(autoConnect) && w.selftestDump(dumpPath)) ? 0 : 1;
+        mysql_library_end();
+        return rc;
+    }
+
+    /* --copydb=src:tgt selftest (headless): autoconnect, copy database, exit */
+    if(!copyDbArg.isEmpty() && doAutoConnect) {
+        const QStringList p = copyDbArg.split(':');
+        MainWindow w;
+        rc = (p.size() == 2 && w.openAndRun(autoConnect)
+              && w.selftestCopyDb(p[0], p[1])) ? 0 : 1;
         mysql_library_end();
         return rc;
     }

@@ -41,6 +41,8 @@ public:
     void editTableCell(int row, int col, const QString &value, bool stageOnly = false);
     /* --dumpdb=FILE selftest: dump the active connection's default db */
     bool selftestDump(const QString &path);
+    /* --copydb=src:tgt selftest */
+    bool selftestCopyDb(const QString &src, const QString &tgt);
 
 private:
     ConnectionTab *currentTab() const;

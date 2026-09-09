@@ -276,6 +276,8 @@ ConnectionTab::ConnectionTab(const ConnectionParams &params, QWidget *parent)
             &ConnectionTab::promptManageForeignKeys);
     connect(m_browser, &ObjectBrowser::dumpDatabaseRequested, this,
             [this](const QString &db) { promptDumpDatabase(db); });
+    connect(m_browser, &ObjectBrowser::copyDatabaseRequested, this,
+            [this](const QString &db) { promptCopyDatabase(db); });
     connect(m_browser, &ObjectBrowser::truncateTableRequested, this,
             &ConnectionTab::truncateTable);
 
@@ -730,6 +732,108 @@ void ConnectionTab::promptManageIndexes(const QString &database,
         return;
     }
     execDdl(sql);
+}
+
+void ConnectionTab::promptCopyDatabase(const QString &database)
+{
+    if(!m_conn)
+        return;
+    const QString srcDb = database.isEmpty() ? m_params.database : database;
+    if(srcDb.isEmpty()) {
+        QMessageBox::information(this, QStringLiteral("Copy Database"),
+            QStringLiteral("Select a database first."));
+        return;
+    }
+
+    QDialog dlg(this);
+    dlg.setWindowTitle(QStringLiteral("Copy Database `%1`").arg(srcDb));
+    auto *name = new QLineEdit(srcDb + QStringLiteral("_copy"), &dlg);
+    auto *wantData = new QCheckBox(QStringLiteral("Copy table data"), &dlg);
+    wantData->setChecked(true);
+    auto *dropFirst = new QCheckBox(
+        QStringLiteral("Drop target database first if it exists"), &dlg);
+    auto *form = new QFormLayout;
+    form->addRow(QStringLiteral("New database name"), name);
+    form->addRow(QString(), wantData);
+    form->addRow(QString(), dropFirst);
+    auto *buttons = new QDialogButtonBox(
+        QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
+    buttons->button(QDialogButtonBox::Ok)->setText(QStringLiteral("Copy"));
+    connect(buttons, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
+    auto *lay = new QVBoxLayout(&dlg);
+    lay->addLayout(form);
+    lay->addWidget(new QLabel(QStringLiteral(
+        "Same server only. Base tables (structure + data); views, routines and "
+        "triggers are not copied yet."), &dlg));
+    lay->addWidget(buttons);
+    if(dlg.exec() != QDialog::Accepted)
+        return;
+
+    const QString tgt = name->text().trimmed();
+    if(tgt.isEmpty() || tgt == srcDb)
+        return;
+
+    QApplication::setOverrideCursor(Qt::WaitCursor);
+    QString err;
+    const bool ok = copyDatabaseTo(srcDb, tgt, wantData->isChecked(),
+                                   dropFirst->isChecked(), &err);
+    QApplication::restoreOverrideCursor();
+
+    m_messages->setPlainText(ok
+        ? QStringLiteral("Copied `%1` → `%2`.").arg(srcDb, tgt)
+        : QStringLiteral("Copy failed:\n%1").arg(err));
+    m_resultTabs->setCurrentWidget(m_messages);
+    refreshBrowser();
+}
+
+bool ConnectionTab::copyDatabaseTo(const QString &srcDb, const QString &tgtDb,
+                                   bool withData, bool dropFirst, QString *error)
+{
+    if(!m_conn || srcDb.isEmpty() || tgtDb.isEmpty() || srcDb == tgtDb) {
+        if(error) *error = QStringLiteral("bad source/target");
+        return false;
+    }
+
+    QStringList tables;
+    wyString q;
+    q.Sprintf("SHOW FULL TABLES FROM `%s` WHERE Table_type='BASE TABLE'",
+              QString(srcDb).replace('`', QStringLiteral("``")).toUtf8().constData());
+    if(mysql_query(m_conn, q.GetString()) == 0) {
+        if(MYSQL_RES *res = mysql_store_result(m_conn)) {
+            while(MYSQL_ROW row = mysql_fetch_row(res))
+                if(row[0])
+                    tables << QString::fromUtf8(row[0]);
+            mysql_free_result(res);
+        }
+    }
+
+    QStringList stmts;
+    if(dropFirst)
+        stmts << QStringLiteral("DROP DATABASE IF EXISTS `%1`").arg(tgtDb);
+    stmts << QStringLiteral("CREATE DATABASE IF NOT EXISTS `%1`").arg(tgtDb);
+    stmts << QStringLiteral("SET FOREIGN_KEY_CHECKS=0");
+    for(const QString &t : std::as_const(tables)) {
+        stmts << QStringLiteral("CREATE TABLE `%1`.`%2` LIKE `%3`.`%2`")
+                     .arg(tgtDb, t, srcDb);
+        if(withData)
+            stmts << QStringLiteral("INSERT INTO `%1`.`%2` SELECT * FROM `%3`.`%2`")
+                         .arg(tgtDb, t, srcDb);
+    }
+    stmts << QStringLiteral("SET FOREIGN_KEY_CHECKS=1");
+
+    bool ok = true;
+    for(const QString &s : std::as_const(stmts)) {
+        if(mysql_query(m_conn, s.toUtf8().constData()) != 0) {
+            if(error)
+                *error = QStringLiteral("%1\n  at: %2")
+                             .arg(QString::fromUtf8(mysql_error(m_conn)), s);
+            ok = false;
+            break;
+        }
+    }
+    mysql_query(m_conn, "SET FOREIGN_KEY_CHECKS=1");
+    return ok;
 }
 
 void ConnectionTab::promptManageForeignKeys(const QString &database,
