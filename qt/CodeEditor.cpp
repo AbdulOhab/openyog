@@ -1,15 +1,42 @@
 #include "CodeEditor.h"
 
+#include <QAbstractItemView>
+#include <QCompleter>
 #include <QFontDatabase>
+#include <QKeyEvent>
 #include <QPainter>
+#include <QScrollBar>
+#include <QStringListModel>
 #include <QTextBlock>
 #include <QTextDocument>
+
+namespace {
+/* SQL keywords always offered by the completer */
+const QStringList kKeywordWords = {
+    "SELECT","FROM","WHERE","GROUP BY","ORDER BY","HAVING","LIMIT","OFFSET",
+    "INNER JOIN","LEFT JOIN","RIGHT JOIN","JOIN","ON","AS","AND","OR","NOT",
+    "IN","IS NULL","IS NOT NULL","LIKE","BETWEEN","EXISTS","UNION","UNION ALL",
+    "DISTINCT","INSERT INTO","VALUES","UPDATE","SET","DELETE FROM","CREATE TABLE",
+    "ALTER TABLE","DROP TABLE","TRUNCATE TABLE","CREATE VIEW","CREATE INDEX",
+    "PRIMARY KEY","FOREIGN KEY","REFERENCES","DEFAULT","AUTO_INCREMENT",
+    "CASE","WHEN","THEN","ELSE","END","ASC","DESC","COUNT(","SUM(","AVG(",
+    "MIN(","MAX(","COALESCE(","IFNULL(","NOW()","CURRENT_TIMESTAMP",
+};
+} // namespace
 
 CodeEditor::CodeEditor(QWidget *parent)
     : QPlainTextEdit(parent)
 {
     setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
     m_lineNumberArea = new LineNumberArea(this);
+
+    m_completer = new QCompleter(this);
+    m_completer->setModel(new QStringListModel(kKeywordWords, m_completer));
+    m_completer->setWidget(this);
+    m_completer->setCompletionMode(QCompleter::PopupCompletion);
+    m_completer->setCaseSensitivity(Qt::CaseInsensitive);
+    connect(m_completer, qOverload<const QString &>(&QCompleter::activated),
+            this, &CodeEditor::insertCompletion);
 
     connect(this, &QPlainTextEdit::blockCountChanged,
             this, &CodeEditor::updateLineNumberAreaWidth);
@@ -20,6 +47,99 @@ CodeEditor::CodeEditor(QWidget *parent)
 
     updateLineNumberAreaWidth();
     highlightCurrentLine();
+}
+
+void CodeEditor::setCompletions(const QStringList &words)
+{
+    QStringList all = kKeywordWords;
+    all += words;
+    all.removeDuplicates();
+    all.sort(Qt::CaseInsensitive);
+    qobject_cast<QStringListModel *>(m_completer->model())->setStringList(all);
+}
+
+QString CodeEditor::wordUnderCursor() const
+{
+    QTextCursor c = textCursor();
+    c.select(QTextCursor::WordUnderCursor);
+    return c.selectedText();
+}
+
+void CodeEditor::insertCompletion(const QString &word)
+{
+    QTextCursor c = textCursor();
+    const int extra = word.length() - m_completer->completionPrefix().length();
+    c.movePosition(QTextCursor::Left, QTextCursor::KeepAnchor,
+                   m_completer->completionPrefix().length());
+    c.insertText(word);
+    setTextCursor(c);
+    Q_UNUSED(extra);
+}
+
+void CodeEditor::popupCompleter(bool force)
+{
+    const QString prefix = wordUnderCursor();
+    if(!force && prefix.length() < 2) {
+        m_completer->popup()->hide();
+        return;
+    }
+    if(prefix != m_completer->completionPrefix()) {
+        m_completer->setCompletionPrefix(prefix);
+        m_completer->popup()->setCurrentIndex(
+            m_completer->completionModel()->index(0, 0));
+    }
+    if(m_completer->completionCount() == 0
+       || (m_completer->completionCount() == 1
+           && m_completer->currentCompletion().compare(
+                  prefix, Qt::CaseInsensitive) == 0)) {
+        m_completer->popup()->hide();
+        return;
+    }
+    QRect r = cursorRect();
+    r.setWidth(m_completer->popup()->sizeHintForColumn(0)
+               + m_completer->popup()->verticalScrollBar()->sizeHint().width());
+    m_completer->complete(r);
+}
+
+void CodeEditor::focusInEvent(QFocusEvent *event)
+{
+    m_completer->setWidget(this);
+    QPlainTextEdit::focusInEvent(event);
+}
+
+void CodeEditor::keyPressEvent(QKeyEvent *event)
+{
+    QAbstractItemView *popup = m_completer->popup();
+    if(popup->isVisible()) {
+        switch(event->key()) {
+        case Qt::Key_Enter:
+        case Qt::Key_Return:
+        case Qt::Key_Tab:
+        case Qt::Key_Escape:
+        case Qt::Key_Backtab:
+            event->ignore();
+            return;                 /* let the popup handle it */
+        default:
+            break;
+        }
+    }
+
+    const bool ctrlSpace = event->key() == Qt::Key_Space
+                           && (event->modifiers() & Qt::ControlModifier);
+    if(ctrlSpace) {
+        popupCompleter(true);
+        return;
+    }
+
+    QPlainTextEdit::keyPressEvent(event);
+
+    if(event->text().isEmpty())
+        return;
+    const QChar ch = event->text().at(0);
+    if(ch.isLetterOrNumber() || ch == '_')
+        popupCompleter(false);
+    else
+        popup->hide();
 }
 
 int CodeEditor::lineNumberAreaWidth() const

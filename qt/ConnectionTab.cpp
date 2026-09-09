@@ -28,6 +28,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QRegularExpression>
+#include <QSet>
 #include <QLineEdit>
 #include <QFontDatabase>
 #include <QTextStream>
@@ -404,6 +405,7 @@ ConnectionTab::ConnectionTab(const ConnectionParams &params, QWidget *parent)
     m_browser->setConnectionLabel(
         QStringLiteral("%1@%2").arg(m_params.user, m_params.host));
     m_browser->loadDatabases(m_conn, m_params.database);
+    updateCompletions();
     m_messages->setPlainText(QStringLiteral(
         "Connected to %1:%2 as %3\nServer version: %4")
         .arg(m_params.host).arg(m_params.port)
@@ -443,7 +445,35 @@ void ConnectionTab::attachEditor(CodeEditor *ed, const QString &title)
         emit cursorMoved(QStringLiteral("Ln %1, Col %2")
                              .arg(c.blockNumber() + 1).arg(c.positionInBlock() + 1));
     });
+    ed->setCompletions(m_completions);
     Q_UNUSED(title);
+}
+
+/* schema identifiers (tables + columns of the current db) for autocomplete */
+void ConnectionTab::updateCompletions()
+{
+    m_completions.clear();
+    if(m_conn && !m_params.database.isEmpty()) {
+        wyString q;
+        q.Sprintf("SELECT TABLE_NAME, COLUMN_NAME FROM information_schema.COLUMNS "
+                  "WHERE TABLE_SCHEMA = '%s'",
+                  QString(m_params.database).replace('\'', QStringLiteral("''"))
+                      .toUtf8().constData());
+        if(mysql_query(m_conn, q.GetString()) == 0) {
+            if(MYSQL_RES *res = mysql_store_result(m_conn)) {
+                QSet<QString> seen;
+                while(MYSQL_ROW row = mysql_fetch_row(res)) {
+                    if(row[0]) seen.insert(QString::fromUtf8(row[0]));
+                    if(row[1]) seen.insert(QString::fromUtf8(row[1]));
+                }
+                mysql_free_result(res);
+                m_completions = QStringList(seen.cbegin(), seen.cend());
+            }
+        }
+    }
+    for(int i = 0; i < m_editorTabs->count(); ++i)
+        if(auto *ed = qobject_cast<CodeEditor *>(m_editorTabs->widget(i)))
+            ed->setCompletions(m_completions);
 }
 
 void ConnectionTab::addEditorTab()
@@ -723,8 +753,10 @@ void ConnectionTab::exportResult()
 
 void ConnectionTab::refreshBrowser()
 {
-    if(m_conn)
+    if(m_conn) {
         m_browser->loadDatabases(m_conn, m_params.database);
+        updateCompletions();
+    }
 }
 
 void ConnectionTab::promptFind()
@@ -1902,6 +1934,7 @@ void ConnectionTab::useDatabase(const QString &db)
         m_params.database = db;
         m_messages->setPlainText(QStringLiteral("Database changed to %1").arg(db));
         m_resultTabs->setCurrentWidget(m_messages);
+        updateCompletions();
     } else {
         m_messages->setPlainText(QString::fromUtf8(mysql_error(m_conn)));
     }
