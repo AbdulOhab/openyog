@@ -40,6 +40,7 @@
 #include <QStandardPaths>
 #include <QSplitter>
 #include <QTabBar>
+#include <QToolButton>
 #include <QTextStream>
 #include <QFile>
 #include <QFileInfo>
@@ -256,9 +257,15 @@ ConnectionTab::ConnectionTab(const ConnectionParams &params, QWidget *parent)
 
     m_historySearch = new QLineEdit(this);
     m_historySearch->setPlaceholderText(QStringLiteral("filter history…"));
-    m_historySearch->setClearButtonEnabled(true);   /* its own ✕ clears the field */
     connect(m_historySearch, &QLineEdit::textChanged, this,
             &ConnectionTab::renderHistory);
+    /* explicit reset button — the built-in clear ✕ is unreliable under the
+     * app stylesheet / icon theme */
+    auto *histReset = new QToolButton(this);
+    histReset->setText(QStringLiteral("✕"));
+    histReset->setAutoRaise(true);
+    histReset->setToolTip(QStringLiteral("Clear the filter"));
+    connect(histReset, &QToolButton::clicked, m_historySearch, &QLineEdit::clear);
     /* explicit label + ellipsis: this wipes the saved log, not the filter box */
     auto *histClear = new QPushButton(QStringLiteral("Clear History…"), this);
     histClear->setToolTip(QStringLiteral("Delete the saved query history file"));
@@ -267,6 +274,7 @@ ConnectionTab::ConnectionTab(const ConnectionParams &params, QWidget *parent)
     histTop->setContentsMargins(3, 3, 3, 0);
     histTop->addWidget(new QLabel(QStringLiteral("Filter:"), this));
     histTop->addWidget(m_historySearch, 1);
+    histTop->addWidget(histReset);
     histTop->addSpacing(8);
     histTop->addWidget(histClear);
     m_historyPage = new QWidget(this);
