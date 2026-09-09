@@ -154,3 +154,76 @@ bool SqlDump::write(MYSQL *conn, const QString &db, const QStringList &tables,
     put(QStringLiteral("SET FOREIGN_KEY_CHECKS=1;"));
     return true;
 }
+
+bool SqlDump::forEachStatement(
+    MYSQL *conn, const QString &db, const QStringList &tables,
+    const Options &opt, const std::function<bool(const QString &)> &exec,
+    QString *error)
+{
+    if(!conn) {
+        if(error) *error = QStringLiteral("no connection");
+        return false;
+    }
+    QStringList list = tables;
+    if(list.isEmpty()) {
+        list = baseTables(conn, db, error);
+        if(list.isEmpty() && error && !error->isEmpty())
+            return false;
+    }
+    const QByteArray qdb = QByteArray(db.toUtf8()).replace('`', "``");
+
+    if(!exec(QStringLiteral("SET FOREIGN_KEY_CHECKS=0")))
+        return false;
+
+    for(const QString &t : std::as_const(list)) {
+        const QByteArray qt = QByteArray(t.toUtf8()).replace('`', "``");
+        if(opt.structure) {
+            if(opt.addDropTable
+               && !exec(QStringLiteral("DROP TABLE IF EXISTS `%1`").arg(t)))
+                return false;
+            const QString ddl = showCreate(conn, db, t, error);
+            if(ddl.isEmpty() || !exec(ddl))
+                return false;
+        }
+        if(!opt.data)
+            continue;
+
+        if(!query(conn, "SELECT * FROM `" + qdb + "`.`" + qt + "`", error))
+            return false;
+        MYSQL_RES *res = mysql_use_result(conn);
+        if(!res) {
+            if(error) *error = QString::fromUtf8(mysql_error(conn));
+            return false;
+        }
+        const unsigned n = mysql_num_fields(res);
+        QString batch;
+        int inBatch = 0;
+        const auto flush = [&] {
+            if(inBatch == 0)
+                return true;
+            const bool ok = exec(batch);
+            batch.clear();
+            inBatch = 0;
+            return ok;
+        };
+        MYSQL_ROW row;
+        bool ok = true;
+        while(ok && (row = mysql_fetch_row(res))) {
+            unsigned long *lengths = mysql_fetch_lengths(res);
+            if(inBatch == 0)
+                batch = QStringLiteral("INSERT INTO `%1` VALUES\n").arg(t);
+            else
+                batch += QStringLiteral(",\n");
+            batch += tuple(conn, row, lengths, n);
+            if(++inBatch >= qMax(1, opt.rowsPerInsert))
+                ok = flush();
+        }
+        if(ok)
+            ok = flush();
+        mysql_free_result(res);
+        if(!ok)
+            return false;
+    }
+
+    return exec(QStringLiteral("SET FOREIGN_KEY_CHECKS=1"));
+}

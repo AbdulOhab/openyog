@@ -9,6 +9,8 @@
 #include <QString>
 #include <QStringList>
 
+#include <functional>
+
 #include <mysql/mysql.h>
 
 class QIODevice;
@@ -27,5 +29,15 @@ struct Options
  * Returns true on success; on failure returns false and sets *error. */
 bool write(MYSQL *conn, const QString &db, const QStringList &tables,
            const Options &opt, QIODevice *out, QString *error);
+
+/* Base tables only, as one statement at a time (no trailing ';', no comments)
+ * — the CREATE comes straight from SHOW CREATE TABLE so constraints/FKs are
+ * preserved. Handed to `exec` to replay a database onto another connection.
+ * Stops and returns false if `exec` returns false (then *error is whatever
+ * exec left, or unset). */
+bool forEachStatement(MYSQL *conn, const QString &db, const QStringList &tables,
+                      const Options &opt,
+                      const std::function<bool(const QString &stmt)> &exec,
+                      QString *error);
 
 } // namespace SqlDump
