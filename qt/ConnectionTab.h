@@ -13,6 +13,7 @@
 #include "CodeEditor.h"
 #include "QueryModel.h"
 
+#include <QComboBox>
 #include <QLabel>
 #include <QPointer>
 #include <QTableView>
@@ -64,6 +65,7 @@ public slots:
     void toggleResultPane();
     void toggleEditorPane();
     void openSelectedTable();
+    void addEditorTab();
     void openTableData(const QString &db, const QString &table);
     void editTableCell(int row, int col, const QString &value);
     void openSqlFile(const QString &path);
@@ -74,6 +76,7 @@ public slots:
 signals:
     void databasesChanged(const QStringList &dbs, const QString &current);
     void executed(const QString &info);      /* "Exec: 0.01 sec" etc. */
+    void cursorMoved(const QString &posText);/* "Ln 1, Col 1"        */
 
 private:
     void applyResults(const QVector<QueryResult> &results, const QString &tabPrefix);
@@ -85,6 +88,8 @@ private:
 
     ObjectBrowser    * m_browser    = nullptr;
     TableDataView    * m_tableData  = nullptr;
+    QLabel           * m_infoBar    = nullptr;
+    QComboBox        * m_limitCombo = nullptr;
     QTabWidget       * m_editorTabs = nullptr;
     CodeEditor       * m_editor     = nullptr;
     QPlainTextEdit   * m_history    = nullptr;
@@ -102,4 +107,6 @@ private:
 
     /* selected table in the browser: [db, table] or empty */
     QStringList currentTableInfo() const;
+    CodeEditor  *currentEditor() const;
+    void attachEditor(CodeEditor *ed, const QString &title);
 };

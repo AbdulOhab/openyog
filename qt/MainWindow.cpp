@@ -7,6 +7,7 @@
 #include "ConnectionDialog.h"
 #include "ConnectionStore.h"
 #include "ConnectionTab.h"
+#include "Icons.h"
 #include "Theme.h"
 
 #include <QAction>
@@ -18,6 +19,7 @@
 #include <QMenuBar>
 #include <QMessageBox>
 #include <QPlainTextEdit>
+#include <QPushButton>
 #include <QStatusBar>
 #include <QTabWidget>
 #include <QToolBar>
@@ -47,6 +49,10 @@ MainWindow::MainWindow(QWidget *parent)
     m_tabs->setTabsClosable(true);
     m_tabs->setMovable(true);
     m_tabs->setDocumentMode(true);
+    auto *plus = new QPushButton(QStringLiteral("+"), this);
+    plus->setFixedSize(24, 22);
+    connect(plus, &QPushButton::clicked, this, &MainWindow::newConnection);
+    m_tabs->setCornerWidget(plus, Qt::TopLeftCorner);
     setCentralWidget(m_tabs);
 
     connect(m_tabs, &QTabWidget::tabCloseRequested, this, &MainWindow::closeTab);
@@ -447,7 +453,15 @@ MainWindow::MainWindow(QWidget *parent)
     /* ================= toolbar + status bar ========================= */
     auto *toolbar = addToolBar(QStringLiteral("main"));
     toolbar->setMovable(false);
+    newConn->setIcon(Icons::get(QStringLiteral("connect_16.ico")));
     toolbar->addAction(newConn);
+    QAction *execTool = toolbar->addAction(Icons::get(QStringLiteral("execute_16.ico")),
+        QStringLiteral("Execute Query (F9)"));
+    connect(execTool, &QAction::triggered, this, &MainWindow::executeCurrentTab);
+    QAction *refreshTool = toolbar->addAction(Icons::get(QStringLiteral("refresh_16.ico")),
+        QStringLiteral("Refresh Objects (F5)"));
+    connect(refreshTool, &QAction::triggered, this, &MainWindow::refreshBrowser);
+    toolbar->addSeparator();
 
     m_dbCombo = new QComboBox(toolbar);
     m_dbCombo->setMinimumContentsLength(22);
@@ -457,6 +471,8 @@ MainWindow::MainWindow(QWidget *parent)
 
     auto *ready = new QLabel(QStringLiteral("Ready"), this);
     statusBar()->addWidget(ready, 1);
+    m_cursorLabel = new QLabel(QStringLiteral("Ln 1, Col 1"), this);
+    statusBar()->addWidget(m_cursorLabel);
     m_execLabel = new QLabel(QStringLiteral("Exec: 0 sec"), this);
     m_connectionsLabel = new QLabel(QStringLiteral("Connections: 0"), this);
     statusBar()->addWidget(m_execLabel);
@@ -602,6 +618,11 @@ bool MainWindow::openAndRun(const ConnectionParams &params)
     connect(tab, &ConnectionTab::executed, this, [this, tab](const QString &info) {
         if(m_tabs->currentWidget() == tab)
             m_execLabel->setText(info);
+    });
+    connect(tab, &ConnectionTab::cursorMoved, this,
+            [this, tab](const QString &pos) {
+        if(m_tabs->currentWidget() == tab)
+            m_cursorLabel->setText(pos);
     });
 
     syncToolbarToCurrentTab();

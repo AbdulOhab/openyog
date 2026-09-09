@@ -1,4 +1,5 @@
 #include "ObjectBrowser.h"
+#include "Icons.h"
 
 #include <QMenu>
 #include <QVBoxLayout>
@@ -28,8 +29,8 @@ QTreeWidgetItem *makeItem(int kind, const QString &name, const QString &extra = 
 ObjectBrowser::ObjectBrowser(QWidget *parent)
     : QWidget(parent)
 {
+    m_filterLabel = new QLabel(this);
     m_filter = new QLineEdit(this);
-    m_filter->setPlaceholderText(QStringLiteral("Filter"));
     m_filter->setClearButtonEnabled(true);
     connect(m_filter, &QLineEdit::textChanged, this, &ObjectBrowser::applyFilter);
 
@@ -71,6 +72,7 @@ ObjectBrowser::ObjectBrowser(QWidget *parent)
     auto *layout = new QVBoxLayout(this);
     layout->setContentsMargins(3, 3, 3, 3);
     layout->setSpacing(3);
+    layout->addWidget(m_filterLabel);
     layout->addWidget(m_filter);
     layout->addWidget(m_tree, 1);
 }
@@ -79,7 +81,7 @@ void ObjectBrowser::setConnectionLabel(const QString &label)
 {
     m_tree->clear();
     auto *root = makeItem(KConnection, label);
-    root->setIcon(0, style()->standardIcon(QStyle::SP_ComputerIcon));
+    root->setIcon(0, Icons::get(QStringLiteral("connect_16.ico")));
     m_tree->addTopLevelItem(root);
     m_tree->expandItem(root);
 }
@@ -87,6 +89,9 @@ void ObjectBrowser::setConnectionLabel(const QString &label)
 void ObjectBrowser::loadDatabases(MYSQL *conn, const QString &currentDb)
 {
     m_conn = conn;
+    m_filterLabel->setText(QStringLiteral("Filter tables in %1")
+                               .arg(currentDb.isEmpty() ? QStringLiteral("*")
+                                                        : currentDb));
     QTreeWidgetItem *root = m_tree->topLevelItem(0);
     if(!root || !m_conn)
         return;
@@ -98,7 +103,7 @@ void ObjectBrowser::loadDatabases(MYSQL *conn, const QString &currentDb)
                 if(!row[0])
                     continue;
                 auto *db = makeItem(KDatabase, QString::fromUtf8(row[0]));
-                db->setIcon(0, style()->standardIcon(QStyle::SP_DriveNetIcon));
+                db->setIcon(0, Icons::get(QStringLiteral("database.ico")));
                 root->addChild(db);
                 if(currentDb == row[0]) {
                     db->setSelected(true);
@@ -135,7 +140,7 @@ void ObjectBrowser::onItemExpanded(QTreeWidgetItem *item)
                     if(!row[0])
                         continue;
                     auto *t = makeItem(KTable, QString::fromUtf8(row[0]));
-                    t->setIcon(0, style()->standardIcon(QStyle::SP_FileIcon));
+                    t->setIcon(0, Icons::get(QStringLiteral("table.ico")));
                     item->addChild(t);
                 }
                 mysql_free_result(res);
@@ -155,7 +160,7 @@ void ObjectBrowser::onItemExpanded(QTreeWidgetItem *item)
     };
     for(const QString &f : folders) {
         auto *folder = makeItem(KFolder, f, item->data(0, Qt::UserRole + 1).toString());
-        folder->setIcon(0, style()->standardIcon(QStyle::SP_DirIcon));
+        folder->setIcon(0, Icons::get(QStringLiteral("folder.ico")));
         item->addChild(folder);
     }
 }

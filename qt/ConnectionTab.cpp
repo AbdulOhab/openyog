@@ -2,6 +2,7 @@
 #include "ObjectBrowser.h"
 #include "TableDataView.h"
 #include "SqlHighlighter.h"
+#include "Icons.h"
 #include "wyString.h"
 
 #include <QElapsedTimer>
@@ -127,7 +128,7 @@ ConnectionTab::ConnectionTab(const ConnectionParams &params, QWidget *parent)
     m_editor = new CodeEditor(this);
     m_editor->setPlainText(QStringLiteral(
         "SELECT VERSION(), CURRENT_USER();\nSHOW DATABASES;"));
-    new SqlHighlighter(m_editor->document());
+    attachEditor(m_editor, QStringLiteral("Query 1"));
 
     m_history = new QPlainTextEdit(this);
     m_history->setReadOnly(true);
@@ -135,8 +136,18 @@ ConnectionTab::ConnectionTab(const ConnectionParams &params, QWidget *parent)
 
     m_editorTabs = new QTabWidget(this);
     m_editorTabs->setDocumentMode(true);
-    m_editorTabs->addTab(m_editor, QStringLiteral("Query 1"));
-    m_editorTabs->addTab(m_history, QStringLiteral("History"));
+    m_editorTabs->setCornerWidget(
+        [&] {
+            auto *plus = new QPushButton(QStringLiteral("+"), this);
+            plus->setFlat(true);
+            plus->setFixedSize(24, 20);
+            connect(plus, &QPushButton::clicked, this, &ConnectionTab::addEditorTab);
+            return plus;
+        }(), Qt::TopRightCorner);
+    m_editorTabs->addTab(m_editor, Icons::get(QStringLiteral("query_16.ico")),
+                         QStringLiteral("Query 1"));
+    m_editorTabs->addTab(m_history, Icons::get(QStringLiteral("history.ico")),
+                         QStringLiteral("History"));
 
     /* ---- right-bottom: result tabs -------------------------------- */
     m_messages = new QPlainTextEdit(this);
@@ -156,7 +167,12 @@ ConnectionTab::ConnectionTab(const ConnectionParams &params, QWidget *parent)
     m_resultTabs->addTab(m_info,       QStringLiteral("3_Info"));
     m_resultTabs->setCurrentIndex(0);
 
+    m_infoBar = new QLabel(this);
+    m_infoBar->setStyleSheet(
+        QStringLiteral("background:#4A7EBB; color:white; padding:2px 8px;"));
+
     auto *rightSplit = new QSplitter(Qt::Vertical, this);
+    rightSplit->addWidget(m_infoBar);       /* SQLyog-style blue strip */
     rightSplit->addWidget(m_editorTabs);
     rightSplit->addWidget(m_resultTabs);
     rightSplit->setStretchFactor(0, 1);
@@ -172,6 +188,11 @@ ConnectionTab::ConnectionTab(const ConnectionParams &params, QWidget *parent)
     auto *layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
     layout->addWidget(mainSplit);
+    auto *bottomRow = new QHBoxLayout;
+    bottomRow->setContentsMargins(4, 2, 4, 2);
+    bottomRow->addWidget(m_limitCombo);
+    bottomRow->addStretch(1);
+    layout->addLayout(bottomRow);
 
     /* ---- open the connection ------------------------------------- */
     m_conn = mysql_init(nullptr);
@@ -220,6 +241,12 @@ ConnectionTab::ConnectionTab(const ConnectionParams &params, QWidget *parent)
             m_tableData->load(m_conn, db, table);   /* empty grid */
     });
 
+    m_infoBar->setText(QStringLiteral(
+        "OpenYog — connected to %1@%2:%3%4")
+        .arg(m_params.user, m_params.host).arg(m_params.port)
+        .arg(m_params.database.isEmpty() ? QString()
+                                         : QStringLiteral("/") + m_params.database));
+
     m_browser->setConnectionLabel(
         QStringLiteral("%1@%2").arg(m_params.user, m_params.host));
     m_browser->loadDatabases(m_conn, m_params.database);
@@ -247,6 +274,41 @@ ConnectionTab::~ConnectionTab()
         mysql_close(m_conn);
 }
 
+CodeEditor *ConnectionTab::currentEditor() const
+{
+    if(auto *ed = qobject_cast<CodeEditor *>(m_editorTabs->currentWidget()))
+        return ed;
+    return m_editor;
+}
+
+void ConnectionTab::attachEditor(CodeEditor *ed, const QString &title)
+{
+    new SqlHighlighter(ed->document());
+    connect(ed, &QPlainTextEdit::cursorPositionChanged, this, [this, ed] {
+        const QTextCursor c = ed->textCursor();
+        emit cursorMoved(QStringLiteral("Ln %1, Col %2")
+                             .arg(c.blockNumber() + 1).arg(c.positionInBlock() + 1));
+    });
+    Q_UNUSED(title);
+}
+
+void ConnectionTab::addEditorTab()
+{
+    int maxN = 0;
+    for(int i = 0; i < m_editorTabs->count(); ++i) {
+        const QString t = m_editorTabs->tabText(i);
+        if(t.startsWith(QStringLiteral("Query ")))
+            maxN = qMax(maxN, t.mid(6).toInt());
+    }
+    auto *ed = new CodeEditor(this);
+    attachEditor(ed, {});
+    const QString title = QStringLiteral("Query %1").arg(maxN + 1);
+    const int histIdx = m_editorTabs->indexOf(m_history);
+    m_editorTabs->insertTab(histIdx == -1 ? m_editorTabs->count() : histIdx,
+                            ed, Icons::get(QStringLiteral("query_16.ico")), title);
+    m_editorTabs->setCurrentWidget(ed);
+}
+
 void ConnectionTab::logHistory(const QString &sql)
 {
     m_history->appendPlainText(
@@ -256,7 +318,7 @@ void ConnectionTab::logHistory(const QString &sql)
 
 void ConnectionTab::runQuery()
 {
-    runStatements(splitStatements(m_editor->toPlainText()),
+    runStatements(splitStatements(currentEditor()->toPlainText()),
                   QStringLiteral("Result"));
 }
 
@@ -363,7 +425,7 @@ void ConnectionTab::addResultGrid(const QueryResult &r, const QString &title)
     grid->horizontalHeader()->setStretchLastSection(true);
     grid->setAlternatingRowColors(true);
 
-    m_resultTabs->addTab(grid, title);
+    m_resultTabs->addTab(grid, Icons::get(QStringLiteral("grid_view.ico")), title);
     m_dynamicResultTabs.append(grid);
     m_lastGrid = grid;
 }
@@ -373,8 +435,9 @@ void ConnectionTab::openSqlFile(const QString &path)
     QFile f(path);
     if(!f.open(QIODevice::ReadOnly | QIODevice::Text))
         return;
-    m_editor->setPlainText(QString::fromUtf8(f.readAll()));
-    m_editorTabs->setCurrentWidget(m_editor);
+    if(auto *ed = currentEditor())
+        ed->setPlainText(QString::fromUtf8(f.readAll()));
+    m_editorTabs->setCurrentIndex(0);
 }
 
 void ConnectionTab::saveEditor()
@@ -385,8 +448,9 @@ void ConnectionTab::saveEditor()
     if(f.isEmpty())
         return;
     QFile file(f);
-    if(file.open(QIODevice::WriteOnly | QIODevice::Text))
-        file.write(m_editor->toPlainText().toUtf8());
+    if(auto *ed = currentEditor())
+        if(file.open(QIODevice::WriteOnly | QIODevice::Text))
+            file.write(ed->toPlainText().toUtf8());
 }
 
 void ConnectionTab::showHistory()
@@ -522,8 +586,9 @@ void ConnectionTab::pasteSqlTemplate(int kind)
         stmt = QStringLiteral("SELECT %1\nFROM `%2`.`%3`;")
                    .arg(colsB, db, table);
     }
-    m_editor->setPlainText(stmt);
-    m_editorTabs->setCurrentWidget(m_editor);
+    if(auto *ed = currentEditor())
+        ed->setPlainText(stmt);
+    m_editorTabs->setCurrentIndex(0);
 }
 
 void ConnectionTab::toggleBrowserPane()
