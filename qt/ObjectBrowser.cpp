@@ -13,16 +13,38 @@ constexpr int KConnection = 1001;
 constexpr int KDatabase   = 1002;
 constexpr int KFolder     = 1003;
 constexpr int KTable      = 1004;
+constexpr int KLeaf       = 1005;   /* view / proc / func / trigger / event / column */
 
+/* extra = db name for KDatabase/KFolder/KTable; the folder's leaf query lives
+ * on the KFolder item's text(0) */
 QTreeWidgetItem *makeItem(int kind, const QString &name, const QString &extra = {})
 {
     auto *item = new QTreeWidgetItem;
     item->setText(0, name);
     item->setData(0, Qt::UserRole, kind);
     item->setData(0, Qt::UserRole + 1, extra);
-    if(kind == KDatabase || kind == KFolder)
+    if(kind == KDatabase || kind == KFolder || kind == KTable)
         item->setChildIndicatorPolicy(QTreeWidgetItem::ShowIndicator);
     return item;
+}
+
+/* run a single-column query and append each value as a KLeaf child */
+void fillLeaves(MYSQL *conn, QTreeWidgetItem *parent, const QString &sql,
+                int col, const QString &icon)
+{
+    if(!conn || mysql_query(conn, sql.toUtf8().constData()) != 0)
+        return;
+    MYSQL_RES *res = mysql_store_result(conn);
+    if(!res)
+        return;
+    while(MYSQL_ROW row = mysql_fetch_row(res)) {
+        if(!row[col])
+            continue;
+        auto *leaf = makeItem(KLeaf, QString::fromUtf8(row[col]));
+        leaf->setIcon(0, Icons::get(icon));
+        parent->addChild(leaf);
+    }
+    mysql_free_result(res);
 }
 } // namespace
 
@@ -126,13 +148,20 @@ void ObjectBrowser::loadDatabases(MYSQL *conn, const QString &currentDb)
             while(MYSQL_ROW row = mysql_fetch_row(res)) {
                 if(!row[0])
                     continue;
-                auto *db = makeItem(KDatabase, QString::fromUtf8(row[0]));
+                const QString dbName = QString::fromUtf8(row[0]);
+                auto *db = makeItem(KDatabase, dbName, dbName);  /* carry db name */
                 db->setIcon(0, Icons::get(QStringLiteral("database.ico")));
                 root->addChild(db);
                 if(currentDb == row[0]) {
                     db->setSelected(true);
                     db->setExpanded(true);
                     onItemExpanded(db);
+                    /* open the Tables folder straight away, like SQLyog */
+                    if(db->childCount() > 0) {
+                        QTreeWidgetItem *tablesFolder = db->child(0);
+                        tablesFolder->setExpanded(true);
+                        onItemExpanded(tablesFolder);
+                    }
                 }
             }
             mysql_free_result(res);
@@ -152,20 +181,39 @@ QStringList ObjectBrowser::currentTableInfo() const
 void ObjectBrowser::onItemExpanded(QTreeWidgetItem *item)
 {
     const int kind = item->data(0, Qt::UserRole).toInt();
+    if(!m_conn || item->childCount() > 0)
+        return;                       /* already populated, or not connected */
 
-    if(kind == KFolder && item->childCount() == 0
-       && item->text(0) == QStringLiteral("Tables")) {
-        /* lazy-load the table list for this database */
-        const QString db = item->data(0, Qt::UserRole + 1).toString();
-        QString sql = QStringLiteral("SHOW TABLES FROM `%1`").arg(db);
-        if(m_conn && mysql_query(m_conn, sql.toUtf8().constData()) == 0) {
+    const QString db = item->data(0, Qt::UserRole + 1).toString();
+
+    if(kind == KDatabase) {
+        /* SQLyog shows these six folders under every database */
+        for(const QString &f : { QStringLiteral("Tables"), QStringLiteral("Views"),
+                                 QStringLiteral("Stored Procs"),
+                                 QStringLiteral("Functions"),
+                                 QStringLiteral("Triggers"), QStringLiteral("Events") }) {
+            auto *folder = makeItem(KFolder, f, db);
+            folder->setIcon(0, Icons::get(QStringLiteral("closed_folder.ico")));
+            item->addChild(folder);
+        }
+        return;
+    }
+
+    if(kind == KTable) {
+        /* columns of the table */
+        const QString sql = QStringLiteral("SHOW COLUMNS FROM `%1`.`%2`")
+                                .arg(db, item->text(0));
+        if(mysql_query(m_conn, sql.toUtf8().constData()) == 0) {
             if(MYSQL_RES *res = mysql_store_result(m_conn)) {
                 while(MYSQL_ROW row = mysql_fetch_row(res)) {
                     if(!row[0])
                         continue;
-                    auto *t = makeItem(KTable, QString::fromUtf8(row[0]));
-                    t->setIcon(0, Icons::get(QStringLiteral("table.ico")));
-                    item->addChild(t);
+                    auto *c = makeItem(KLeaf,
+                        QStringLiteral("%1  :  %2")
+                            .arg(QString::fromUtf8(row[0]),
+                                 QString::fromUtf8(row[1] ? row[1] : "")));
+                    c->setIcon(0, Icons::get(QStringLiteral("column.ico")));
+                    item->addChild(c);
                 }
                 mysql_free_result(res);
             }
@@ -173,21 +221,50 @@ void ObjectBrowser::onItemExpanded(QTreeWidgetItem *item)
         return;
     }
 
-    if(kind != KDatabase || item->childCount() > 0)
+    if(kind != KFolder)
         return;
 
-    /* SQLyog shows these six folders under every database */
-    const QStringList folders = {
-        QStringLiteral("Tables"), QStringLiteral("Views"),
-        QStringLiteral("Stored Procs"), QStringLiteral("Functions"),
-        QStringLiteral("Triggers"), QStringLiteral("Events")
-    };
-    for(const QString &f : folders) {
-        auto *folder = makeItem(KFolder, f, item->data(0, Qt::UserRole + 1).toString());
-        /* folder.ico is SQLyog's green expander arrow, not a folder — use the
-         * actual folder glyph */
-        folder->setIcon(0, Icons::get(QStringLiteral("closed_folder.ico")));
-        item->addChild(folder);
+    const QString bq = QString(db).replace('`', QStringLiteral("``"));
+    const QString folder = item->text(0);
+    if(folder == QStringLiteral("Tables")) {
+        if(mysql_query(m_conn,
+               QStringLiteral("SHOW FULL TABLES FROM `%1` WHERE Table_type='BASE TABLE'")
+                   .arg(bq).toUtf8().constData()) == 0) {
+            if(MYSQL_RES *res = mysql_store_result(m_conn)) {
+                while(MYSQL_ROW row = mysql_fetch_row(res)) {
+                    if(!row[0])
+                        continue;
+                    auto *t = makeItem(KTable, QString::fromUtf8(row[0]), db);
+                    t->setIcon(0, Icons::get(QStringLiteral("table.ico")));
+                    item->addChild(t);
+                }
+                mysql_free_result(res);
+            }
+        }
+    } else if(folder == QStringLiteral("Views")) {
+        fillLeaves(m_conn, item,
+            QStringLiteral("SHOW FULL TABLES FROM `%1` WHERE Table_type='VIEW'").arg(bq),
+            0, QStringLiteral("alterview.ico"));
+    } else if(folder == QStringLiteral("Stored Procs")) {
+        fillLeaves(m_conn, item,
+            QStringLiteral("SELECT ROUTINE_NAME FROM information_schema.ROUTINES "
+                           "WHERE ROUTINE_SCHEMA='%1' AND ROUTINE_TYPE='PROCEDURE'")
+                .arg(bq),
+            0, QStringLiteral("altersp.ico"));
+    } else if(folder == QStringLiteral("Functions")) {
+        fillLeaves(m_conn, item,
+            QStringLiteral("SELECT ROUTINE_NAME FROM information_schema.ROUTINES "
+                           "WHERE ROUTINE_SCHEMA='%1' AND ROUTINE_TYPE='FUNCTION'")
+                .arg(bq),
+            0, QStringLiteral("alterfunction.ico"));
+    } else if(folder == QStringLiteral("Triggers")) {
+        fillLeaves(m_conn, item,
+            QStringLiteral("SHOW TRIGGERS FROM `%1`").arg(bq),
+            0, QStringLiteral("altertrigger.ico"));
+    } else if(folder == QStringLiteral("Events")) {
+        fillLeaves(m_conn, item,
+            QStringLiteral("SHOW EVENTS FROM `%1`").arg(bq),
+            1, QStringLiteral("alterevent.ico"));   /* col 1 = Name */
     }
 }
 
