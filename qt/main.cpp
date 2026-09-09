@@ -8,6 +8,7 @@
  *           --stagecell=r:c:v] --screenshot=FILE.png   drive the data grid
  *   openyog --autoconnect=… --dumpdb=FILE.sql          dump a database
  *   openyog --delconn=NAME                             delete a saved connection
+ *   openyog --screenshot=FILE.png --indexdlg           render the Manage Indexes dialog
  */
 #include "MainWindow.h"
 #include "ConnectionDialog.h"
@@ -18,6 +19,7 @@
 #include "Theme.h"
 
 #include <QApplication>
+#include <QIcon>
 #include <QTimer>
 
 #include <memory>
@@ -95,6 +97,13 @@ int main(int argc, char *argv[])
     QApplication app(argc, argv);
     QApplication::setApplicationName(QStringLiteral("OpenYog"));
     QApplication::setOrganizationName(QStringLiteral("OpenYog"));
+
+    /* window / taskbar icon (qt/openyog.svg → qt/resources/*.png, via .qrc) */
+    QIcon appIcon;
+    for(int sz : { 16, 32, 64, 256 })
+        appIcon.addFile(QStringLiteral(":/resources/openyog-%1.png").arg(sz),
+                        QSize(sz, sz));
+    QApplication::setWindowIcon(appIcon);
 
     /* SQLyog-look tab bars; palette/stylesheets follow the saved theme */
     const QString theme = Theme::load();
