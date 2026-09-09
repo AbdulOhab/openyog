@@ -48,11 +48,14 @@ ForeignKeyDialog::ForeignKeyDialog(QString database, QString table,
     m_name = new QLineEdit(this);
     m_name->setPlaceholderText(QStringLiteral("constraint name (optional)"));
     m_localCol = new QComboBox(this);
+    m_localCol->setEditable(true);   /* type "a, b" for a composite FK */
     m_localCol->addItems(m_columns);
+    m_localCol->setCurrentText(QString());
     m_refTable = new QComboBox(this);
     m_refTable->addItems(m_dbTables);
     m_refCol = new QLineEdit(this);
-    m_refCol->setPlaceholderText(QStringLiteral("referenced column"));
+    m_refCol->setPlaceholderText(
+        QStringLiteral("referenced column(s), comma-separated to match"));
     m_onDelete = new QComboBox(this);
     m_onDelete->addItems(kActions);
     m_onUpdate = new QComboBox(this);
@@ -62,9 +65,9 @@ ForeignKeyDialog::ForeignKeyDialog(QString database, QString table,
 
     auto *form = new QFormLayout;
     form->addRow(QStringLiteral("Name"), m_name);
-    form->addRow(QStringLiteral("Local column"), m_localCol);
+    form->addRow(QStringLiteral("Local column(s)"), m_localCol);
     form->addRow(QStringLiteral("Referenced table"), m_refTable);
-    form->addRow(QStringLiteral("Referenced column"), m_refCol);
+    form->addRow(QStringLiteral("Referenced column(s)"), m_refCol);
     form->addRow(QStringLiteral("On Delete"), m_onDelete);
     form->addRow(QStringLiteral("On Update"), m_onUpdate);
 
@@ -113,21 +116,33 @@ void ForeignKeyDialog::addRow(const FkDef &fk, bool isNew)
 
 void ForeignKeyDialog::addPending()
 {
-    if(m_refCol->text().trimmed().isEmpty() || m_refTable->currentText().isEmpty())
-        return;
+    const auto split = [](const QString &s) {
+        QStringList out;
+        for(const QString &p : s.split(',', Qt::SkipEmptyParts))
+            out << p.trimmed();
+        return out;
+    };
     FkDef fk;
-    fk.columns = { m_localCol->currentText() };
-    fk.refTable = m_refTable->currentText();
-    fk.refColumns = { m_refCol->text().trimmed() };
+    fk.columns    = split(m_localCol->currentText());
+    fk.refColumns = split(m_refCol->text());
+    fk.refTable   = m_refTable->currentText();
+    if(fk.columns.isEmpty() || fk.refTable.isEmpty()
+       || fk.columns.size() != fk.refColumns.size()) {
+        m_preview->setText(QStringLiteral(
+            "— local and referenced column counts must match —"));
+        return;
+    }
     fk.onDelete = m_onDelete->currentText();
     fk.onUpdate = m_onUpdate->currentText();
     fk.name = m_name->text().trimmed();
     if(fk.name.isEmpty())
-        fk.name = QStringLiteral("fk_%1_%2").arg(m_table, fk.columns.first());
+        fk.name = QStringLiteral("fk_%1_%2")
+                      .arg(m_table, fk.columns.join(QStringLiteral("_")));
     addRow(fk, true);
 
     m_name->clear();
     m_refCol->clear();
+    m_localCol->setCurrentText(QString());
     updatePreview();
 }
 
