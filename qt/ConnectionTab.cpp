@@ -11,6 +11,8 @@
 
 #include <QElapsedTimer>
 #include <QFileDialog>
+#include <QInputDialog>
+#include <QLineEdit>
 #include <QFontDatabase>
 #include <QTextStream>
 #include <QHeaderView>
@@ -250,32 +252,19 @@ ConnectionTab::ConnectionTab(const ConnectionParams &params, QWidget *parent)
     });
 
     connect(m_browser, &ObjectBrowser::dropTableRequested, this,
-            [this](const QString &db, const QString &table) {
-        if(QMessageBox::question(this, QStringLiteral("Drop Table"),
-                QStringLiteral("Permanently DROP table `%1`.`%2`?")
-                    .arg(db, table)) != QMessageBox::Yes)
-            return;
-        execDdl(QStringLiteral("DROP TABLE `%1`.`%2`").arg(db, table));
-        m_tableData->clear();
-    });
+            &ConnectionTab::dropTable);
     connect(m_browser, &ObjectBrowser::createTableRequested, this,
             [this](const QString &db) { promptCreateTable(db); });
     connect(m_browser, &ObjectBrowser::alterTableRequested, this,
             [this](const QString &db, const QString &table) {
         promptAlterTable(db, table);
     });
+    connect(m_browser, &ObjectBrowser::renameTableRequested, this,
+            &ConnectionTab::promptRenameTable);
     connect(m_browser, &ObjectBrowser::dumpDatabaseRequested, this,
             [this](const QString &db) { promptDumpDatabase(db); });
     connect(m_browser, &ObjectBrowser::truncateTableRequested, this,
-            [this](const QString &db, const QString &table) {
-        if(QMessageBox::question(this, QStringLiteral("Truncate Table"),
-                QStringLiteral("Delete ALL rows of `%1`.`%2`?")
-                    .arg(db, table)) != QMessageBox::Yes)
-            return;
-        execDdl(QStringLiteral("TRUNCATE TABLE `%1`.`%2`").arg(db, table));
-        if(m_tableData->loadedTable() == table)
-            m_tableData->load(m_conn, db, table);   /* empty grid */
-    });
+            &ConnectionTab::truncateTable);
 
     m_infoBar->setText(QStringLiteral(
         "OpenYog — connected to %1@%2:%3%4")
@@ -570,6 +559,51 @@ void ConnectionTab::promptCreateTable(const QString &database)
         return;
     }
     execDdl(sql);   /* execDdl already refreshes the object browser on success */
+}
+
+void ConnectionTab::dropTable(const QString &database, const QString &table)
+{
+    const QString db = database.isEmpty() ? m_params.database : database;
+    if(table.isEmpty() || QMessageBox::question(this,
+            QStringLiteral("Drop Table"),
+            QStringLiteral("Permanently DROP table `%1`.`%2`?").arg(db, table))
+            != QMessageBox::Yes)
+        return;
+    execDdl(QStringLiteral("DROP TABLE `%1`.`%2`").arg(db, table));
+    if(m_tableData->loadedTable() == table)
+        m_tableData->clear();
+}
+
+void ConnectionTab::truncateTable(const QString &database, const QString &table)
+{
+    const QString db = database.isEmpty() ? m_params.database : database;
+    if(table.isEmpty() || QMessageBox::question(this,
+            QStringLiteral("Truncate Table"),
+            QStringLiteral("Delete ALL rows of `%1`.`%2`?").arg(db, table))
+            != QMessageBox::Yes)
+        return;
+    execDdl(QStringLiteral("TRUNCATE TABLE `%1`.`%2`").arg(db, table));
+    if(m_tableData->loadedTable() == table)
+        m_tableData->load(m_conn, db, table);   /* empty grid */
+}
+
+void ConnectionTab::promptRenameTable(const QString &database,
+                                      const QString &table)
+{
+    if(!m_conn || table.isEmpty())
+        return;
+    const QString db = database.isEmpty() ? m_params.database : database;
+    bool ok = false;
+    const QString name = QInputDialog::getText(
+        this, QStringLiteral("Rename Table"),
+        QStringLiteral("New name for `%1`:").arg(table),
+        QLineEdit::Normal, table, &ok);
+    if(!ok || name.trimmed().isEmpty() || name == table)
+        return;
+    execDdl(QStringLiteral("RENAME TABLE `%1`.`%2` TO `%1`.`%3`")
+                .arg(db, table, name.trimmed()));
+    if(m_tableData->loadedTable() == table)
+        m_tableData->load(m_conn, db, name.trimmed());
 }
 
 void ConnectionTab::promptAlterTable(const QString &database,
