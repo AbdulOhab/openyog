@@ -90,7 +90,7 @@ public slots:
     void openSqlFile(const QString &path);
     void saveEditor();
     void showHistory();
-    void exportResultCsv();
+    void exportResult();   /* CSV / HTML / JSON / Markdown, by chosen filter */
 
 signals:
     void databasesChanged(const QStringList &dbs, const QString &current);
