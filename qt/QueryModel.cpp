@@ -1,5 +1,7 @@
 #include "QueryModel.h"
 
+#include <QColor>
+
 #include "wyString.h"       /* core string class: query text path */
 #include <mysql/mysql.h>
 
@@ -68,9 +70,14 @@ int QueryModel::columnCount(const QModelIndex &) const { return (int)m_cols.size
 
 QVariant QueryModel::data(const QModelIndex &idx, int role) const
 {
-    if(!idx.isValid() || role != Qt::DisplayRole)
+    if(!idx.isValid())
         return {};
-    return m_rows[idx.row()][idx.column()];
+    const QString &v = m_rows[idx.row()][idx.column()];
+    if(role == Qt::DisplayRole || role == Qt::EditRole)
+        return v;
+    if(role == Qt::ForegroundRole && v == QStringLiteral("NULL"))
+        return QColor(Qt::gray);
+    return {};
 }
 
 QVariant QueryModel::headerData(int section, Qt::Orientation o, int role) const

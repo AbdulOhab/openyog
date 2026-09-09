@@ -36,12 +36,61 @@
 #include <QVBoxLayout>
 #include <utility>
 
+#include <QClipboard>
+#include <QKeySequence>
+#include <QShortcut>
+#include <QSortFilterProxyModel>
+
 #include <mysql/mysql.h>
 
 #include <algorithm>
 #include <thread>
 
 namespace {
+
+/* result-grid sort: numeric when both cells parse as numbers, NULL last */
+class GridSortProxy : public QSortFilterProxyModel
+{
+public:
+    using QSortFilterProxyModel::QSortFilterProxyModel;
+protected:
+    bool lessThan(const QModelIndex &l, const QModelIndex &r) const override
+    {
+        const QString a = sourceModel()->data(l).toString();
+        const QString b = sourceModel()->data(r).toString();
+        if(a == QStringLiteral("NULL") || b == QStringLiteral("NULL"))
+            return b != QStringLiteral("NULL");   /* NULLs sort to the end */
+        bool an = false, bn = false;
+        const double av = a.toDouble(&an), bv = b.toDouble(&bn);
+        if(an && bn)
+            return av < bv;
+        return QString::localeAwareCompare(a, b) < 0;
+    }
+};
+
+/* Ctrl+C on a QTableView → TSV of the selected block onto the clipboard */
+void installGridCopy(QTableView *grid)
+{
+    auto *sc = new QShortcut(QKeySequence::Copy, grid);
+    QObject::connect(sc, &QShortcut::activated, grid, [grid] {
+        const QModelIndexList sel = grid->selectionModel()->selectedIndexes();
+        if(sel.isEmpty())
+            return;
+        int r0 = sel.first().row(), r1 = r0, c0 = sel.first().column(), c1 = c0;
+        for(const QModelIndex &i : sel) {
+            r0 = qMin(r0, i.row()); r1 = qMax(r1, i.row());
+            c0 = qMin(c0, i.column()); c1 = qMax(c1, i.column());
+        }
+        QString out;
+        for(int r = r0; r <= r1; ++r) {
+            QStringList cells;
+            for(int c = c0; c <= c1; ++c)
+                cells << grid->model()->index(r, c).data().toString();
+            out += cells.join(QLatin1Char('\t')) + QLatin1Char('\n');
+        }
+        QApplication::clipboard()->setText(out);
+    });
+}
 
 /* split on ';', honoring single-quoted strings (good enough for now) */
 QStringList splitStatements(const QString &sql)
@@ -461,10 +510,20 @@ void ConnectionTab::addResultGrid(const QueryResult &r, const QString &title)
 {
     auto *model = new QueryModel(this);
     model->setResultSet(r.headers, r.rows);
+    auto *proxy = new GridSortProxy(this);
+    proxy->setSourceModel(model);
+
     auto *grid = new QTableView(this);
-    grid->setModel(model);
-    grid->horizontalHeader()->setStretchLastSection(true);
+    grid->setModel(proxy);
+    grid->setSortingEnabled(true);
     grid->setAlternatingRowColors(true);
+    grid->setSelectionMode(QAbstractItemView::ExtendedSelection);
+    grid->setSelectionBehavior(QAbstractItemView::SelectItems);
+    grid->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    grid->horizontalHeader()->setStretchLastSection(true);
+    grid->horizontalHeader()->setSectionsMovable(true);
+    grid->horizontalHeader()->setSectionResizeMode(QHeaderView::Interactive);
+    installGridCopy(grid);
 
     m_resultTabs->addTab(grid, Icons::get(QStringLiteral("grid_view.ico")), title);
     m_dynamicResultTabs.append(grid);
