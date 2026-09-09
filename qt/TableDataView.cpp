@@ -2,6 +2,7 @@
 #include "wyString.h"
 
 #include <QColor>
+#include <QFont>
 #include <QContextMenuEvent>
 #include <QDialog>
 #include <QDialogButtonBox>
@@ -18,12 +19,14 @@
 
 #include <mysql/mysql.h>
 
-/* ---------------- editable model (staged) ---------------- */
+/* ---------------- editable model (staged edits + inserts + deletes) ------- */
 
 class TableDataModel : public QAbstractTableModel
 {
     Q_OBJECT
 public:
+    enum RowState { Normal, Inserted, Deleted };
+
     explicit TableDataModel(QObject *parent = nullptr)
         : QAbstractTableModel(parent) {}
 
@@ -33,32 +36,55 @@ public:
         m_cols = cols;
         m_rows = rows;
         m_orig = rows;                 /* baseline for dirty tracking */
+        m_state = QVector<RowState>(rows.size(), Normal);
         endResetModel();
         emit pendingChanged();
     }
 
-    void removeRow_(int row)
+    /* append a blank pending-insert row; returns its index */
+    int stageNewRow()
     {
-        beginRemoveRows({}, row, row);
-        m_rows.removeAt(row);
-        m_orig.removeAt(row);
-        endRemoveRows();
+        const int r = m_rows.size();
+        const QStringList blank(m_cols.size());
+        beginInsertRows({}, r, r);
+        m_rows << blank;
+        m_orig << blank;
+        m_state << Inserted;
+        endInsertRows();
         emit pendingChanged();
+        return r;
     }
 
-    /* commit: the staged values become the new baseline */
-    void commitAll()
+    /* Normal<->Deleted toggle; an Inserted row is just removed */
+    void toggleDeleted(int row)
     {
-        m_orig = m_rows;
-        emit dataChanged(index(0, 0), index(rowCount() - 1, columnCount() - 1),
-                         { Qt::BackgroundRole });
+        if(row < 0 || row >= m_rows.size())
+            return;
+        if(m_state[row] == Inserted) {
+            beginRemoveRows({}, row, row);
+            m_rows.removeAt(row);
+            m_orig.removeAt(row);
+            m_state.removeAt(row);
+            endRemoveRows();
+        } else {
+            m_state[row] = (m_state[row] == Deleted) ? Normal : Deleted;
+            emit dataChanged(index(row, 0), index(row, m_cols.size() - 1));
+        }
         emit pendingChanged();
     }
 
     void revertAll()
     {
         beginResetModel();
+        for(int r = m_rows.size() - 1; r >= 0; --r)
+            if(m_state[r] == Inserted) {
+                m_rows.removeAt(r);
+                m_orig.removeAt(r);
+                m_state.removeAt(r);
+            }
         m_rows = m_orig;
+        for(auto &s : m_state)
+            s = Normal;
         endResetModel();
         emit pendingChanged();
     }
@@ -66,9 +92,19 @@ public:
     bool dirty(int r, int c) const
     {
         return r < m_orig.size() && c < m_orig[r].size()
-               && m_orig[r][c] != m_rows[r][c];
+               && m_state.value(r) == Normal && m_orig[r][c] != m_rows[r][c];
     }
-    QList<int> dirtyRows() const
+    RowState rowState(int r) const { return m_state.value(r, Normal); }
+
+    QList<int> rowsWithState(RowState st) const
+    {
+        QList<int> out;
+        for(int r = 0; r < m_state.size(); ++r)
+            if(m_state[r] == st)
+                out << r;
+        return out;
+    }
+    QList<int> dirtyRows() const                 /* Normal rows with edits only */
     {
         QList<int> out;
         for(int r = 0; r < m_rows.size(); ++r)
@@ -83,6 +119,12 @@ public:
             for(int c = 0; c < m_cols.size(); ++c)
                 if(dirty(r, c)) ++n;
         return n;
+    }
+    /* total staged operations (edits by row + inserts + deletes) */
+    int pendingOps() const
+    {
+        return dirtyRows().size() + rowsWithState(Inserted).size()
+             + rowsWithState(Deleted).size();
     }
     QString cur(int r, int c) const  { return m_rows.value(r).value(c); }
     QString orig(int r, int c) const { return m_orig.value(r).value(c); }
@@ -109,8 +151,16 @@ public:
         const int r = idx.row(), c = idx.column();
         if(role == Qt::DisplayRole || role == Qt::EditRole)
             return m_rows[r][c];
-        if(role == Qt::BackgroundRole && dirty(r, c))
-            return QColor(0xFF, 0xF3, 0xC4);          /* staged edit — amber */
+        if(role == Qt::BackgroundRole) {
+            if(m_state[r] == Inserted) return QColor(0xE6, 0xF4, 0xEA); /* green */
+            if(m_state[r] == Deleted)  return QColor(0xFD, 0xE7, 0xE9); /* red   */
+            if(dirty(r, c))            return QColor(0xFF, 0xF3, 0xC4); /* amber */
+        }
+        if(role == Qt::FontRole && m_state[r] == Deleted) {
+            QFont f;
+            f.setStrikeOut(true);
+            return f;
+        }
         if(role == Qt::ForegroundRole && m_rows[r][c] == QStringLiteral("NULL"))
             return QColor(Qt::gray);
         if(role == Qt::ToolTipRole && dirty(r, c))
@@ -122,12 +172,20 @@ public:
     {
         if(role != Qt::DisplayRole)
             return {};
-        return o == Qt::Horizontal ? m_cols.value(s) : QVariant(s + 1);
+        if(o == Qt::Vertical) {
+            if(m_state.value(s) == Inserted) return QStringLiteral("＋");
+            if(m_state.value(s) == Deleted)  return QStringLiteral("✕");
+            return s + 1;
+        }
+        return m_cols.value(s);
     }
 
     Qt::ItemFlags flags(const QModelIndex &idx) const override
     {
-        return QAbstractTableModel::flags(idx) | Qt::ItemIsEditable;
+        Qt::ItemFlags f = QAbstractTableModel::flags(idx);
+        if(idx.isValid() && m_state.value(idx.row()) == Deleted)
+            return f & ~Qt::ItemIsEditable;
+        return f | Qt::ItemIsEditable;
     }
 
     bool setData(const QModelIndex &idx, const QVariant &value, int role) override
@@ -145,6 +203,7 @@ private:
     QStringList          m_cols;
     QVector<QStringList> m_rows;
     QVector<QStringList> m_orig;
+    QVector<RowState>    m_state;
 };
 
 /* ---------------- the view ---------------- */
@@ -192,22 +251,25 @@ TableDataView::TableDataView(QWidget *parent)
             [this](const QPoint &pos) {
         if(!m_valid || !m_grid->indexAt(pos).isValid())
             return;
-        const int pending = m_model->pendingCells();
+        const int ops = m_model->pendingOps();
+        const int row = m_grid->currentIndex().row();
+        const bool del = row >= 0
+            && m_model->rowState(row) == TableDataModel::Deleted;
         QMenu menu(this);
         QAction *setNull = menu.addAction(QStringLiteral("Set Cell Value to &NULL"),
                                           this, &TableDataView::setCellNull);
-        setNull->setEnabled(m_grid->currentIndex().isValid());
+        setNull->setEnabled(m_grid->currentIndex().isValid() && !del);
         menu.addSeparator();
         QAction *apply = menu.addAction(QStringLiteral("A&pply Changes"), this,
                                         &TableDataView::applyPendingEdits);
         QAction *revert = menu.addAction(QStringLiteral("Re&vert Changes"), this,
                                          &TableDataView::revertPendingEdits);
-        apply->setEnabled(pending > 0);
-        revert->setEnabled(pending > 0);
+        apply->setEnabled(ops > 0);
+        revert->setEnabled(ops > 0);
         menu.addSeparator();
-        menu.addAction(QStringLiteral("&Delete Row"), this,
-                       &TableDataView::deleteSelectedRow);
-        menu.addSeparator();
+        menu.addAction(del ? QStringLiteral("&Undelete Row")
+                           : QStringLiteral("Mark Row for &Deletion"),
+                       this, &TableDataView::deleteSelectedRow);
         menu.addAction(QStringLiteral("&Add Row"), this, &TableDataView::addRow);
         menu.addAction(QStringLiteral("Add Row (with &values…)"), this,
                        &TableDataView::insertRowWithValues);
@@ -247,15 +309,18 @@ void TableDataView::clear()
 
 void TableDataView::updateApplyBar()
 {
-    const int cells = m_model->pendingCells();
-    const int rows  = m_model->dirtyRows().size();
-    m_applyBar->setVisible(cells > 0);
-    m_applyBtn->setEnabled(cells > 0);
-    m_revertBtn->setEnabled(cells > 0);
-    m_pendingLabel->setText(
-        cells > 0 ? QStringLiteral("%1 staged change(s) in %2 row(s)")
-                        .arg(cells).arg(rows)
-                  : QString());
+    const int ops = m_model->pendingOps();
+    const int edits = m_model->dirtyRows().size();
+    const int ins = m_model->rowsWithState(TableDataModel::Inserted).size();
+    const int del = m_model->rowsWithState(TableDataModel::Deleted).size();
+    m_applyBar->setVisible(ops > 0);
+    m_applyBtn->setEnabled(ops > 0);
+    m_revertBtn->setEnabled(ops > 0);
+    QStringList parts;
+    if(edits) parts << QStringLiteral("%1 edited row(s)").arg(edits);
+    if(ins)   parts << QStringLiteral("%1 new").arg(ins);
+    if(del)   parts << QStringLiteral("%1 to delete").arg(del);
+    m_pendingLabel->setText(parts.join(QStringLiteral(", ")));
 }
 
 void TableDataView::reload()
@@ -378,13 +443,57 @@ void TableDataView::applyPendingEdits()
 {
     if(!m_valid || !m_conn)
         return;
-    const QList<int> rows = m_model->dirtyRows();
-    if(rows.isEmpty())
+    const QList<int> edited = m_model->dirtyRows();
+    const QList<int> inserted = m_model->rowsWithState(TableDataModel::Inserted);
+    const QList<int> deleted = m_model->rowsWithState(TableDataModel::Deleted);
+    if(edited.isEmpty() && inserted.isEmpty() && deleted.isEmpty())
         return;
 
+    const auto fail = [&](const QString &what) {
+        const QString err = QString::fromUtf8(mysql_error(m_conn));
+        mysql_query(m_conn, "ROLLBACK");
+        emit statusMessage(QStringLiteral("Apply failed on %1 (rolled back): %2")
+                               .arg(what, err));
+    };
+    const QByteArray db = m_db.toUtf8(), tbl = m_table.toUtf8();
+
     mysql_query(m_conn, "START TRANSACTION");
-    int cells = 0;
-    for(int r : rows) {
+
+    /* 1. deletes (WHERE from the row's original values) */
+    for(int r : deleted) {
+        wyString q;
+        q.Sprintf("DELETE FROM `%s`.`%s` WHERE %s LIMIT 1", db.constData(),
+                  tbl.constData(), whereFromOrigRow(r).toUtf8().constData());
+        if(mysql_query(m_conn, q.GetString()) != 0)
+            return fail(QStringLiteral("DELETE"));
+    }
+
+    /* 2. inserts (only columns the user filled in) */
+    for(int r : inserted) {
+        QStringList names, vals;
+        for(int c = 0; c < m_columns.size(); ++c) {
+            const QString v = m_model->cur(r, c);
+            if(v.isEmpty())
+                continue;
+            names << QStringLiteral("`%1`").arg(m_columns[c]);
+            vals  << (v == QStringLiteral("NULL") ? QStringLiteral("NULL")
+                                                  : quoteValue(v));
+        }
+        wyString q;
+        if(names.isEmpty())
+            q.Sprintf("INSERT INTO `%s`.`%s` () VALUES ()", db.constData(),
+                      tbl.constData());
+        else
+            q.Sprintf("INSERT INTO `%s`.`%s` (%s) VALUES (%s)", db.constData(),
+                      tbl.constData(),
+                      names.join(QStringLiteral(", ")).toUtf8().constData(),
+                      vals.join(QStringLiteral(", ")).toUtf8().constData());
+        if(mysql_query(m_conn, q.GetString()) != 0)
+            return fail(QStringLiteral("INSERT"));
+    }
+
+    /* 3. updates on edited existing rows */
+    for(int r : edited) {
         QStringList setParts;
         for(int c = 0; c < m_columns.size(); ++c) {
             if(!m_model->dirty(r, c))
@@ -394,29 +503,24 @@ void TableDataView::applyPendingEdits()
                             .arg(m_columns[c],
                                  v == QStringLiteral("NULL") ? QStringLiteral("NULL")
                                                              : quoteValue(v));
-            ++cells;
         }
         const QString where = whereFromOrigRow(r);
         if(setParts.isEmpty() || where.isEmpty())
             continue;
-
         wyString q;
-        q.Sprintf("UPDATE `%s`.`%s` SET %s WHERE %s LIMIT 1",
-                  m_db.toUtf8().constData(), m_table.toUtf8().constData(),
+        q.Sprintf("UPDATE `%s`.`%s` SET %s WHERE %s LIMIT 1", db.constData(),
+                  tbl.constData(),
                   setParts.join(QStringLiteral(", ")).toUtf8().constData(),
                   where.toUtf8().constData());
-        if(mysql_query(m_conn, q.GetString()) != 0) {
-            const QString err = QString::fromUtf8(mysql_error(m_conn));
-            mysql_query(m_conn, "ROLLBACK");
-            emit statusMessage(QStringLiteral("Apply failed (rolled back): %1")
-                                   .arg(err));
-            return;
-        }
+        if(mysql_query(m_conn, q.GetString()) != 0)
+            return fail(QStringLiteral("UPDATE"));
     }
+
     mysql_query(m_conn, "COMMIT");
-    m_model->commitAll();
-    emit statusMessage(QStringLiteral("Applied %1 change(s) across %2 row(s)")
-                           .arg(cells).arg(rows.size()));
+    emit statusMessage(QStringLiteral(
+        "Applied: %1 updated, %2 inserted, %3 deleted")
+        .arg(edited.size()).arg(inserted.size()).arg(deleted.size()));
+    reload();   /* refresh — picks up AUTO_INCREMENT / trigger effects */
 }
 
 void TableDataView::revertPendingEdits()
@@ -428,43 +532,18 @@ void TableDataView::revertPendingEdits()
 void TableDataView::deleteSelectedRow()
 {
     const QModelIndex idx = m_grid->currentIndex();
-    if(!m_valid || !idx.isValid() || !m_conn)
+    if(!m_valid || !idx.isValid())
         return;
-    if(m_model->pendingCells() > 0
-       && QMessageBox::question(this, QStringLiteral("Delete Row"),
-              QStringLiteral("There are staged edits. Delete this row now "
-                             "anyway? (staged edits stay pending)"))
-              != QMessageBox::Yes)
-        return;
-    const int row = idx.row();
-
-    wyString q;
-    q.Sprintf("DELETE FROM `%s`.`%s` WHERE %s LIMIT 1",
-              m_db.toUtf8().constData(), m_table.toUtf8().constData(),
-              whereFromOrigRow(row).toUtf8().constData());
-
-    if(mysql_query(m_conn, q.GetString()) != 0) {
-        emit statusMessage(QStringLiteral("DELETE failed: ")
-                           + mysql_error(m_conn));
-        return;
-    }
-    m_model->removeRow_(row);
-    emit statusMessage(QStringLiteral("1 row deleted"));
+    m_model->toggleDeleted(idx.row());   /* staged — commit with Apply */
 }
 
 void TableDataView::addRow()
 {
-    if(!m_valid || !m_conn)
+    if(!m_valid)
         return;
-    wyString q;
-    q.Sprintf("INSERT INTO `%s`.`%s` () VALUES ()",
-              m_db.toUtf8().constData(), m_table.toUtf8().constData());
-    if(mysql_query(m_conn, q.GetString()) != 0) {
-        emit statusMessage(QStringLiteral("INSERT failed: ")
-                           + mysql_error(m_conn));
-        return;
-    }
-    reload();   /* picks up defaults/auto-increment from the server */
+    const int r = m_model->stageNewRow();
+    m_grid->setCurrentIndex(m_model->index(r, 0));
+    m_grid->edit(m_model->index(r, 0));   /* jump straight into editing */
 }
 
 void TableDataView::setCellNull()
