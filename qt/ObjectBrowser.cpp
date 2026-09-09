@@ -102,6 +102,8 @@ ObjectBrowser::ObjectBrowser(QWidget *parent)
                            [this, db, table] { emit renameTableRequested(db, table); });
             menu.addAction(QStringLiteral("D&uplicate Table…"), this,
                            [this, db, table] { emit copyTableRequested(db, table); });
+            menu.addAction(QStringLiteral("&Import CSV…"), this,
+                           [this, db, table] { emit importCsvRequested(db, table); });
             menu.addSeparator();
             menu.addAction(QStringLiteral("Create &Table…"), this,
                            [this, db] { emit createTableRequested(db); });

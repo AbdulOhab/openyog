@@ -381,8 +381,10 @@ MainWindow::MainWindow(QWidget *parent)
     addDisabled(tblBackup, QStringLiteral("&Export Table Data As…\tCtrl+Alt+C"));
     QMenu *tblImport = table->addMenu(QStringLiteral("&Import "));
     addDisabled(tblImport, QStringLiteral("Import E&xternal Data…\tCtrl+Alt+O"));
-    addDisabled(tblImport,
+    QAction *importCsv = tblImport->addAction(
         QStringLiteral("&Import CSV Data Using LOAD LOCAL…\tCtrl+Shift+M"));
+    connect(importCsv, &QAction::triggered, this,
+            [onSelectedTable] { onSelectedTable(&ConnectionTab::promptImportCsv); });
     addDisabled(tblImport,
         QStringLiteral("Import &XML Data Using LOAD LOCAL…\tCtrl+Shift+X"));
     table->addSeparator();

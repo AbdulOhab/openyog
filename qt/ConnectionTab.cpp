@@ -291,6 +291,7 @@ ConnectionTab::ConnectionTab(const ConnectionParams &params, QWidget *parent)
     /* ---- open the connection ------------------------------------- */
     m_conn = mysql_init(nullptr);
     mysql_options(m_conn, MYSQL_SET_CHARSET_NAME, "utf8mb4");
+    { unsigned int on = 1; mysql_options(m_conn, MYSQL_OPT_LOCAL_INFILE, &on); }
     if(!mysql_real_connect(m_conn, m_params.host.toUtf8(), m_params.user.toUtf8(),
                            m_params.password.toUtf8(),
                            m_params.database.isEmpty() ? nullptr
@@ -335,6 +336,8 @@ ConnectionTab::ConnectionTab(const ConnectionParams &params, QWidget *parent)
             [this](const QString &db) { promptDumpDatabase(db); });
     connect(m_browser, &ObjectBrowser::copyDatabaseRequested, this,
             [this](const QString &db) { promptCopyDatabase(db); });
+    connect(m_browser, &ObjectBrowser::importCsvRequested, this,
+            &ConnectionTab::promptImportCsv);
     connect(m_browser, &ObjectBrowser::truncateTableRequested, this,
             &ConnectionTab::truncateTable);
 
@@ -1218,6 +1221,131 @@ bool ConnectionTab::copyDatabaseTo(const QString &srcDb, const QString &tgtDb,
         mysql_query(m_conn, use.GetString());
     }
     return ok;
+}
+
+void ConnectionTab::promptImportCsv(const QString &database, const QString &table)
+{
+    if(!m_conn)
+        return;
+    const QString db = database.isEmpty() ? m_params.database : database;
+
+    const QString file = QFileDialog::getOpenFileName(
+        this, QStringLiteral("Import CSV — pick a file"), QString(),
+        QStringLiteral("CSV / text (*.csv *.tsv *.txt);;All files (*)"));
+    if(file.isEmpty())
+        return;
+
+    /* target table + parse options */
+    QStringList tbls;
+    wyString sq;
+    sq.Sprintf("SHOW TABLES FROM `%s`",
+               QString(db).replace('`', QStringLiteral("``")).toUtf8().constData());
+    if(mysql_query(m_conn, sq.GetString()) == 0) {
+        if(MYSQL_RES *res = mysql_store_result(m_conn)) {
+            while(MYSQL_ROW row = mysql_fetch_row(res))
+                if(row[0]) tbls << QString::fromUtf8(row[0]);
+            mysql_free_result(res);
+        }
+    }
+
+    QDialog dlg(this);
+    dlg.setWindowTitle(QStringLiteral("Import CSV into `%1`").arg(db));
+    auto *tbl = new QComboBox(&dlg);
+    tbl->addItems(tbls);
+    if(!table.isEmpty())
+        tbl->setCurrentText(table);
+    auto *fieldSep = new QLineEdit(QStringLiteral(","), &dlg);
+    auto *enclosure = new QLineEdit(QStringLiteral("\""), &dlg);
+    auto *lineSep = new QComboBox(&dlg);
+    lineSep->addItems({ QStringLiteral("\\n  (Unix)"), QStringLiteral("\\r\\n  (Windows)") });
+    auto *header = new QCheckBox(QStringLiteral("First line holds column names"), &dlg);
+    header->setChecked(true);
+    auto *truncate = new QCheckBox(QStringLiteral("Empty the table first"), &dlg);
+    auto *replace = new QCheckBox(QStringLiteral("REPLACE existing rows (by key)"), &dlg);
+
+    auto *form = new QFormLayout;
+    form->addRow(QStringLiteral("Target table"), tbl);
+    form->addRow(QStringLiteral("Field separator"), fieldSep);
+    form->addRow(QStringLiteral("Quote character"), enclosure);
+    form->addRow(QStringLiteral("Line separator"), lineSep);
+    form->addRow(QString(), header);
+    form->addRow(QString(), truncate);
+    form->addRow(QString(), replace);
+    auto *buttons = new QDialogButtonBox(
+        QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
+    buttons->button(QDialogButtonBox::Ok)->setText(QStringLiteral("Import"));
+    connect(buttons, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
+    auto *lay = new QVBoxLayout(&dlg);
+    lay->addLayout(form);
+    lay->addWidget(new QLabel(QStringLiteral(
+        "Uses LOAD DATA LOCAL INFILE — the server must allow local-infile."),
+        &dlg));
+    lay->addWidget(buttons);
+    if(dlg.exec() != QDialog::Accepted || tbl->currentText().isEmpty())
+        return;
+
+    const QString target = tbl->currentText();
+    const QString sep = fieldSep->text().isEmpty() ? QStringLiteral(",")
+                                                   : fieldSep->text();
+    const QString quote = enclosure->text();
+    const auto esc = [](QString s) {
+        return s.replace('\\', QStringLiteral("\\\\"))
+                .replace('\'', QStringLiteral("\\'"));
+    };
+
+    /* when the file has a header row, map by name — otherwise LOAD DATA loads
+     * positionally into every column (wrong for an AUTO_INCREMENT-first table) */
+    QString colList;
+    if(header->isChecked()) {
+        QFile f(file);
+        if(f.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            const QString line = QString::fromUtf8(f.readLine()).trimmed();
+            QStringList cols;
+            for(QString c : line.split(sep)) {
+                c = c.trimmed();
+                if(!quote.isEmpty() && c.startsWith(quote) && c.endsWith(quote))
+                    c = c.mid(quote.size(), c.size() - 2 * quote.size());
+                cols << QStringLiteral("`%1`").arg(c.replace('`', QStringLiteral("``")));
+            }
+            if(!cols.isEmpty())
+                colList = QStringLiteral(" (%1)").arg(cols.join(QStringLiteral(", ")));
+        }
+    }
+
+    if(truncate->isChecked())
+        execDdl(QStringLiteral("TRUNCATE TABLE `%1`.`%2`").arg(db, target));
+
+    QString sql = QStringLiteral(
+        "LOAD DATA LOCAL INFILE '%1' %2 INTO TABLE `%3`.`%4` "
+        "CHARACTER SET utf8mb4 "
+        "FIELDS TERMINATED BY '%5' ENCLOSED BY '%6' "
+        "LINES TERMINATED BY '%7'%8%9")
+        .arg(esc(file),
+             replace->isChecked() ? QStringLiteral("REPLACE") : QStringLiteral("IGNORE"),
+             db, target, esc(sep), esc(quote),
+             lineSep->currentIndex() == 1 ? QStringLiteral("\\r\\n")
+                                          : QStringLiteral("\\n"),
+             header->isChecked() ? QStringLiteral(" IGNORE 1 LINES") : QString(),
+             colList);
+
+    wyString q;
+    q.SetAs(sql.toUtf8().constData());
+    if(mysql_query(m_conn, q.GetString()) != 0) {
+        m_messages->setPlainText(QStringLiteral("Import failed: %1")
+                                     .arg(QString::fromUtf8(mysql_error(m_conn))));
+    } else {
+        const char *info = mysql_info(m_conn);
+        m_messages->setPlainText(QStringLiteral("Imported into `%1`.`%2` — %3")
+            .arg(db, target,
+                 info ? QString::fromUtf8(info)
+                      : QStringLiteral("%1 row(s)")
+                            .arg((long long)mysql_affected_rows(m_conn))));
+        if(m_tableData->loadedTable() == target)
+            m_tableData->load(m_conn, db, target);
+    }
+    m_resultTabs->setCurrentWidget(m_messages);
+    refreshBrowser();
 }
 
 void ConnectionTab::promptManageForeignKeys(const QString &database,
