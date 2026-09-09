@@ -14,6 +14,7 @@
 #include "ConnectionParams.h"
 #include "ConnectionStore.h"
 #include "CreateTableDialog.h"
+#include "IndexDialog.h"
 #include "Theme.h"
 
 #include <QApplication>
@@ -28,6 +29,7 @@ int main(int argc, char *argv[])
     QString screenshot;
     bool shotDialog = false;
     bool shotCreateTable = false;
+    bool shotIndexDlg = false;
     QPair<QString, QString> openTableParts;
     int editRow = -1, editCol = -1;
     bool stageOnly = false;
@@ -44,6 +46,8 @@ int main(int argc, char *argv[])
             shotDialog = true;
         if(a == QStringLiteral("--createtable"))
             shotCreateTable = true;
+        if(a == QStringLiteral("--indexdlg"))
+            shotIndexDlg = true;
         /* --opentable=db:table (selftest: opens the editable data grid) */
         /* --editcell=row:col:value  stage the edit AND apply it (UPDATE path) */
         /* --stagecell=row:col:value stage only (shows the amber cell + Apply bar) */
@@ -119,11 +123,22 @@ int main(int argc, char *argv[])
     }
 
     if(!screenshot.isEmpty()) {
-        if(shotDialog || shotCreateTable) {
-            QWidget *dlg = shotCreateTable
-                ? static_cast<QWidget *>(
-                      new CreateTableDialog(QStringLiteral("port_test")))
-                : static_cast<QWidget *>(new ConnectionDialog);
+        if(shotDialog || shotCreateTable || shotIndexDlg) {
+            QWidget *dlg = nullptr;
+            if(shotIndexDlg) {
+                IndexDialog::IndexDef pk{ QStringLiteral("PRIMARY"),
+                    { QStringLiteral("id") }, true, true };
+                IndexDialog::IndexDef ix{ QStringLiteral("idx_city"),
+                    { QStringLiteral("city") }, false, false };
+                dlg = new IndexDialog(QStringLiteral("port_test"),
+                    QStringLiteral("employees"), { pk, ix },
+                    { QStringLiteral("id"), QStringLiteral("name"),
+                      QStringLiteral("salary"), QStringLiteral("city") });
+            } else if(shotCreateTable) {
+                dlg = new CreateTableDialog(QStringLiteral("port_test"));
+            } else {
+                dlg = new ConnectionDialog;
+            }
             dlg->show();
             QTimer::singleShot(200, [dlg, screenshot] {
                 dlg->grab().save(screenshot);

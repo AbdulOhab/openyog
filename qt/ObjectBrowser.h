@@ -32,6 +32,7 @@ signals:
     void alterTableRequested(const QString &db, const QString &table);
     void renameTableRequested(const QString &db, const QString &table);
     void copyTableRequested(const QString &db, const QString &table);
+    void manageIndexesRequested(const QString &db, const QString &table);
     void dumpDatabaseRequested(const QString &db);
     void statusMessage(const QString &text);
 

@@ -3,6 +3,7 @@
 #include "TableDataView.h"
 #include "SqlHighlighter.h"
 #include "CreateTableDialog.h"
+#include "IndexDialog.h"
 #include "SqlDump.h"
 #include "Icons.h"
 #include "wyString.h"
@@ -268,6 +269,8 @@ ConnectionTab::ConnectionTab(const ConnectionParams &params, QWidget *parent)
             &ConnectionTab::promptRenameTable);
     connect(m_browser, &ObjectBrowser::copyTableRequested, this,
             &ConnectionTab::promptCopyTable);
+    connect(m_browser, &ObjectBrowser::manageIndexesRequested, this,
+            &ConnectionTab::promptManageIndexes);
     connect(m_browser, &ObjectBrowser::dumpDatabaseRequested, this,
             [this](const QString &db) { promptDumpDatabase(db); });
     connect(m_browser, &ObjectBrowser::truncateTableRequested, this,
@@ -659,6 +662,71 @@ void ConnectionTab::promptCopyTable(const QString &database, const QString &tabl
     }
     if(wantData->isChecked())
         execDdl(QStringLiteral("INSERT INTO %1 SELECT * FROM %2").arg(dst, src));
+}
+
+void ConnectionTab::promptManageIndexes(const QString &database,
+                                        const QString &table)
+{
+    if(!m_conn || table.isEmpty())
+        return;
+    const QString db = database.isEmpty() ? m_params.database : database;
+
+    QList<IndexDialog::IndexDef> indexes;
+    const auto findIx = [&](const QString &n) -> IndexDialog::IndexDef * {
+        for(auto &ix : indexes)
+            if(ix.name == n)
+                return &ix;
+        return nullptr;
+    };
+    wyString q;
+    q.Sprintf("SHOW INDEX FROM `%s`.`%s`", db.toUtf8().constData(),
+              table.toUtf8().constData());
+    if(mysql_query(m_conn, q.GetString()) != 0) {
+        QMessageBox::warning(this, QStringLiteral("Manage Indexes"),
+                             QString::fromUtf8(mysql_error(m_conn)));
+        return;
+    }
+    if(MYSQL_RES *res = mysql_store_result(m_conn)) {
+        while(MYSQL_ROW row = mysql_fetch_row(res)) {
+            /* 1=Non_unique 2=Key_name 4=Column_name */
+            const QString name = QString::fromUtf8(row[2] ? row[2] : "");
+            const QString col  = QString::fromUtf8(row[4] ? row[4] : "");
+            IndexDialog::IndexDef *ix = findIx(name);
+            if(!ix) {
+                IndexDialog::IndexDef nd;
+                nd.name = name;
+                nd.unique = row[1] && QString::fromUtf8(row[1]) == QStringLiteral("0");
+                nd.primary = name == QStringLiteral("PRIMARY");
+                indexes << nd;
+                ix = &indexes.last();
+            }
+            ix->columns << col;
+        }
+        mysql_free_result(res);
+    }
+
+    QStringList cols;
+    q.Sprintf("SHOW COLUMNS FROM `%s`.`%s`", db.toUtf8().constData(),
+              table.toUtf8().constData());
+    if(mysql_query(m_conn, q.GetString()) == 0) {
+        if(MYSQL_RES *res = mysql_store_result(m_conn)) {
+            while(MYSQL_ROW row = mysql_fetch_row(res))
+                if(row[0])
+                    cols << QString::fromUtf8(row[0]);
+            mysql_free_result(res);
+        }
+    }
+
+    IndexDialog dlg(db, table, indexes, cols, this);
+    if(dlg.exec() != QDialog::Accepted)
+        return;
+    const QString sql = dlg.buildSql();
+    if(sql.isEmpty()) {
+        QMessageBox::information(this, QStringLiteral("Manage Indexes"),
+                                QStringLiteral("No changes to apply."));
+        return;
+    }
+    execDdl(sql);
 }
 
 void ConnectionTab::promptAlterTable(const QString &database,

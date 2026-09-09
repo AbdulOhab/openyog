@@ -301,10 +301,7 @@ MainWindow::MainWindow(QWidget *parent)
     QAction *alterTbl = table->addAction(QStringLiteral("&Alter Table\tF6"));
     alterTbl->setShortcut(QKeySequence(Qt::Key_F6));
     connect(alterTbl, &QAction::triggered, this, &MainWindow::alterTable);
-    addDisabled(table, QStringLiteral("&Manage Indexes\tF7"));
-    addDisabled(table, QStringLiteral("Re&lationships/Foreign Keys\tF10"));
-    QMenu *moreTable = table->addMenu(QStringLiteral("Mo&re Table Operations"));
-    /* each acts on the object browser's selected table */
+    /* each of these acts on the object browser's selected table */
     const auto onSelectedTable = [this](void (ConnectionTab::*fn)(const QString &,
                                                                   const QString &)) {
         auto *tab = currentTab();
@@ -317,6 +314,12 @@ MainWindow::MainWindow(QWidget *parent)
         }
         (tab->*fn)(info[0], info[1]);
     };
+    QAction *manageIdx = table->addAction(QStringLiteral("&Manage Indexes\tF7"));
+    manageIdx->setShortcut(QKeySequence(Qt::Key_F7));
+    connect(manageIdx, &QAction::triggered, this,
+            [onSelectedTable] { onSelectedTable(&ConnectionTab::promptManageIndexes); });
+    addDisabled(table, QStringLiteral("Re&lationships/Foreign Keys\tF10"));
+    QMenu *moreTable = table->addMenu(QStringLiteral("Mo&re Table Operations"));
     QAction *renameTbl = moreTable->addAction(QStringLiteral("&Rename Table\tF2"));
     renameTbl->setShortcut(QKeySequence(Qt::Key_F2));
     connect(renameTbl, &QAction::triggered, this,
