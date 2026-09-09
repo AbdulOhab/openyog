@@ -1079,6 +1079,7 @@ void ConnectionTab::promptCopyDatabase(const QString &database)
             mysql_query(dst, QStringLiteral("USE `%1`").arg(tq).toUtf8().constData());
             SqlDump::Options opt;
             opt.data = wantData->isChecked();
+            opt.routines = wantRoutines->isChecked();
             ok = SqlDump::forEachStatement(
                 m_conn, srcDb, {}, opt,
                 [&](const QString &stmt) {

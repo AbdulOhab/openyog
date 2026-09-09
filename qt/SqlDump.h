@@ -22,6 +22,8 @@ struct Options
     bool addDropTable = true;
     bool structure    = true;
     bool data         = true;
+    bool routines     = false;   /* forEachStatement: also views/procs/funcs/
+                                  * triggers/events (DEFINER stripped) */
     int  rowsPerInsert = 100;
 };
 
@@ -30,9 +32,11 @@ struct Options
 bool write(MYSQL *conn, const QString &db, const QStringList &tables,
            const Options &opt, QIODevice *out, QString *error);
 
-/* Base tables only, as one statement at a time (no trailing ';', no comments)
- * — the CREATE comes straight from SHOW CREATE TABLE so constraints/FKs are
- * preserved. Handed to `exec` to replay a database onto another connection.
+/* The database as one statement at a time (no trailing ';', no comments):
+ * base tables (CREATE from SHOW CREATE TABLE, so constraints/FKs survive) +
+ * batched INSERTs, and — with opt.routines — views / procedures / functions /
+ * triggers / events (DEFINER stripped, source-db qualifier removed; the caller
+ * must have USE'd the target). Handed to `exec` to replay onto another conn.
  * Stops and returns false if `exec` returns false (then *error is whatever
  * exec left, or unset). */
 bool forEachStatement(MYSQL *conn, const QString &db, const QStringList &tables,
