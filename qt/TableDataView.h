@@ -1,8 +1,10 @@
 /* OpenYog — editable table-data grid (SQLyog's "2_Table Data" pane,
  * upstream DataView.cpp/CustGrid.cpp semantics):
- *   - cell edits are STAGED (dirty cells shown amber); Apply commits them in
- *     one transaction as one UPDATE per changed row, Revert drops them
- *   - row delete / add still act immediately (and reload, clearing staging)
+ *   - all changes are STAGED and committed together by Apply, dropped by Revert:
+ *       edited cell  → amber       (UPDATE, one per changed row)
+ *       new row      → green,  ＋   (INSERT of the filled-in columns)
+ *       row to delete→ red, strike, ✕  (DELETE)
+ *   - Apply runs deletes → inserts → updates in one transaction, then reloads
  *   - row match  = PK columns when a PRIMARY KEY exists (upstream
  *     IsAnyPrimary/IsColumnPrimary logic), else ALL columns (upstream fallback);
  *     the WHERE always uses the row's ORIGINAL (pre-edit) values
