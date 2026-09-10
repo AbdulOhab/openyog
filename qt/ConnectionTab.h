@@ -27,6 +27,7 @@ class ObjectBrowser;
 class TableDataView;
 class FindBar;
 class QPlainTextEdit;
+namespace SqlDump { struct Options; }
 
 /* one statement's outcome, collected on the worker thread */
 struct QueryResult
@@ -101,6 +102,9 @@ public slots:
     void promptDumpDatabase(const QString &database = {});
     /* non-interactive core, also used by the --dumpdb selftest */
     bool dumpDatabaseToFile(const QString &database, const QString &path,
+                            QString *error);
+    bool dumpDatabaseToFile(const QString &database, const QString &path,
+                            const QStringList &tables, const SqlDump::Options &opt,
                             QString *error);
     void addEditorTab();
     void closeEditorTab(int index);   /* × on a Query / schema-object tab */
