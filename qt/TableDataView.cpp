@@ -2,11 +2,13 @@
 #include "Icons.h"
 #include "wyString.h"
 
+#include <QAbstractButton>
 #include <QApplication>
 #include <QButtonGroup>
 #include <QCheckBox>
 #include <QClipboard>
 #include <QColor>
+#include <QEvent>
 #include <QFont>
 #include <QContextMenuEvent>
 #include <QDialog>
@@ -283,10 +285,72 @@ public:
         emit checkedChanged();
     }
 
+    /* select-all state for the header/corner checkbox */
+    Qt::CheckState allState() const
+    {
+        const int n = model() ? model()->rowCount() : 0;
+        if(n == 0 || m_checked.isEmpty())
+            return Qt::Unchecked;
+        return m_checked.size() >= n ? Qt::Checked : Qt::PartiallyChecked;
+    }
+
+    /* SQLyog puts a select-all checkbox in the grid corner (where the two
+     * headers meet) — paint one onto QTableView's corner button and make it
+     * toggle every row instead of "select all cells" */
+    void attachCornerButton(QAbstractButton *b)
+    {
+        m_corner = b;
+        b->setText(QString());
+        b->installEventFilter(this);
+        connect(this, &RowCheckHeader::checkedChanged,
+                b, qOverload<>(&QWidget::update));
+    }
+
 signals:
     void checkedChanged();
 
 protected:
+    bool eventFilter(QObject *o, QEvent *e) override
+    {
+        if(o == m_corner) {
+            switch(e->type()) {
+            case QEvent::Paint: {
+                QPainter p(m_corner);
+                const QRect br = m_corner->rect();
+                /* same themed grey as the header sections, + hairline right/bottom */
+                QStyleOptionHeader ho;
+                ho.initFrom(m_corner);
+                ho.rect = br;
+                ho.position = QStyleOptionHeader::OnlyOneSection;
+                m_corner->style()->drawControl(QStyle::CE_Header, &ho, &p, m_corner);
+                p.setPen(m_corner->palette().color(QPalette::Mid));
+                p.drawLine(br.topRight(), br.bottomRight());
+                p.drawLine(br.bottomLeft(), br.bottomRight());
+
+                const int sz = 14;
+                QStyleOptionButton co;
+                co.state = QStyle::State_Enabled
+                         | (allState() == Qt::Checked ? QStyle::State_On
+                                                      : QStyle::State_Off);
+                co.rect = QRect(br.center().x() - sz / 2 + 1,
+                                br.center().y() - sz / 2 + 1, sz, sz);
+                m_corner->style()->drawPrimitive(QStyle::PE_IndicatorCheckBox,
+                                                 &co, &p, m_corner);
+                return true;                 /* swallow the default corner paint */
+            }
+            case QEvent::MouseButtonRelease:
+                setAllChecked(allState() != Qt::Checked);   /* all → none, else all */
+                return true;                 /* swallow "select all cells" */
+            case QEvent::MouseButtonPress:
+            case QEvent::MouseButtonDblClick:
+                return true;
+            default:
+                break;
+            }
+        }
+        return QHeaderView::eventFilter(o, e);
+    }
+
     void paintSection(QPainter *p, const QRect &rect, int logical) const override
     {
         if(!rect.isValid())
@@ -342,7 +406,8 @@ private:
         return QRect(sec.center().x() - sz / 2, sec.center().y() - sz / 2, sz, sz);
     }
 
-    QSet<int> m_checked;
+    QSet<int>        m_checked;
+    QAbstractButton *m_corner = nullptr;
 };
 
 /* ---------------- the view ---------------- */
@@ -621,6 +686,9 @@ TableDataView::TableDataView(QWidget *parent)
     /* row-select checkbox column on the left (SQLyog's leftmost grid column) */
     m_checkHeader = new RowCheckHeader(m_grid);
     m_grid->setVerticalHeader(m_checkHeader);
+    m_grid->setCornerButtonEnabled(true);
+    if(auto *corner = m_grid->findChild<QAbstractButton *>())
+        m_checkHeader->attachCornerButton(corner);   /* select-all checkbox */
     connect(m_checkHeader, &RowCheckHeader::checkedChanged, this, [this] {
         const int n = m_checkHeader->checkedRows().size();
         emit statusMessage(n ? QStringLiteral("%1 row(s) checked").arg(n)
@@ -859,6 +927,10 @@ void TableDataView::checkRowsForTest(const QString &csv)
 {
     if(!m_checkHeader)
         return;
+    if(csv.trimmed() == QLatin1String("all")) {
+        m_checkHeader->setAllChecked(true);
+        return;
+    }
     m_checkHeader->setAllChecked(false);
     for(const QString &tok : csv.split(QLatin1Char(','), Qt::SkipEmptyParts)) {
         bool ok = false;
