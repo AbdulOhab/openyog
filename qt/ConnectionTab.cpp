@@ -1047,6 +1047,12 @@ void ConnectionTab::setDataViewMode(const QString &mode)
         m_tableData->checkRowsForTest(mode.mid(6));
         return;
     }
+    if(mode.startsWith(QStringLiteral("hex:"))) {
+        const QStringList p = mode.mid(4).split(QLatin1Char(':'));
+        if(p.size() == 3)
+            m_tableData->hexCellForTest(p[0].toInt(), p[1].toInt(), p[2]);
+        return;
+    }
     m_tableData->setViewMode(mode == QStringLiteral("text") ? 2 : 0);
 }
 
