@@ -125,7 +125,9 @@ MainWindow::MainWindow(QWidget *parent)
     QAction *newConn = file->addAction(QStringLiteral("New &Connection…\tCtrl+M"));
     connect(newConn, &QAction::triggered, this, &MainWindow::newConnection);
     file->addSeparator();
-    addDisabled(file, QStringLiteral("New &Query Editor\tCtrl+T"));
+    connect(file->addAction(QStringLiteral("New &Query Editor\tCtrl+T")),
+            &QAction::triggered, this,
+            [this] { if(auto *t = currentTab()) t->addEditorTab(); });
     addDisabled(file, QStringLiteral("New Query &Builder\tCtrl+K"));
     addDisabled(file, QStringLiteral("Ne&w Schema Designer\tCtrl+Alt+D"));
     addDisabled(file, QStringLiteral("New Data Searc&h\tCtrl+Shift+D"));
@@ -135,7 +137,9 @@ MainWindow::MainWindow(QWidget *parent)
         if(m_tabs->currentIndex() >= 0)
             closeTab(m_tabs->currentIndex());
     });
-    addDisabled(file, QStringLiteral("&Rename Tab\tAlt+F2"));
+    connect(file->addAction(QStringLiteral("&Rename Tab\tAlt+F2")),
+            &QAction::triggered, this,
+            [this] { if(auto *t = currentTab()) t->renameCurrentEditorTab(); });
     QAction *disconnect = file->addAction(QStringLiteral("&Disconnect\tCtrl+F4"));
     connect(disconnect, &QAction::triggered, this, [this] {
         if(m_tabs->currentIndex() >= 0)
@@ -162,7 +166,8 @@ MainWindow::MainWindow(QWidget *parent)
         if(auto *tab = currentTab())
             tab->saveEditor();
     });
-    addDisabled(file, QStringLiteral("S&ave As…"));
+    connect(file->addAction(QStringLiteral("S&ave As…")), &QAction::triggered,
+            this, [this] { if(auto *t = currentTab()) t->saveEditor(); });
     file->addSeparator();
     addDisabled(file, QStringLiteral("Open Session Savepoint…\tCtrl+Shift+O"));
     addDisabled(file, QStringLiteral("Save Session…\tCtrl+Shift+S"));
@@ -180,7 +185,9 @@ MainWindow::MainWindow(QWidget *parent)
     QAction *refresh = edit->addAction(QStringLiteral("Refresh &Object Browser\tF5"));
     connect(refresh, &QAction::triggered, this, &MainWindow::refreshBrowser);
     addDisabled(edit, QStringLiteral("Change Objec&t Browser Color"));
-    addDisabled(edit, QStringLiteral("Collapse All in Object Browser\tShift+{-}"));
+    connect(edit->addAction(QStringLiteral("Collapse All in Object Browser")),
+            &QAction::triggered, this,
+            [this] { if(auto *t = currentTab()) t->collapseBrowser(); });
     edit->addSeparator();
     QMenu *execMenu = edit->addMenu(QStringLiteral("Execute Quer&y"));
     QAction *execQuery = execMenu->addAction(QStringLiteral("Exe&cute Query\tF9"));
@@ -188,7 +195,9 @@ MainWindow::MainWindow(QWidget *parent)
     QAction *execAll = execMenu->addAction(QStringLiteral("Execute &All Queries\tCtrl+F9"));
     connect(execAll, &QAction::triggered, this,
             [this] { if(auto *t = currentTab()) t->runAll(); });
-    addDisabled(execMenu, QStringLiteral("Execute And Edit &Resultset\tF8"));
+    connect(execMenu->addAction(QStringLiteral("Execute And Edit &Resultset\tF8")),
+            &QAction::triggered, this,
+            [this] { if(auto *t = currentTab()) t->runAndEdit(); });
     QMenu *explain = edit->addMenu(QStringLiteral("Execute Explain"));
     connect(explain->addAction(QStringLiteral("&EXPLAIN Current Query")),
             &QAction::triggered, this,
@@ -227,11 +236,15 @@ MainWindow::MainWindow(QWidget *parent)
     QAction *copy = edit->addAction(QStringLiteral("&Copy\tCtrl+C"));
     connect(copy, &QAction::triggered, this,
             [this] { editClipboard(QStringLiteral("copy")); });
-    addDisabled(edit, QStringLiteral("Copy With Normalized &Whitespace\tAlt+C"));
+    connect(edit->addAction(QStringLiteral("Copy With Normalized &Whitespace\tAlt+C")),
+            &QAction::triggered, this,
+            [this] { if(auto *t = currentTab()) t->editorCopyNormalizedWhitespace(); });
     QAction *paste = edit->addAction(QStringLiteral("&Paste\tCtrl+V"));
     connect(paste, &QAction::triggered, this,
             [this] { editClipboard(QStringLiteral("paste")); });
-    addDisabled(edit, QStringLiteral("Insert From Fi&le…"));
+    connect(edit->addAction(QStringLiteral("Insert From Fi&le…")),
+            &QAction::triggered, this,
+            [this] { if(auto *t = currentTab()) t->editorInsertFromFile(); });
     QAction *selAll = edit->addAction(QStringLiteral("Select &All\tCtrl+A"));
     connect(selAll, &QAction::triggered, this,
             [this] { editClipboard(QStringLiteral("selectall")); });
@@ -367,7 +380,16 @@ MainWindow::MainWindow(QWidget *parent)
     connect(dbDump, &QAction::triggered, this, [this] { dumpDatabase(); });
     QMenu *dbImport = database->addMenu(QStringLiteral("&Import "));
     addDisabled(dbImport, QStringLiteral("Import E&xternal Data…\tCtrl+Alt+O"));
-    addDisabled(dbImport, QStringLiteral("&Execute SQL Script…\tCtrl+Shift+Q"));
+    connect(dbImport->addAction(QStringLiteral("&Execute SQL Script…\tCtrl+Shift+Q")),
+            &QAction::triggered, this, [this] {
+        if(auto *t = currentTab()) {
+            const QString f = QFileDialog::getOpenFileName(
+                this, QStringLiteral("Execute SQL script"), QString(),
+                QStringLiteral("SQL (*.sql);;All (*)"));
+            if(!f.isEmpty())
+                t->openSqlFile(f);
+        }
+    });
     database->addSeparator();
     addDisabled(database,
         QStringLiteral("Create Schema For Database In &HTML…\tCtrl+Shift+Alt+S"));
@@ -448,7 +470,10 @@ MainWindow::MainWindow(QWidget *parent)
     table->addSeparator();
     QMenu *tblBackup = table->addMenu(QStringLiteral("&Backup/Export"));
     addDisabled(tblBackup, QStringLiteral("&Scheduled Backups…\tCtrl+Alt+S"));
-    addDisabled(tblBackup, QStringLiteral("&Backup Table(s) As SQL Dump…\tCtrl+Alt+E"));
+    connect(tblBackup->addAction(
+                QStringLiteral("&Backup Table(s) As SQL Dump…\tCtrl+Alt+E")),
+            &QAction::triggered, this,
+            [onSelectedTable] { onSelectedTable(&ConnectionTab::dumpTable); });
     QAction *expTblData = tblBackup->addAction(
         QStringLiteral("&Export Table Data As…\tCtrl+Alt+C"));
     connect(expTblData, &QAction::triggered, this,

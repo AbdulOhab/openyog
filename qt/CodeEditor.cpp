@@ -1,8 +1,12 @@
 #include "CodeEditor.h"
 
 #include <QAbstractItemView>
+#include <QClipboard>
 #include <QCompleter>
+#include <QFile>
+#include <QFileDialog>
 #include <QFontDatabase>
+#include <QGuiApplication>
 #include <QKeyEvent>
 #include <QPainter>
 #include <QRegularExpression>
@@ -314,6 +318,30 @@ bool CodeEditor::findText(const QString &needle, bool caseSensitive,
     c.movePosition(backward ? QTextCursor::End : QTextCursor::Start);
     setTextCursor(c);
     return find(needle, f);
+}
+
+void CodeEditor::copyWithNormalizedWhitespace()
+{
+    QString t = textCursor().selectedText();
+    if(t.isEmpty())
+        t = toPlainText();
+    t.replace(QChar(0x2029), QLatin1Char('\n'));   /* QTextCursor para sep */
+    static const QRegularExpression ws(QStringLiteral("[ \\t]*\\n[ \\t\\n]*"));
+    t.replace(ws, QStringLiteral(" "));
+    t.replace(QRegularExpression(QStringLiteral("[ \\t]{2,}")), QStringLiteral(" "));
+    QGuiApplication::clipboard()->setText(t.trimmed());
+}
+
+void CodeEditor::insertFromFile()
+{
+    const QString path = QFileDialog::getOpenFileName(
+        this, QStringLiteral("Insert file contents"), QString(),
+        QStringLiteral("SQL / text (*.sql *.txt);;All files (*)"));
+    if(path.isEmpty())
+        return;
+    QFile f(path);
+    if(f.open(QIODevice::ReadOnly | QIODevice::Text))
+        textCursor().insertText(QString::fromUtf8(f.readAll()));
 }
 
 void CodeEditor::gotoLine(int line)

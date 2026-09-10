@@ -23,6 +23,8 @@ public:
     /* [db, table] of the currently selected table item, else empty */
     QStringList currentTableInfo() const;
 
+    void collapseTree();   /* Edit ▸ Collapse All in Object Browser */
+
 signals:
     void databaseActivated(const QString &db);      /* double click → USE */
     void tableActivated(const QString &db, const QString &table); /* → SELECT */

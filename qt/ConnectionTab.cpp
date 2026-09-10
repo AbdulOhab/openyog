@@ -632,6 +632,57 @@ void ConnectionTab::closeEditorTab(int index)
         m_editor = currentEditor();
 }
 
+void ConnectionTab::editorCopyNormalizedWhitespace()
+{
+    if(CodeEditor *ed = currentEditor())
+        ed->copyWithNormalizedWhitespace();
+}
+
+void ConnectionTab::editorInsertFromFile()
+{
+    if(CodeEditor *ed = currentEditor())
+        ed->insertFromFile();
+}
+
+void ConnectionTab::collapseBrowser()
+{
+    if(m_browser)
+        m_browser->collapseTree();
+}
+
+void ConnectionTab::renameCurrentEditorTab()
+{
+    const int idx = m_editorTabs->currentIndex();
+    if(idx < 0 || m_editorTabs->widget(idx) == m_historyPage)
+        return;
+    bool ok = false;
+    const QString name = QInputDialog::getText(
+        this, QStringLiteral("Rename Tab"), QStringLiteral("Tab name:"),
+        QLineEdit::Normal, m_editorTabs->tabText(idx), &ok);
+    if(ok && !name.trimmed().isEmpty())
+        m_editorTabs->setTabText(idx, name.trimmed());
+}
+
+void ConnectionTab::dumpTable(const QString &database, const QString &table)
+{
+    if(!m_conn || table.isEmpty())
+        return;
+    const QString db = database.isEmpty() ? m_params.database : database;
+    const QString path = QFileDialog::getSaveFileName(
+        this, QStringLiteral("Backup `%1` as SQL dump").arg(table),
+        table + QStringLiteral(".sql"), QStringLiteral("SQL (*.sql);;All (*)"));
+    if(path.isEmpty())
+        return;
+    QApplication::setOverrideCursor(Qt::WaitCursor);
+    QString err;
+    const bool ok = dumpDatabaseToFile(db, path, { table }, SqlDump::Options{}, &err);
+    QApplication::restoreOverrideCursor();
+    m_messages->setPlainText(ok
+        ? QStringLiteral("Dumped `%1`.`%2` → %3").arg(db, table, path)
+        : QStringLiteral("Dump failed: %1").arg(err));
+    m_resultTabs->setCurrentWidget(m_messages);
+}
+
 CodeEditor *ConnectionTab::openEditorWithSql(const QString &title,
                                              const QString &sql)
 {
@@ -764,6 +815,44 @@ void ConnectionTab::runAll()
 {
     if(CodeEditor *ed = currentEditor())
         runStatements(splitStatements(ed->toPlainText()), QStringLiteral("Result"));
+}
+
+/* F8 — run the current statement, and if it's a single-table SELECT open that
+ * table in the editable Table Data pane */
+void ConnectionTab::runAndEdit()
+{
+    CodeEditor *ed = currentEditor();
+    if(!ed)
+        return;
+    const QTextCursor c = ed->textCursor();
+    const QString stmt = (c.hasSelection()
+        ? c.selectedText().replace(QChar(0x2029), QLatin1Char('\n'))
+        : statementAt(ed->toPlainText(), c.position())).trimmed();
+
+    static const QRegularExpression re(
+        QStringLiteral("^SELECT\\b.*\\bFROM\\s+`?([A-Za-z0-9_$]+)`?"
+                       "(?:\\.`?([A-Za-z0-9_$]+)`?)?"),
+        QRegularExpression::CaseInsensitiveOption
+            | QRegularExpression::DotMatchesEverythingOption);
+    const auto m = re.match(stmt);
+    /* reject if a second table is joined/comma'd */
+    const bool multiTable = stmt.contains(QRegularExpression(
+        QStringLiteral("\\bJOIN\\b|\\bFROM\\b[^,]+,"),
+        QRegularExpression::CaseInsensitiveOption));
+
+    if(m.hasMatch() && !multiTable) {
+        const QString db = m.captured(2).isEmpty() ? m_params.database
+                                                   : m.captured(1);
+        const QString table = m.captured(2).isEmpty() ? m.captured(1)
+                                                      : m.captured(2);
+        openTableData(db, table);
+        emit executed(QStringLiteral("Editing `%1`.`%2` in Table Data")
+                          .arg(db, table));
+        return;
+    }
+    m_messages->appendPlainText(
+        QStringLiteral("F8 needs a single-table SELECT to edit — running read-only."));
+    runQuery();
 }
 
 /* Explain the current statement (FORMAT=JSON goes to the Messages pane) */
