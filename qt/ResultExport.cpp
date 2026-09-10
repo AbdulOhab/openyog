@@ -171,6 +171,14 @@ bool write(const QString &path, Format fmt, const QStringList &headers,
 
     case Format::Sql: {
         const QString tbl = opt.sqlTable;
+        if(opt.sqlStructure && !opt.sqlCreate.trimmed().isEmpty()) {
+            out << "DROP TABLE IF EXISTS `"
+                << QString(tbl).replace('`', QStringLiteral("``")) << "`;\n"
+                << opt.sqlCreate.trimmed();
+            if(!opt.sqlCreate.trimmed().endsWith(QLatin1Char(';')))
+                out << ";";
+            out << "\n\n";
+        }
         QStringList colList;
         for(const QString &h : headers)
             colList << QLatin1Char('`') + QString(h).replace('`', QStringLiteral("``"))

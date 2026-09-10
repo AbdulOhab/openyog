@@ -24,6 +24,8 @@ struct Options
     bool    header      = true;
     bool    bom         = false;               /* UTF-8 BOM (CSV/TSV) */
     QString sqlTable    = QStringLiteral("exported");   /* SQL INSERT target */
+    bool    sqlStructure = false;              /* SQL: emit DROP + CREATE first */
+    QString sqlCreate;                         /* the CREATE TABLE statement */
 };
 
 /* cell(row, col) returns the display string; a value equal to Options::nullText

@@ -23,6 +23,7 @@ public:
     ResultExport::Format    format() const;
     ResultExport::Options   options() const;
     bool                    selectionOnly() const;
+    bool                    includeStructure() const;   /* SQL: CREATE TABLE too */
 
 private slots:
     void syncForFormat();
@@ -39,6 +40,7 @@ private:
     QCheckBox *m_bom = nullptr;
     QCheckBox *m_crlf = nullptr;
     QCheckBox *m_selOnly = nullptr;
+    QCheckBox *m_structure = nullptr;
     QLabel    *m_delimLabel = nullptr;
     QLabel    *m_quoteLabel = nullptr;
     QLabel    *m_sqlTableLabel = nullptr;

@@ -29,6 +29,7 @@
 #include <QDebug>
 
 #include <QApplication>
+#include <QComboBox>
 #include <QFile>
 #include <QIcon>
 #include <QTextStream>
@@ -233,6 +234,28 @@ int main(int argc, char *argv[])
                     << "exporttest " << t.name << ": wrote=" << w
                     << " marker=" << has << (w && has ? "  PASS\n" : "  FAIL\n");
             }
+            /* SQL with structure */
+            {
+                ResultExport::Options so;
+                so.sqlStructure = true;
+                so.sqlTable = QStringLiteral("t1");
+                so.sqlCreate = QStringLiteral("CREATE TABLE `t1` (`id` INT)");
+                const QString p = dir + QStringLiteral("/exporttest_struct.sql");
+                QString err;
+                bool w = ResultExport::write(p, ResultExport::Format::Sql, headers,
+                                             cell, 3, 3, so, &err);
+                QString body;
+                QFile fh(p);
+                if(w && fh.open(QIODevice::ReadOnly))
+                    body = QString::fromUtf8(fh.readAll());
+                const bool has = body.contains(QStringLiteral("DROP TABLE IF EXISTS `t1`"))
+                              && body.contains(QStringLiteral("CREATE TABLE `t1`"))
+                              && body.contains(QStringLiteral("INSERT INTO `t1`"));
+                ok = ok && w && has;
+                QTextStream(stdout) << "exporttest sql+structure: wrote=" << w
+                                    << " marker=" << has
+                                    << (w && has ? "  PASS\n" : "  FAIL\n");
+            }
             return ok ? 0 : 1;
         }
         if(a == QStringLiteral("--comptest")) {
@@ -360,8 +383,11 @@ int main(int argc, char *argv[])
         if(shotDialog || shotCreateTable || shotIndexDlg || shotExportDlg) {
             QWidget *dlg = nullptr;
             if(shotExportDlg) {
-                dlg = new ExportDialog(QStringLiteral("employees"),
+                auto *ed = new ExportDialog(QStringLiteral("employees"),
                     QStringLiteral("employees"), 42, true);
+                if(auto *cb = ed->findChild<QComboBox *>())
+                    cb->setCurrentText(QStringLiteral("SQL INSERT statements"));
+                dlg = ed;
             } else if(shotIndexDlg) {
                 IndexDialog::IndexDef pk{ QStringLiteral("PRIMARY"),
                     { QStringLiteral("id") }, true, true };

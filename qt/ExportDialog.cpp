@@ -50,6 +50,8 @@ ExportDialog::ExportDialog(const QString &suggestedBaseName,
         QStringLiteral("Only the checked / selected rows"), this);
     m_selOnly->setChecked(haveSelection);
     m_selOnly->setEnabled(haveSelection);
+    m_structure = new QCheckBox(
+        QStringLiteral("Include CREATE TABLE (structure)"), this);
 
     auto *form = new QFormLayout;
     form->addRow(QStringLiteral("Format"), m_format);
@@ -64,6 +66,7 @@ ExportDialog::ExportDialog(const QString &suggestedBaseName,
     form->addRow(QString(), m_header);
     form->addRow(QString(), m_crlf);
     form->addRow(QString(), m_bom);
+    form->addRow(QString(), m_structure);
     form->addRow(QString(), m_selOnly);
 
     auto *bb = new QDialogButtonBox(
@@ -93,6 +96,7 @@ void ExportDialog::syncForFormat()
     m_quote->setVisible(csvish);
     m_sqlTableLabel->setVisible(sql);
     m_sqlTable->setVisible(sql);
+    m_structure->setVisible(sql);
     m_bom->setVisible(csvish || tsvish);
     m_crlf->setVisible(csvish || tsvish);
     m_header->setVisible(f != ResultExport::Format::Json
@@ -134,6 +138,11 @@ ResultExport::Format ExportDialog::format() const
 bool ExportDialog::selectionOnly() const
 {
     return m_selOnly->isEnabled() && m_selOnly->isChecked();
+}
+
+bool ExportDialog::includeStructure() const
+{
+    return format() == ResultExport::Format::Sql && m_structure->isChecked();
 }
 
 ResultExport::Options ExportDialog::options() const

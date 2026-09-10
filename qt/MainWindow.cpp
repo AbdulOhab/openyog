@@ -470,7 +470,7 @@ MainWindow::MainWindow(QWidget *parent)
         QStringLiteral("&Export All Rows Of Table Data/Result As…\tCtrl+Shift+E"));
     connect(exportRows, &QAction::triggered, this, [this] {
         if(auto *t = currentTab())
-            t->exportResult();
+            t->exportCurrent();
     });
     QAction *toolsDump = tools->addAction(
         QStringLiteral("&Backup Database As SQL Dump…\tCtrl+Alt+E"));
