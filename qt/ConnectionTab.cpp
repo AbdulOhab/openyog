@@ -25,6 +25,7 @@
 #include <QCheckBox>
 #include <QComboBox>
 #include <QListWidget>
+#include <QMenu>
 #include <QPlainTextEdit>
 #include <QDialog>
 #include <QDialogButtonBox>
@@ -897,10 +898,97 @@ void ConnectionTab::addResultGrid(const QueryResult &r, const QString &title)
     grid->horizontalHeader()->setSectionsMovable(true);
     grid->horizontalHeader()->setSectionResizeMode(QHeaderView::Interactive);
     installGridCopy(grid);
+    wireResultGrid(grid);
 
     m_resultTabs->addTab(grid, Icons::get(QStringLiteral("grid_view.ico")), title);
     m_dynamicResultTabs.append(grid);
     m_lastGrid = grid;
+}
+
+/* SQLyog-style right-click menu on a query-result grid: view a cell, copy
+ * rows as TSV / INSERT, copy a column, export the selection */
+void ConnectionTab::wireResultGrid(QTableView *grid)
+{
+    grid->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(grid, &QTableView::customContextMenuRequested, grid,
+            [this, grid](const QPoint &pos) {
+        QAbstractItemModel *m = grid->model();
+        if(!m || m->rowCount() == 0)
+            return;
+        const QModelIndex at = grid->indexAt(pos);
+        const QModelIndexList sel = grid->selectionModel()
+            ? grid->selectionModel()->selectedIndexes() : QModelIndexList();
+
+        /* unique sorted row / column sets from the selection (or the clicked
+         * cell if nothing is selected) */
+        QList<int> rowSet, colSet;
+        for(const QModelIndex &i : sel) {
+            if(!rowSet.contains(i.row())) rowSet << i.row();
+            if(!colSet.contains(i.column())) colSet << i.column();
+        }
+        if(rowSet.isEmpty() && at.isValid()) { rowSet << at.row(); colSet << at.column(); }
+        std::sort(rowSet.begin(), rowSet.end());
+        std::sort(colSet.begin(), colSet.end());
+        if(rowSet.isEmpty())
+            return;
+
+        const int cols = m->columnCount();
+        QStringList headers;
+        for(int c = 0; c < cols; ++c)
+            headers << m->headerData(c, Qt::Horizontal).toString();
+
+        QMenu menu(grid);
+        if(at.isValid())
+            menu.addAction(QStringLiteral("&View Cell…"), grid, [this, grid, at] {
+                QDialog d(grid);
+                d.setWindowTitle(QStringLiteral("Cell — %1")
+                    .arg(grid->model()->headerData(at.column(), Qt::Horizontal)
+                             .toString()));
+                d.resize(520, 320);
+                auto *tv = new QPlainTextEdit(&d);
+                tv->setReadOnly(true);
+                tv->setPlainText(at.data().toString());
+                tv->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
+                auto *bb = new QDialogButtonBox(QDialogButtonBox::Close, &d);
+                connect(bb, &QDialogButtonBox::rejected, &d, &QDialog::reject);
+                connect(bb, &QDialogButtonBox::accepted, &d, &QDialog::accept);
+                auto *l = new QVBoxLayout(&d);
+                l->addWidget(tv, 1);
+                l->addWidget(bb);
+                d.exec();
+            });
+        menu.addSeparator();
+
+        menu.addAction(QStringLiteral("Copy Row(s) as &TSV"), grid, [=] {
+            ResultExport::Options o; o.header = true;
+            const std::function<QString(int, int)> cell = [=](int r, int c) {
+                return m->index(rowSet.at(r), c).data().toString();
+            };
+            QApplication::clipboard()->setText(ResultExport::render(
+                ResultExport::Format::Tsv, headers, cell, rowSet.size(), cols, o));
+        });
+        menu.addAction(QStringLiteral("Copy Row(s) as &INSERT"), grid, [=] {
+            ResultExport::Options o;
+            o.sqlTable = QStringLiteral("result");
+            const std::function<QString(int, int)> cell = [=](int r, int c) {
+                return m->index(rowSet.at(r), c).data().toString();
+            };
+            QApplication::clipboard()->setText(ResultExport::render(
+                ResultExport::Format::Sql, headers, cell, rowSet.size(), cols, o));
+        });
+        if(!colSet.isEmpty())
+            menu.addAction(QStringLiteral("Copy &Column"), grid, [=] {
+                QStringList vals;
+                for(int r : rowSet)
+                    for(int c : colSet)
+                        vals << m->index(r, c).data().toString();
+                QApplication::clipboard()->setText(vals.join(QLatin1Char('\n')));
+            });
+        menu.addSeparator();
+        menu.addAction(QStringLiteral("&Export Selection / Result…"), this,
+                       &ConnectionTab::exportResult);
+        menu.exec(grid->viewport()->mapToGlobal(pos));
+    });
 }
 
 void ConnectionTab::openSqlFile(const QString &path)

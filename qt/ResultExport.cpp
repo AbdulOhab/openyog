@@ -70,18 +70,12 @@ QString delimited(const QStringList &headers,
 }
 } // namespace
 
-bool write(const QString &path, Format fmt, const QStringList &headers,
-           const std::function<QString(int, int)> &cell, int rows, int cols,
-           const Options &opt, QString *err)
+QString render(Format fmt, const QStringList &headers,
+               const std::function<QString(int, int)> &cell, int rows, int cols,
+               const Options &opt)
 {
-    QFile f(path);
-    if(!f.open(QIODevice::WriteOnly | QIODevice::Text)) {
-        if(err)
-            *err = QStringLiteral("cannot write %1").arg(path);
-        return false;
-    }
-    QTextStream out(&f);
-    out.setEncoding(QStringConverter::Utf8);
+    QString buf;
+    QTextStream out(&buf);
 
     switch(fmt) {
     case Format::Csv:
@@ -234,6 +228,23 @@ bool write(const QString &path, Format fmt, const QStringList &headers,
     }
     }
 
+    out.flush();
+    return buf;
+}
+
+bool write(const QString &path, Format fmt, const QStringList &headers,
+           const std::function<QString(int, int)> &cell, int rows, int cols,
+           const Options &opt, QString *err)
+{
+    QFile f(path);
+    if(!f.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        if(err)
+            *err = QStringLiteral("cannot write %1").arg(path);
+        return false;
+    }
+    QTextStream out(&f);
+    out.setEncoding(QStringConverter::Utf8);
+    out << render(fmt, headers, cell, rows, cols, opt);
     out.flush();
     if(f.error() != QFileDevice::NoError) {
         if(err)

@@ -110,6 +110,7 @@ public slots:
                             QString *error);
     void addEditorTab();
     void closeEditorTab(int index);   /* × on a Query / schema-object tab */
+    void wireResultGrid(QTableView *grid);   /* right-click menu on a result grid */
     /* new editor tab pre-filled with `sql` and titled `title` (schema-object
      * editors open here, like SQLyog, instead of a modal dialog) */
     CodeEditor *openEditorWithSql(const QString &title, const QString &sql);

@@ -31,6 +31,11 @@ struct Options
 /* cell(row, col) returns the display string; a value equal to Options::nullText
  * (or the literal "NULL") is treated as SQL NULL where the format distinguishes
  * it. Returns false + fills *err on I/O failure. */
+/* the export as a string — same content write() would put in the file */
+QString render(Format fmt, const QStringList &headers,
+               const std::function<QString(int, int)> &cell, int rows, int cols,
+               const Options &opt);
+
 bool write(const QString &path, Format fmt, const QStringList &headers,
            const std::function<QString(int, int)> &cell, int rows, int cols,
            const Options &opt, QString *err);
