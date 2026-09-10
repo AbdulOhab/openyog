@@ -18,7 +18,10 @@
 
 #include <mysql/mysql.h>   /* typedef struct st_mysql MYSQL — no forward decl */
 
+class QComboBox;
+class QLineEdit;
 class QPushButton;
+class QToolButton;
 
 class TableDataView : public QWidget
 {
@@ -47,13 +50,17 @@ signals:
 private slots:
     void deleteSelectedRow();
     void updateApplyBar();
+    void applyViewControls();      /* re-run with the current WHERE / sort / page */
+    void pageStep(int delta);
 
 private:
     static QString quoteValue(const QString &v);   /* v or NULL */
     /* row identity from the model's ORIGINAL values: "`pk`='v' and …" */
     QString whereFromOrigRow(int row) const;
+    bool discardStagedEdits(const QString &action);  /* prompt if pending */
 
     void reload();
+    void rebuildSortCombo();
     QByteArray fetchCellBytes(int row, int col) const;   /* raw bytes for hex view */
 
     struct ColumnInfo { QString name; bool nullable = true; bool autoInc = false; };
@@ -73,4 +80,19 @@ private:
     QLabel      * m_pendingLabel = nullptr;
     QTableView  * m_grid  = nullptr;
     class TableDataModel * m_model = nullptr;
+
+    /* view controls: WHERE filter + ORDER BY + LIMIT/OFFSET paging */
+    QWidget     * m_tools      = nullptr;
+    QLineEdit   * m_whereEdit  = nullptr;
+    QComboBox   * m_sortCombo  = nullptr;
+    QToolButton * m_sortDirBtn = nullptr;
+    QComboBox   * m_pageSize   = nullptr;
+    QToolButton * m_pagePrev   = nullptr;
+    QToolButton * m_pageNext   = nullptr;
+    QLabel      * m_pageLabel  = nullptr;
+    QString       m_where;
+    QString       m_orderBy;       /* "`col` ASC" or empty */
+    bool          m_sortDesc = false;
+    int           m_page      = 0;
+    long long     m_totalRows = 0;   /* COUNT(*) with the WHERE applied */
 };

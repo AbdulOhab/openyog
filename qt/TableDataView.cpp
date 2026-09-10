@@ -2,6 +2,7 @@
 #include "wyString.h"
 
 #include <QColor>
+#include <QComboBox>
 #include <QFont>
 #include <QContextMenuEvent>
 #include <QDialog>
@@ -16,6 +17,7 @@
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QTabWidget>
+#include <QToolButton>
 #include <QVBoxLayout>
 
 #include <cstring>
@@ -235,6 +237,66 @@ TableDataView::TableDataView(QWidget *parent)
     connect(m_revertBtn, &QPushButton::clicked, this,
             &TableDataView::revertPendingEdits);
 
+    /* ---- view controls: WHERE filter + sort + paging -------------------- */
+    auto *tools = new QWidget(this);
+    m_whereEdit = new QLineEdit(tools);
+    m_whereEdit->setPlaceholderText(QStringLiteral("WHERE …  (Enter to apply)"));
+    m_whereEdit->setClearButtonEnabled(true);
+    connect(m_whereEdit, &QLineEdit::returnPressed, this,
+            &TableDataView::applyViewControls);
+
+    m_sortCombo = new QComboBox(tools);
+    m_sortCombo->setMinimumContentsLength(12);
+    connect(m_sortCombo, &QComboBox::activated, this,
+            &TableDataView::applyViewControls);
+    m_sortDirBtn = new QToolButton(tools);
+    m_sortDirBtn->setText(QStringLiteral("▲"));
+    m_sortDirBtn->setToolTip(QStringLiteral("Sort ascending / descending"));
+    connect(m_sortDirBtn, &QToolButton::clicked, this, [this] {
+        m_sortDesc = !m_sortDesc;
+        m_sortDirBtn->setText(m_sortDesc ? QStringLiteral("▼")
+                                         : QStringLiteral("▲"));
+        applyViewControls();
+    });
+
+    m_pagePrev = new QToolButton(tools);
+    m_pagePrev->setArrowType(Qt::LeftArrow);
+    connect(m_pagePrev, &QToolButton::clicked, this, [this] { pageStep(-1); });
+    m_pageNext = new QToolButton(tools);
+    m_pageNext->setArrowType(Qt::RightArrow);
+    connect(m_pageNext, &QToolButton::clicked, this, [this] { pageStep(1); });
+    m_pageLabel = new QLabel(tools);
+
+    m_pageSize = new QComboBox(tools);
+    m_pageSize->addItems({ QStringLiteral("100"), QStringLiteral("500"),
+                           QStringLiteral("1000"), QStringLiteral("5000") });
+    m_pageSize->setCurrentText(QStringLiteral("1000"));
+    connect(m_pageSize, &QComboBox::activated, this, [this] {
+        m_page = 0;
+        applyViewControls();
+    });
+
+    auto *refreshBtn = new QToolButton(tools);
+    refreshBtn->setText(QStringLiteral("⟳"));
+    refreshBtn->setToolTip(QStringLiteral("Refresh"));
+    connect(refreshBtn, &QToolButton::clicked, this, &TableDataView::refresh);
+
+    auto *tl = new QHBoxLayout(tools);
+    tl->setContentsMargins(3, 2, 3, 2);
+    tl->setSpacing(3);
+    tl->addWidget(m_whereEdit, 1);
+    tl->addWidget(new QLabel(QStringLiteral("Sort:"), tools));
+    tl->addWidget(m_sortCombo);
+    tl->addWidget(m_sortDirBtn);
+    tl->addSpacing(10);
+    tl->addWidget(m_pagePrev);
+    tl->addWidget(m_pageLabel);
+    tl->addWidget(m_pageNext);
+    tl->addWidget(new QLabel(QStringLiteral("rows/page:"), tools));
+    tl->addWidget(m_pageSize);
+    tl->addWidget(refreshBtn);
+    m_tools = tools;
+
     m_model = new TableDataModel(this);
     m_grid  = new QTableView(this);
     m_grid->setModel(m_model);
@@ -245,6 +307,7 @@ TableDataView::TableDataView(QWidget *parent)
     auto *layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
     layout->addWidget(m_label);
+    layout->addWidget(m_tools);
     layout->addWidget(m_applyBar);
     layout->addWidget(m_grid, 1);
 
@@ -291,7 +354,67 @@ void TableDataView::load(MYSQL *conn, const QString &db, const QString &table)
     m_conn = conn;
     m_db = db;
     m_table = table;
+    /* fresh table → drop any filter / sort / paging from the last one */
+    m_where.clear();
+    m_orderBy.clear();
+    m_sortDesc = false;
+    m_page = 0;
+    if(m_whereEdit) m_whereEdit->clear();
+    if(m_sortDirBtn) m_sortDirBtn->setText(QStringLiteral("▲"));
     reload();
+}
+
+bool TableDataView::discardStagedEdits(const QString &action)
+{
+    if(m_model->pendingOps() == 0)
+        return true;
+    if(QMessageBox::question(this, QStringLiteral("Staged edits"),
+           QStringLiteral("There are unsaved staged edits. %1 anyway and "
+                          "discard them?").arg(action)) != QMessageBox::Yes)
+        return false;
+    m_model->revertAll();
+    return true;
+}
+
+void TableDataView::applyViewControls()
+{
+    if(!m_valid || !discardStagedEdits(QStringLiteral("Re-query")))
+        return;
+    m_where = m_whereEdit->text().trimmed();
+    const int sc = m_sortCombo->currentIndex();
+    m_orderBy = (sc <= 0)
+        ? QString()
+        : QStringLiteral("`%1` %2").arg(m_sortCombo->currentText(),
+                                        m_sortDesc ? QStringLiteral("DESC")
+                                                   : QStringLiteral("ASC"));
+    m_page = 0;
+    reload();
+}
+
+void TableDataView::pageStep(int delta)
+{
+    if(!m_valid || !discardStagedEdits(QStringLiteral("Change page")))
+        return;
+    const int perPage = m_pageSize->currentText().toInt();
+    const int lastPage = perPage > 0
+        ? int((qMax(1LL, m_totalRows) - 1) / perPage) : 0;
+    const int want = qBound(0, m_page + delta, lastPage);
+    if(want == m_page)
+        return;
+    m_page = want;
+    reload();
+}
+
+void TableDataView::rebuildSortCombo()
+{
+    const QString keep = m_sortCombo->currentText();
+    m_sortCombo->blockSignals(true);
+    m_sortCombo->clear();
+    m_sortCombo->addItem(QStringLiteral("(unsorted)"));
+    m_sortCombo->addItems(m_columns);
+    const int i = m_sortCombo->findText(keep);
+    m_sortCombo->setCurrentIndex(i > 0 ? i : 0);
+    m_sortCombo->blockSignals(false);
 }
 
 void TableDataView::editCell(int row, int col, const QString &value)
@@ -382,13 +505,42 @@ void TableDataView::reload()
         if(pkeys.contains(m_columns[i]))
             m_pkColumns << i;
     m_hasPrimary = !m_pkColumns.isEmpty();   /* upstream: PK only, else all-cols */
+    rebuildSortCombo();
 
-    wyString data;
-    data.Sprintf("SELECT * FROM `%s`.`%s` LIMIT 1000",
-                 m_db.toUtf8().constData(), m_table.toUtf8().constData());
+    const QString qualified = QStringLiteral("`%1`.`%2`").arg(m_db, m_table);
+    const QString whereSql = m_where.isEmpty()
+        ? QString() : QStringLiteral(" WHERE ") + m_where;
+
+    /* total matching rows, for the pager */
+    m_totalRows = 0;
+    if(m_conn && mysql_query(m_conn,
+           (QStringLiteral("SELECT COUNT(*) FROM ") + qualified + whereSql)
+               .toUtf8().constData()) == 0) {
+        if(MYSQL_RES *res = mysql_store_result(m_conn)) {
+            if(MYSQL_ROW r = mysql_fetch_row(res))
+                m_totalRows = r[0] ? QString::fromUtf8(r[0]).toLongLong() : 0;
+            mysql_free_result(res);
+        }
+    } else if(!m_where.isEmpty()) {
+        emit statusMessage(QStringLiteral("filter rejected: %1")
+                               .arg(QString::fromUtf8(mysql_error(m_conn))));
+        return;                                  /* keep the current grid */
+    }
+
+    const int perPage = m_pageSize ? m_pageSize->currentText().toInt() : 1000;
+    const int lastPage = perPage > 0
+        ? int((qMax(1LL, m_totalRows) - 1) / perPage) : 0;
+    m_page = qBound(0, m_page, lastPage);
+    const long long offset = (long long)m_page * perPage;
+
+    QString sql = QStringLiteral("SELECT * FROM ") + qualified + whereSql;
+    if(!m_orderBy.isEmpty())
+        sql += QStringLiteral(" ORDER BY ") + m_orderBy;
+    sql += QStringLiteral(" LIMIT %1 OFFSET %2").arg(perPage).arg(offset);
+
     QStringList header;
     QVector<QStringList> rows;
-    if(m_conn && mysql_query(m_conn, data.GetString()) == 0) {
+    if(m_conn && mysql_query(m_conn, sql.toUtf8().constData()) == 0) {
         if(MYSQL_RES *res = mysql_store_result(m_conn)) {
             for(unsigned int i = 0; i < mysql_num_fields(res); ++i) {
                 MYSQL_FIELD *f = mysql_fetch_field(res);
@@ -403,18 +555,31 @@ void TableDataView::reload()
             }
             mysql_free_result(res);
         }
+    } else {
+        emit statusMessage(QStringLiteral("query failed: %1")
+                               .arg(QString::fromUtf8(mysql_error(m_conn))));
+        return;
     }
     m_model->setGrid(header, rows);
     m_valid = true;
 
-    m_label->setText(QStringLiteral("%1.%2  —  %3 row(s)%4")
-        .arg(m_db, m_table).arg(rows.size())
+    const long long from = rows.isEmpty() ? 0 : offset + 1;
+    const long long to = offset + rows.size();
+    if(m_pageLabel)
+        m_pageLabel->setText(QStringLiteral(" %1–%2 of %3 ")
+                                 .arg(from).arg(to).arg(m_totalRows));
+    if(m_pagePrev) m_pagePrev->setEnabled(m_page > 0);
+    if(m_pageNext) m_pageNext->setEnabled(m_page < lastPage);
+
+    m_label->setText(QStringLiteral("%1.%2  —  %3 of %4 row(s)%5%6")
+        .arg(m_db, m_table).arg(rows.size()).arg(m_totalRows)
+        .arg(m_where.isEmpty() ? QString()
+                               : QStringLiteral("   [filtered]"))
         .arg(m_hasPrimary ? QString()
-                          : QStringLiteral("  ⚠ no primary key: row identity "
-                                           "= entire row")));
+                          : QStringLiteral("   ⚠ no primary key")));
     emit statusMessage(
-        QStringLiteral("Opened %1.%2 (%3 rows)").arg(m_db, m_table)
-            .arg(rows.size()));
+        QStringLiteral("%1.%2 — %3 rows (of %4)")
+            .arg(m_db, m_table).arg(rows.size()).arg(m_totalRows));
 }
 
 QString TableDataView::quoteValue(const QString &v)
