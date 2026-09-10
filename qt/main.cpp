@@ -29,7 +29,9 @@
 #include <QDebug>
 
 #include <QApplication>
+#include <QAction>
 #include <QComboBox>
+#include <QKeySequence>
 #include <QFile>
 #include <QIcon>
 #include <QTextStream>
@@ -256,6 +258,40 @@ int main(int argc, char *argv[])
                                     << " marker=" << has
                                     << (w && has ? "  PASS\n" : "  FAIL\n");
             }
+            return ok ? 0 : 1;
+        }
+        /* --shortcuttest — build the main window and check the menu accelerators
+         * that used to be display-only hints now resolve to real key sequences */
+        if(a == QStringLiteral("--shortcuttest")) {
+            qputenv("QT_QPA_PLATFORM", "offscreen");
+            QApplication app2(argc, argv);
+            MainWindow w;
+            const QList<QAction *> acts = w.findChildren<QAction *>();
+            int hinted = 0, wired = 0;
+            const QStringList wantKeys = {
+                QStringLiteral("F9"), QStringLiteral("Ctrl+F9"),
+                QStringLiteral("Ctrl+T"), QStringLiteral("Ctrl+F"),
+                QStringLiteral("Ctrl+Shift+E"), QStringLiteral("Ctrl+D"),
+                QStringLiteral("F5"), QStringLiteral("Ctrl+U") };
+            QStringList haveKeys;
+            for(QAction *ac : acts) {
+                if(ac->text().contains(QLatin1Char('\t'))) {
+                    ++hinted;
+                    if(!ac->shortcut().isEmpty())
+                        ++wired;
+                }
+                if(!ac->shortcut().isEmpty())
+                    haveKeys << ac->shortcut().toString(QKeySequence::PortableText);
+            }
+            bool ok = true;
+            for(const QString &k : wantKeys) {
+                const bool has = haveKeys.contains(k);
+                ok = ok && has;
+                QTextStream(stdout) << "shortcuttest " << k << ": "
+                                    << (has ? "PASS\n" : "FAIL\n");
+            }
+            QTextStream(stdout) << "shortcuttest: " << wired << "/" << hinted
+                                << " hinted menu actions now have a real shortcut\n";
             return ok ? 0 : 1;
         }
         if(a == QStringLiteral("--comptest")) {
