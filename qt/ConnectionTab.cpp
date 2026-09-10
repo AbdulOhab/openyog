@@ -40,6 +40,9 @@
 #include <QStandardPaths>
 #include <QSplitter>
 #include <QTabBar>
+#include <QScrollBar>
+#include <QTextBrowser>
+#include <QUrl>
 #include <QToolButton>
 #include <QTextStream>
 #include <QFile>
@@ -247,9 +250,22 @@ ConnectionTab::ConnectionTab(const ConnectionParams &params, QWidget *parent)
         "SELECT VERSION(), CURRENT_USER();\nSHOW DATABASES;"));
     attachEditor(m_editor, QStringLiteral("Query 1"));
 
-    m_history = new QPlainTextEdit(this);
-    m_history->setReadOnly(true);
+    m_history = new QTextBrowser(this);
+    m_history->setOpenLinks(false);
     m_history->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
+    connect(m_history, &QTextBrowser::anchorClicked, this,
+            [this](const QUrl &u) {
+        const int i = u.path().toInt();
+        if(i < 0 || i >= m_historyLines.size())
+            return;
+        const QString q = historyLineQuery(m_historyLines[i]);
+        if(q.isEmpty())
+            return;
+        if(u.scheme() == QStringLiteral("c"))
+            QApplication::clipboard()->setText(q);
+        else
+            sendHistoryToEditor(q);
+    });
     /* previous sessions' history for this connection */
     m_historyLines = loadHistoryFor(params.name, 500);
     if(!m_historyLines.isEmpty())
@@ -517,7 +533,7 @@ void ConnectionTab::addEditorTab()
     auto *ed = new CodeEditor(this);
     attachEditor(ed, {});
     const QString title = QStringLiteral("Query %1").arg(maxN + 1);
-    const int histIdx = m_editorTabs->indexOf(m_history);
+    const int histIdx = m_editorTabs->indexOf(m_historyPage);
     m_editorTabs->insertTab(histIdx == -1 ? m_editorTabs->count() : histIdx,
                             ed, Icons::get(QStringLiteral("query_16.ico")), title);
     m_editorTabs->setCurrentWidget(ed);
@@ -531,15 +547,65 @@ void ConnectionTab::logHistory(const QString &sql)
     appendHistoryLine(m_params.name, sql);
 }
 
+QString ConnectionTab::historyLineQuery(const QString &line)
+{
+    const QString t = line.trimmed();
+    if(t.isEmpty() || t.startsWith(QStringLiteral("———")))
+        return {};                                  /* session divider */
+    static const QRegularExpression ts(QStringLiteral("^\\[[^\\]]*\\]\\s*"));
+    return QString(t).remove(ts);
+}
+
+void ConnectionTab::sendHistoryToEditor(const QString &sql)
+{
+    auto *ed = currentEditor();
+    if(!ed || sql.isEmpty())
+        return;
+    QString cur = ed->toPlainText();
+    if(!cur.isEmpty() && !cur.endsWith('\n'))
+        cur += QLatin1Char('\n');
+    ed->setPlainText(cur + sql
+                     + (sql.trimmed().endsWith(';') ? QString()
+                                                    : QStringLiteral(";"))
+                     + QLatin1Char('\n'));
+    QTextCursor c = ed->textCursor();
+    c.movePosition(QTextCursor::End);
+    ed->setTextCursor(c);
+    m_editorTabs->setCurrentWidget(ed);
+    ed->setFocus();
+}
+
 void ConnectionTab::renderHistory()
 {
     const QString filter = m_historySearch->text().trimmed();
-    QStringList shown;
-    for(const QString &l : std::as_const(m_historyLines))
-        if(filter.isEmpty() || l.contains(filter, Qt::CaseInsensitive))
-            shown << l;
-    m_history->setPlainText(shown.join(QLatin1Char('\n')));
-    m_history->moveCursor(QTextCursor::End);
+    QString html = QStringLiteral(
+        "<style>a{text-decoration:none;font-size:13px}"
+        ".ts{color:#8a8a8a}</style>"
+        "<table cellspacing='0' cellpadding='1'>");
+    for(int i = 0; i < m_historyLines.size(); ++i) {
+        const QString &l = m_historyLines[i];
+        if(!filter.isEmpty() && !l.contains(filter, Qt::CaseInsensitive))
+            continue;
+        const QString q = historyLineQuery(l);
+        if(q.isEmpty()) {
+            html += QStringLiteral("<tr><td></td><td><i>%1</i></td></tr>")
+                        .arg(l.trimmed().toHtmlEscaped());
+            continue;
+        }
+        const int rb = l.indexOf(']');
+        const QString tsPart = rb > 0 ? l.left(rb + 1) : QString();
+        html += QStringLiteral(
+            "<tr><td valign='top' style='white-space:nowrap'>"
+            "<a href='c:%1' title='Copy query'>⧉</a>&#160;"
+            "<a href='e:%1' title='Send to editor'>&#8618;</a>&#160;&#160;</td>"
+            "<td><span class='ts'>%2</span> %3</td></tr>")
+            .arg(i)
+            .arg(tsPart.toHtmlEscaped(), q.toHtmlEscaped());
+    }
+    html += QStringLiteral("</table>");
+    m_history->setHtml(html);
+    m_history->verticalScrollBar()->setValue(
+        m_history->verticalScrollBar()->maximum());
 }
 
 void ConnectionTab::clearHistory()
