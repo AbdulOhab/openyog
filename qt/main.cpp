@@ -294,6 +294,30 @@ int main(int argc, char *argv[])
                                 << " hinted menu actions now have a real shortcut\n";
             return ok ? 0 : 1;
         }
+        /* --stmtattest — statementAt() picks the right statement for a cursor */
+        if(a == QStringLiteral("--stmtattest")) {
+            const QString sql =
+                QStringLiteral("SELECT 1;\nSELECT 2;\nDELIMITER $$\n"
+                               "CREATE PROCEDURE p() BEGIN SELECT 3; END$$\n"
+                               "DELIMITER ;\nSELECT 4;\n");
+            struct C { int pos; const char *want; };
+            const C cs[] = {
+                { 3,  "SELECT 1" },
+                { 14, "SELECT 2" },
+                { 55, "CREATE PROCEDURE p() BEGIN SELECT 3; END" },
+                { int(sql.size()) - 2, "SELECT 4" },
+            };
+            bool ok = true;
+            for(const C &c : cs) {
+                const QString got = statementAt(sql, c.pos);
+                const bool pass = got == QString::fromUtf8(c.want);
+                ok = ok && pass;
+                QTextStream(stdout) << "stmtattest pos " << c.pos << ": "
+                                    << (pass ? "PASS" : "FAIL got=[" + got + "]")
+                                    << "\n";
+            }
+            return ok ? 0 : 1;
+        }
         if(a == QStringLiteral("--comptest")) {
             qputenv("QT_QPA_PLATFORM", "offscreen");
             QApplication app2(argc, argv);

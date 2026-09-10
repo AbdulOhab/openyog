@@ -8,3 +8,7 @@
 #include <QStringList>
 
 QStringList splitStatements(const QString &sql);
+
+/* the single statement whose text range covers character offset `pos`
+ * (DELIMITER-aware, same rules as splitStatements). Empty if none. */
+QString statementAt(const QString &sql, int pos);

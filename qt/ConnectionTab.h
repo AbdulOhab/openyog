@@ -58,7 +58,9 @@ public:
     QStringList selectedTableInfo() const;
 
 public slots:
-    void runQuery();
+    void runQuery();                 /* F9 — selection or current statement */
+    void runAll();                   /* Ctrl+F9 — the whole editor */
+    void explainCurrent(bool json);  /* EXPLAIN [FORMAT=JSON] the current stmt */
     void runStatements(const QStringList &statements, const QString &tabPrefix);
     void openTable(const QString &db, const QString &table);
     void useDatabase(const QString &db);
