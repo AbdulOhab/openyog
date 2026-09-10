@@ -39,6 +39,7 @@ public slots:
     void editCell(int row, int col, const QString &value);   /* selftest: stage+apply */
     void stageCellOnly(int row, int col, const QString &value); /* selftest: stage, no apply */
     void checkRowsForTest(const QString &csv);   /* selftest: tick the row-select column */
+    void hexCellForTest(int row, int col, const QString &hex);  /* selftest: stage x'…' + apply */
     void setCellNull();
     void editCellInTextEditor();   /* big multi-line editor for the current cell */
     void refresh();

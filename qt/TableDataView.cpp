@@ -21,9 +21,11 @@
 #include <QHeaderView>
 #include <QIcon>
 #include <QLineEdit>
+#include <QMap>
 #include <QMenu>
 #include <QFontDatabase>
 #include <QMessageBox>
+#include <QRegularExpression>
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPlainTextEdit>
@@ -63,6 +65,7 @@ public:
         m_rows = rows;
         m_orig = rows;                 /* baseline for dirty tracking */
         m_state = QVector<RowState>(rows.size(), Normal);
+        m_expr.clear();
         endResetModel();
         emit pendingChanged();
     }
@@ -91,6 +94,7 @@ public:
             m_rows.removeAt(row);
             m_orig.removeAt(row);
             m_state.removeAt(row);
+            m_expr.clear();               /* row indices shifted — drop raw exprs */
             endRemoveRows();
         } else {
             m_state[row] = (m_state[row] == Deleted) ? Normal : Deleted;
@@ -111,6 +115,7 @@ public:
         m_rows = m_orig;
         for(auto &s : m_state)
             s = Normal;
+        m_expr.clear();
         endResetModel();
         emit pendingChanged();
     }
@@ -161,11 +166,27 @@ public:
         if(row < 0 || row >= m_rows.size() || col < 0 || col >= m_cols.size())
             return;
         m_rows[row][col] = value;
+        m_expr.remove({row, col});        /* plain text edit clears any raw expr */
         emit dataChanged(index(row, col), index(row, col),
                          { Qt::DisplayRole, Qt::EditRole, Qt::BackgroundRole,
                            Qt::ForegroundRole });
         emit pendingChanged();
     }
+
+    /* stage a value that must reach SQL verbatim, not string-quoted — e.g. a
+     * binary literal x'…' from the Hex tab.  `display` is what the grid shows. */
+    void stageExpr(int row, int col, const QString &display, const QString &sqlExpr)
+    {
+        if(row < 0 || row >= m_rows.size() || col < 0 || col >= m_cols.size())
+            return;
+        m_rows[row][col] = display;
+        m_expr.insert({row, col}, sqlExpr);
+        emit dataChanged(index(row, col), index(row, col),
+                         { Qt::DisplayRole, Qt::EditRole, Qt::BackgroundRole });
+        emit pendingChanged();
+    }
+    /* raw SQL expression staged for (r,c), or empty if it's a plain value */
+    QString exprAt(int r, int c) const { return m_expr.value({r, c}); }
 
     int rowCount(const QModelIndex & = {}) const override { return m_rows.size(); }
     int columnCount(const QModelIndex & = {}) const override { return m_cols.size(); }
@@ -230,6 +251,7 @@ private:
     QVector<QStringList> m_rows;
     QVector<QStringList> m_orig;
     QVector<RowState>    m_state;
+    QMap<QPair<int, int>, QString> m_expr;   /* (r,c) → verbatim SQL expr */
 };
 
 /* ---------------- row-select checkbox column ----------------------------- *
@@ -923,6 +945,14 @@ void TableDataView::checkAllRows(bool on)
         m_checkHeader->setAllChecked(on);
 }
 
+void TableDataView::hexCellForTest(int row, int col, const QString &hex)
+{
+    const QString h = hex.trimmed().toLower();
+    m_model->stageExpr(row, col, QStringLiteral("x'%1'").arg(h),
+                                 QStringLiteral("x'%1'").arg(h));
+    applyPendingEdits();
+}
+
 void TableDataView::checkRowsForTest(const QString &csv)
 {
     if(!m_checkHeader)
@@ -1267,11 +1297,13 @@ void TableDataView::applyPendingEdits()
         QStringList names, vals;
         for(int c = 0; c < m_columns.size(); ++c) {
             const QString v = m_model->cur(r, c);
-            if(v.isEmpty())
+            const QString ex = m_model->exprAt(r, c);
+            if(v.isEmpty() && ex.isEmpty())
                 continue;
             names << QStringLiteral("`%1`").arg(m_columns[c]);
-            vals  << (v == QStringLiteral("NULL") ? QStringLiteral("NULL")
-                                                  : quoteValue(v));
+            vals  << (!ex.isEmpty()                ? ex
+                    : v == QStringLiteral("NULL")  ? QStringLiteral("NULL")
+                                                   : quoteValue(v));
         }
         wyString q;
         if(names.isEmpty())
@@ -1293,10 +1325,12 @@ void TableDataView::applyPendingEdits()
             if(!m_model->dirty(r, c))
                 continue;
             const QString v = m_model->cur(r, c);
+            const QString ex = m_model->exprAt(r, c);
             setParts << QStringLiteral("`%1` = %2")
                             .arg(m_columns[c],
-                                 v == QStringLiteral("NULL") ? QStringLiteral("NULL")
-                                                             : quoteValue(v));
+                                 !ex.isEmpty()                ? ex
+                               : v == QStringLiteral("NULL")  ? QStringLiteral("NULL")
+                                                              : quoteValue(v));
         }
         const QString where = whereFromOrigRow(r);
         if(setParts.isEmpty() || where.isEmpty())
@@ -1425,11 +1459,25 @@ void TableDataView::editCellInTextEditor()
     edit->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
     tabs->addTab(edit, QStringLiteral("Text"));
 
-    auto *hex = new QPlainTextEdit(tabs);
-    hex->setReadOnly(true);
-    hex->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
-    hex->setLineWrapMode(QPlainTextEdit::NoWrap);
-    tabs->addTab(hex, QStringLiteral("Hex"));
+    /* Hex tab: read-only offset dump on top, an editable raw-hex field below.
+     * Typing hex there and pressing OK writes the cell as an x'…' literal. */
+    auto *hexPage = new QWidget(tabs);
+    auto *hexLay = new QVBoxLayout(hexPage);
+    auto *hexDump = new QPlainTextEdit(hexPage);
+    hexDump->setReadOnly(true);
+    hexDump->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
+    hexDump->setLineWrapMode(QPlainTextEdit::NoWrap);
+    auto *hexEdit = new QPlainTextEdit(hexPage);
+    hexEdit->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
+    hexEdit->setPlaceholderText(
+        QStringLiteral("raw hex, e.g. 48656c6c6f — even number of 0-9 a-f "
+                       "(whitespace ignored); OK writes it as x'…'"));
+    hexLay->addWidget(new QLabel(QStringLiteral("Bytes:"), hexPage));
+    hexLay->addWidget(hexDump, 2);
+    hexLay->addWidget(new QLabel(QStringLiteral("Edit as hex:"), hexPage));
+    hexLay->addWidget(hexEdit, 1);
+    tabs->addTab(hexPage, QStringLiteral("Hex"));
+
     bool hexLoaded = false;
     connect(tabs, &QTabWidget::currentChanged, &dlg, [&](int i) {
         if(i != 1 || hexLoaded)
@@ -1438,7 +1486,7 @@ void TableDataView::editCellInTextEditor()
         const QByteArray b = m_model->rowState(row) == TableDataModel::Inserted
             ? edit->toPlainText().toUtf8()
             : fetchCellBytes(row, c);
-        QString dump;
+        QString dump, raw;
         for(int off = 0; off < b.size(); off += 16) {
             QString h, a;
             for(int j = 0; j < 16; ++j) {
@@ -1453,8 +1501,10 @@ void TableDataView::editCellInTextEditor()
             dump += QStringLiteral("%1  %2 %3\n")
                         .arg(off, 8, 16, QLatin1Char('0')).arg(h, a);
         }
-        hex->setPlainText(b.isEmpty() ? QStringLiteral("(empty / NULL)") : dump);
-        hex->appendPlainText(QStringLiteral("\n%1 byte(s)").arg(b.size()));
+        raw = QString::fromLatin1(b.toHex());
+        hexDump->setPlainText(b.isEmpty() ? QStringLiteral("(empty / NULL)") : dump);
+        hexDump->appendPlainText(QStringLiteral("\n%1 byte(s)").arg(b.size()));
+        hexEdit->setPlainText(raw);
     });
 
     auto *buttons = new QDialogButtonBox(
@@ -1471,8 +1521,28 @@ void TableDataView::editCellInTextEditor()
     lay->addWidget(buttons);
     if(dlg.exec() != QDialog::Accepted)
         return;
-    /* only the Text tab is editable; the Hex view is read-only */
-    m_model->stage(row, c, toNull ? QStringLiteral("NULL") : edit->toPlainText());
+    if(toNull) {
+        m_model->stage(row, c, QStringLiteral("NULL"));
+        return;
+    }
+    if(tabs->currentIndex() == 1) {                    /* Hex tab is authoritative */
+        QString h = hexEdit->toPlainText()
+                        .remove(QRegularExpression(QStringLiteral("\\s")))
+                        .toLower();
+        if(h.contains(QRegularExpression(QStringLiteral("[^0-9a-f]")))
+           || (h.size() % 2) != 0) {
+            QMessageBox::warning(this, QStringLiteral("Hex"),
+                QStringLiteral("Enter an even number of hex digits (0-9, a-f)."));
+            return;
+        }
+        const QString expr = QStringLiteral("x'%1'").arg(h);
+        const QString disp = h.size() > 32
+            ? QStringLiteral("x'%1…' (%2 bytes)").arg(h.left(32)).arg(h.size() / 2)
+            : expr;
+        m_model->stageExpr(row, c, disp, expr);
+        return;
+    }
+    m_model->stage(row, c, edit->toPlainText());
 }
 
 void TableDataView::refresh()

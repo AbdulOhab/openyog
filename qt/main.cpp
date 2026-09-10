@@ -42,6 +42,7 @@ int main(int argc, char *argv[])
     QPair<QString, QString> openTableParts;
     QString dataViewMode;   /* --dataview=text|grid selftest */
     QString checkRows;      /* --checkrows=0,2,4 selftest */
+    QString hexCell;        /* --hexcell=row:col:hexdigits selftest */
     int editRow = -1, editCol = -1;
     bool stageOnly = false;
     QString editValue;
@@ -129,6 +130,9 @@ int main(int argc, char *argv[])
         /* --checkrows=0,2,4 : tick those rows in the row-select column */
         if(a.startsWith(QStringLiteral("--checkrows=")))
             checkRows = a.mid(QStringLiteral("--checkrows=").size());
+        /* --hexcell=row:col:deadbeef : stage a binary x'…' edit and apply */
+        if(a.startsWith(QStringLiteral("--hexcell=")))
+            hexCell = a.mid(QStringLiteral("--hexcell=").size());
         /* --autoconnect=host:port:user:password:db */
         if(a.startsWith(QStringLiteral("--autoconnect="))) {
             const QStringList parts = a.mid(14).split(':');
@@ -242,6 +246,8 @@ int main(int argc, char *argv[])
                         w->setDataViewMode(dataViewMode);
                     if(!checkRows.isEmpty())
                         w->setDataViewMode(QStringLiteral("check:") + checkRows);
+                    if(!hexCell.isEmpty())
+                        w->setDataViewMode(QStringLiteral("hex:") + hexCell);
                     QTimer::singleShot(600, [w, screenshot] {
                         w->grab().save(screenshot);
                         QApplication::quit();
