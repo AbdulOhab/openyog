@@ -24,6 +24,7 @@
 #include <QFileDialog>
 #include <QCheckBox>
 #include <QComboBox>
+#include <QPlainTextEdit>
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QFormLayout>
@@ -66,6 +67,50 @@
 #include <thread>
 
 namespace {
+
+/* charset picker for the import dialogs — MySQL/MariaDB charset names */
+QComboBox *importCharsetCombo(QWidget *p)
+{
+    auto *c = new QComboBox(p);
+    c->addItems({ QStringLiteral("utf8mb4"), QStringLiteral("utf8"),
+                  QStringLiteral("latin1"), QStringLiteral("cp1250"),
+                  QStringLiteral("cp1251"), QStringLiteral("cp1252"),
+                  QStringLiteral("utf16"), QStringLiteral("utf16le"),
+                  QStringLiteral("ascii"), QStringLiteral("big5"),
+                  QStringLiteral("gbk"), QStringLiteral("sjis"),
+                  QStringLiteral("euckr") });
+    c->setEditable(true);
+    return c;
+}
+
+/* on-duplicate-key picker: LOAD DATA/XML take IGNORE or REPLACE */
+QComboBox *importDupCombo(QWidget *p)
+{
+    auto *c = new QComboBox(p);
+    c->addItem(QStringLiteral("IGNORE duplicate rows"), QStringLiteral("IGNORE"));
+    c->addItem(QStringLiteral("REPLACE duplicate rows (by key)"),
+               QStringLiteral("REPLACE"));
+    return c;
+}
+
+/* read-only first-N-lines preview of the file being imported */
+QPlainTextEdit *importFilePreview(QWidget *p, const QString &path, int lines = 15)
+{
+    auto *pv = new QPlainTextEdit(p);
+    pv->setReadOnly(true);
+    pv->setLineWrapMode(QPlainTextEdit::NoWrap);
+    pv->setMaximumHeight(150);
+    pv->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
+    QFile f(path);
+    if(f.open(QIODevice::ReadOnly)) {
+        QStringList ls;
+        int n = 0;
+        while(n++ < lines && !f.atEnd())
+            ls << QString::fromUtf8(f.readLine());
+        pv->setPlainText(ls.join(QString()).trimmed());
+    }
+    return pv;
+}
 
 /* persistent query history: <AppConfig>/history.log, tab-separated
  * "<iso datetime>\t<connection name>\t<sql, newlines flattened>" */
@@ -1811,13 +1856,15 @@ void ConnectionTab::promptImportXml(const QString &database, const QString &tabl
     if(!table.isEmpty())
         tbl->setCurrentText(table);
     auto *rowTag = new QLineEdit(QStringLiteral("row"), &dlg);
+    auto *charset = importCharsetCombo(&dlg);
+    auto *onDup = importDupCombo(&dlg);
     auto *truncate = new QCheckBox(QStringLiteral("Empty the table first"), &dlg);
-    auto *replace = new QCheckBox(QStringLiteral("REPLACE existing rows (by key)"), &dlg);
     auto *form = new QFormLayout;
     form->addRow(QStringLiteral("Target table"), tbl);
+    form->addRow(QStringLiteral("Character set"), charset);
     form->addRow(QStringLiteral("Rows identified by  <tag>"), rowTag);
+    form->addRow(QStringLiteral("On duplicate key"), onDup);
     form->addRow(QString(), truncate);
-    form->addRow(QString(), replace);
     auto *buttons = new QDialogButtonBox(
         QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
     buttons->button(QDialogButtonBox::Ok)->setText(QStringLiteral("Import"));
@@ -1825,6 +1872,8 @@ void ConnectionTab::promptImportXml(const QString &database, const QString &tabl
     connect(buttons, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
     auto *lay = new QVBoxLayout(&dlg);
     lay->addLayout(form);
+    lay->addWidget(new QLabel(QStringLiteral("File preview:"), &dlg));
+    lay->addWidget(importFilePreview(&dlg, file));
     lay->addWidget(new QLabel(QStringLiteral(
         "Uses LOAD XML LOCAL INFILE — the server must allow local-infile."),
         &dlg));
@@ -1844,10 +1893,9 @@ void ConnectionTab::promptImportXml(const QString &database, const QString &tabl
 
     const QString sql = QStringLiteral(
         "LOAD XML LOCAL INFILE '%1' %2 INTO TABLE `%3`.`%4` "
-        "CHARACTER SET utf8mb4 ROWS IDENTIFIED BY '<%5>'")
-        .arg(esc(file),
-             replace->isChecked() ? QStringLiteral("REPLACE") : QStringLiteral("IGNORE"),
-             db, target, esc(tag));
+        "CHARACTER SET %5 ROWS IDENTIFIED BY '<%6>'")
+        .arg(esc(file), onDup->currentData().toString(),
+             db, target, charset->currentText().trimmed(), esc(tag));
     wyString q;
     q.SetAs(sql.toUtf8().constData());
     if(mysql_query(m_conn, q.GetString()) != 0) {
@@ -1900,21 +1948,34 @@ void ConnectionTab::promptImportCsv(const QString &database, const QString &tabl
         tbl->setCurrentText(table);
     auto *fieldSep = new QLineEdit(QStringLiteral(","), &dlg);
     auto *enclosure = new QLineEdit(QStringLiteral("\""), &dlg);
+    auto *escChar = new QLineEdit(QStringLiteral("\\"), &dlg);
+    auto *optEnclose = new QCheckBox(QStringLiteral("Quote character is optional"),
+                                     &dlg);
+    optEnclose->setChecked(true);
     auto *lineSep = new QComboBox(&dlg);
     lineSep->addItems({ QStringLiteral("\\n  (Unix)"), QStringLiteral("\\r\\n  (Windows)") });
+    auto *charset = importCharsetCombo(&dlg);
     auto *header = new QCheckBox(QStringLiteral("First line holds column names"), &dlg);
     header->setChecked(true);
+    auto *skipLines = new QSpinBox(&dlg);
+    skipLines->setRange(0, 100000000);
+    skipLines->setToolTip(QStringLiteral("extra leading lines to skip, on top "
+                                         "of the header"));
     auto *truncate = new QCheckBox(QStringLiteral("Empty the table first"), &dlg);
-    auto *replace = new QCheckBox(QStringLiteral("REPLACE existing rows (by key)"), &dlg);
+    auto *onDup = importDupCombo(&dlg);
 
     auto *form = new QFormLayout;
     form->addRow(QStringLiteral("Target table"), tbl);
+    form->addRow(QStringLiteral("Character set"), charset);
     form->addRow(QStringLiteral("Field separator"), fieldSep);
     form->addRow(QStringLiteral("Quote character"), enclosure);
+    form->addRow(QString(), optEnclose);
+    form->addRow(QStringLiteral("Escape character"), escChar);
     form->addRow(QStringLiteral("Line separator"), lineSep);
+    form->addRow(QStringLiteral("Skip leading lines"), skipLines);
+    form->addRow(QStringLiteral("On duplicate key"), onDup);
     form->addRow(QString(), header);
     form->addRow(QString(), truncate);
-    form->addRow(QString(), replace);
     auto *buttons = new QDialogButtonBox(
         QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
     buttons->button(QDialogButtonBox::Ok)->setText(QStringLiteral("Import"));
@@ -1922,6 +1983,8 @@ void ConnectionTab::promptImportCsv(const QString &database, const QString &tabl
     connect(buttons, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
     auto *lay = new QVBoxLayout(&dlg);
     lay->addLayout(form);
+    lay->addWidget(new QLabel(QStringLiteral("File preview:"), &dlg));
+    lay->addWidget(importFilePreview(&dlg, file));
     lay->addWidget(new QLabel(QStringLiteral(
         "Uses LOAD DATA LOCAL INFILE — the server must allow local-infile."),
         &dlg));
@@ -1937,6 +2000,7 @@ void ConnectionTab::promptImportCsv(const QString &database, const QString &tabl
         return s.replace('\\', QStringLiteral("\\\\"))
                 .replace('\'', QStringLiteral("\\'"));
     };
+    const int skip = (header->isChecked() ? 1 : 0) + skipLines->value();
 
     /* when the file has a header row, map by name — otherwise LOAD DATA loads
      * positionally into every column (wrong for an AUTO_INCREMENT-first table) */
@@ -1960,17 +2024,27 @@ void ConnectionTab::promptImportCsv(const QString &database, const QString &tabl
     if(truncate->isChecked())
         execDdl(QStringLiteral("TRUNCATE TABLE `%1`.`%2`").arg(db, target));
 
+    const QString enclosedClause = quote.isEmpty()
+        ? QString()
+        : QStringLiteral(" %1ENCLOSED BY '%2'")
+              .arg(optEnclose->isChecked() ? QStringLiteral("OPTIONALLY ") : QString(),
+                   esc(quote));
+    const QString escClause = escChar->text().isEmpty()
+        ? QString()
+        : QStringLiteral(" ESCAPED BY '%1'").arg(esc(escChar->text()));
+
     QString sql = QStringLiteral(
         "LOAD DATA LOCAL INFILE '%1' %2 INTO TABLE `%3`.`%4` "
-        "CHARACTER SET utf8mb4 "
-        "FIELDS TERMINATED BY '%5' ENCLOSED BY '%6' "
-        "LINES TERMINATED BY '%7'%8%9")
+        "CHARACTER SET %5 "
+        "FIELDS TERMINATED BY '%6'%7%8 "
+        "LINES TERMINATED BY '%9'%10%11")
         .arg(esc(file),
-             replace->isChecked() ? QStringLiteral("REPLACE") : QStringLiteral("IGNORE"),
-             db, target, esc(sep), esc(quote),
+             onDup->currentData().toString(),
+             db, target, charset->currentText().trimmed(),
+             esc(sep), enclosedClause, escClause,
              lineSep->currentIndex() == 1 ? QStringLiteral("\\r\\n")
                                           : QStringLiteral("\\n"),
-             header->isChecked() ? QStringLiteral(" IGNORE 1 LINES") : QString(),
+             skip > 0 ? QStringLiteral(" IGNORE %1 LINES").arg(skip) : QString(),
              colList);
 
     wyString q;
