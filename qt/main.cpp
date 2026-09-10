@@ -18,6 +18,8 @@
 #include "ConnectionStore.h"
 #include "CreateTableDialog.h"
 #include "IndexDialog.h"
+#include "ExportDialog.h"
+#include "ResultExport.h"
 #include "SchemaSql.h"
 #include "SqlSplit.h"
 #include "SqlFormat.h"
@@ -27,6 +29,7 @@
 #include <QDebug>
 
 #include <QApplication>
+#include <QFile>
 #include <QIcon>
 #include <QTextStream>
 #include <QTimer>
@@ -41,6 +44,7 @@ int main(int argc, char *argv[])
     bool shotDialog = false;
     bool shotCreateTable = false;
     bool shotIndexDlg = false;
+    bool shotExportDlg = false;
     QPair<QString, QString> openTableParts;
     QString dataViewMode;   /* --dataview=text|grid selftest */
     QString checkRows;      /* --checkrows=0,2,4 selftest */
@@ -64,6 +68,8 @@ int main(int argc, char *argv[])
             shotCreateTable = true;
         if(a == QStringLiteral("--indexdlg"))
             shotIndexDlg = true;
+        if(a == QStringLiteral("--exportdlg"))
+            shotExportDlg = true;
         /* --opentable=db:table (selftest: opens the editable data grid) */
         /* --editcell=row:col:value  stage the edit AND apply it (UPDATE path) */
         /* --stagecell=row:col:value stage only (shows the amber cell + Apply bar) */
@@ -185,6 +191,49 @@ int main(int argc, char *argv[])
             }
             mysql_close(c);
             return allOk ? 0 : 1;
+        }
+        /* --exporttest=DIR — write a fixed 3-row grid in every format and
+         * check the output has the expected shape/markers */
+        if(a.startsWith(QStringLiteral("--exporttest="))) {
+            const QString dir = a.mid(13);
+            const QStringList headers = { QStringLiteral("id"),
+                                          QStringLiteral("name"),
+                                          QStringLiteral("note") };
+            const QStringList vals = {
+                QStringLiteral("1"), QStringLiteral("Ann,B"), QStringLiteral("ok"),
+                QStringLiteral("2"), QStringLiteral("Q\"x\""), QStringLiteral("NULL"),
+                QStringLiteral("3"), QStringLiteral("<t>"), QStringLiteral("a'b") };
+            const auto cell = [&](int r, int c) { return vals.at(r * 3 + c); };
+            struct T { ResultExport::Format f; const char *name, *must; };
+            const QList<T> ts = {
+                { ResultExport::Format::Csv, "csv", "\"Ann,B\"" },
+                { ResultExport::Format::Tsv, "tsv", "Ann,B\t" },
+                { ResultExport::Format::Html, "html", "<td>&lt;t&gt;</td>" },
+                { ResultExport::Format::Json, "json", "\"note\": null" },
+                { ResultExport::Format::Markdown, "md", "| id | name | note |" },
+                { ResultExport::Format::Xml, "xml", "<note xsi:nil=\"true\"/>" },
+                { ResultExport::Format::Sql, "sql", "'a\\'b'" },
+                { ResultExport::Format::Excel, "xls", "mso-application" },
+            };
+            bool ok = true;
+            ResultExport::Options opt;
+            for(const T &t : ts) {
+                const QString p = dir + QStringLiteral("/exporttest.") + t.name;
+                QString err;
+                bool w = ResultExport::write(p, t.f, headers, cell, 3, 3, opt, &err);
+                QString body;
+                if(w) {
+                    QFile fh(p);
+                    if(fh.open(QIODevice::ReadOnly))
+                        body = QString::fromUtf8(fh.readAll());
+                }
+                const bool has = body.contains(QString::fromUtf8(t.must));
+                ok = ok && w && has;
+                QTextStream(stdout)
+                    << "exporttest " << t.name << ": wrote=" << w
+                    << " marker=" << has << (w && has ? "  PASS\n" : "  FAIL\n");
+            }
+            return ok ? 0 : 1;
         }
         if(a == QStringLiteral("--comptest")) {
             qputenv("QT_QPA_PLATFORM", "offscreen");
@@ -308,9 +357,12 @@ int main(int argc, char *argv[])
     }
 
     if(!screenshot.isEmpty()) {
-        if(shotDialog || shotCreateTable || shotIndexDlg) {
+        if(shotDialog || shotCreateTable || shotIndexDlg || shotExportDlg) {
             QWidget *dlg = nullptr;
-            if(shotIndexDlg) {
+            if(shotExportDlg) {
+                dlg = new ExportDialog(QStringLiteral("employees"),
+                    QStringLiteral("employees"), 42, true);
+            } else if(shotIndexDlg) {
                 IndexDialog::IndexDef pk{ QStringLiteral("PRIMARY"),
                     { QStringLiteral("id") }, true, true };
                 IndexDialog::IndexDef ix{ QStringLiteral("idx_city"),
