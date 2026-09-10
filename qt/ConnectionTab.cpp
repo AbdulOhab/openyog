@@ -24,6 +24,7 @@
 #include <QFileDialog>
 #include <QCheckBox>
 #include <QComboBox>
+#include <QListWidget>
 #include <QPlainTextEdit>
 #include <QDialog>
 #include <QDialogButtonBox>
@@ -2312,15 +2313,86 @@ void ConnectionTab::promptDumpDatabase(const QString &database)
             QStringLiteral("Select a database first."));
         return;
     }
+    /* table list for the "which tables" selector */
+    QStringList allTables;
+    wyString tq;
+    tq.Sprintf("SHOW FULL TABLES FROM `%s` WHERE Table_type='BASE TABLE'",
+               QString(db).replace('`', QStringLiteral("``")).toUtf8().constData());
+    if(mysql_query(m_conn, tq.GetString()) == 0) {
+        if(MYSQL_RES *r = mysql_store_result(m_conn)) {
+            while(MYSQL_ROW row = mysql_fetch_row(r))
+                if(row[0]) allTables << QString::fromUtf8(row[0]);
+            mysql_free_result(r);
+        }
+    }
+
+    QDialog dlg(this);
+    dlg.setWindowTitle(QStringLiteral("Backup `%1` as SQL dump").arg(db));
+    auto *structure = new QCheckBox(QStringLiteral("Structure (CREATE TABLE)"), &dlg);
+    structure->setChecked(true);
+    auto *data = new QCheckBox(QStringLiteral("Data (INSERT statements)"), &dlg);
+    data->setChecked(true);
+    auto *drops = new QCheckBox(QStringLiteral("Add DROP TABLE before each CREATE"),
+                                &dlg);
+    drops->setChecked(true);
+    auto *routines = new QCheckBox(
+        QStringLiteral("Also views / procedures / functions / triggers / events"),
+        &dlg);
+    auto *rowsPer = new QSpinBox(&dlg);
+    rowsPer->setRange(1, 100000);
+    rowsPer->setValue(100);
+
+    auto *tableList = new QListWidget(&dlg);
+    tableList->setMaximumHeight(180);
+    for(const QString &t : allTables) {
+        auto *it = new QListWidgetItem(t, tableList);
+        it->setFlags(it->flags() | Qt::ItemIsUserCheckable);
+        it->setCheckState(Qt::Checked);
+    }
+
+    auto *form = new QFormLayout;
+    form->addRow(QString(), structure);
+    form->addRow(QString(), data);
+    form->addRow(QString(), drops);
+    form->addRow(QString(), routines);
+    form->addRow(QStringLiteral("Rows per INSERT"), rowsPer);
+    auto *bb = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel,
+                                    &dlg);
+    bb->button(QDialogButtonBox::Ok)->setText(QStringLiteral("Choose file…"));
+    connect(bb, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
+    connect(bb, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
+    auto *lay = new QVBoxLayout(&dlg);
+    lay->addLayout(form);
+    lay->addWidget(new QLabel(QStringLiteral("Tables (all, when none checked):"),
+                              &dlg));
+    lay->addWidget(tableList);
+    lay->addWidget(bb);
+    if(dlg.exec() != QDialog::Accepted)
+        return;
+
     const QString path = QFileDialog::getSaveFileName(
         this, QStringLiteral("Backup `%1` as SQL dump").arg(db),
         db + QStringLiteral(".sql"), QStringLiteral("SQL (*.sql);;All (*)"));
     if(path.isEmpty())
         return;
 
+    QStringList picked;
+    for(int i = 0; i < tableList->count(); ++i)
+        if(tableList->item(i)->checkState() == Qt::Checked)
+            picked << tableList->item(i)->text();
+    if(picked.size() == tableList->count())
+        picked.clear();               /* all → let SqlDump enumerate */
+
+    SqlDump::Options opt;
+    opt.structure = structure->isChecked();
+    opt.data = data->isChecked();
+    opt.addDropTable = drops->isChecked();
+    opt.routines = routines->isChecked();
+    opt.rowsPerInsert = rowsPer->value();
+
     QApplication::setOverrideCursor(Qt::WaitCursor);
     QString err;
-    const bool ok = dumpDatabaseToFile(db, path, &err);
+    const bool ok = dumpDatabaseToFile(db, path, picked, opt, &err);
     QApplication::restoreOverrideCursor();
 
     m_messages->setPlainText(ok
@@ -2333,6 +2405,14 @@ void ConnectionTab::promptDumpDatabase(const QString &database)
 bool ConnectionTab::dumpDatabaseToFile(const QString &database,
                                       const QString &path, QString *error)
 {
+    return dumpDatabaseToFile(database, path, {}, SqlDump::Options{}, error);
+}
+
+bool ConnectionTab::dumpDatabaseToFile(const QString &database,
+                                      const QString &path,
+                                      const QStringList &tables,
+                                      const SqlDump::Options &opt, QString *error)
+{
     if(!m_conn) {
         if(error) *error = QStringLiteral("not connected");
         return false;
@@ -2343,7 +2423,7 @@ bool ConnectionTab::dumpDatabaseToFile(const QString &database,
         if(error) *error = QStringLiteral("cannot write %1").arg(path);
         return false;
     }
-    const bool ok = SqlDump::write(m_conn, db, {}, SqlDump::Options{}, &f, error);
+    const bool ok = SqlDump::write(m_conn, db, tables, opt, &f, error);
     f.close();
     return ok;
 }

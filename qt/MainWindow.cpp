@@ -441,7 +441,10 @@ MainWindow::MainWindow(QWidget *parent)
     QMenu *tblBackup = table->addMenu(QStringLiteral("&Backup/Export"));
     addDisabled(tblBackup, QStringLiteral("&Scheduled Backups…\tCtrl+Alt+S"));
     addDisabled(tblBackup, QStringLiteral("&Backup Table(s) As SQL Dump…\tCtrl+Alt+E"));
-    addDisabled(tblBackup, QStringLiteral("&Export Table Data As…\tCtrl+Alt+C"));
+    QAction *expTblData = tblBackup->addAction(
+        QStringLiteral("&Export Table Data As…\tCtrl+Alt+C"));
+    connect(expTblData, &QAction::triggered, this,
+            [onSelectedTable] { onSelectedTable(&ConnectionTab::exportTableData); });
     QMenu *tblImport = table->addMenu(QStringLiteral("&Import "));
     addDisabled(tblImport, QStringLiteral("Import E&xternal Data…\tCtrl+Alt+O"));
     QAction *importCsv = tblImport->addAction(
