@@ -40,6 +40,7 @@ int main(int argc, char *argv[])
     bool shotCreateTable = false;
     bool shotIndexDlg = false;
     QPair<QString, QString> openTableParts;
+    QString dataViewMode;   /* --dataview=text|grid selftest */
     int editRow = -1, editCol = -1;
     bool stageOnly = false;
     QString editValue;
@@ -103,6 +104,9 @@ int main(int argc, char *argv[])
             if(parts.size() == 2)
                 openTableParts = qMakePair(parts[0], parts[1]);
         }
+        /* --dataview=text|grid : flip the Table Data pane's view toggle */
+        if(a.startsWith(QStringLiteral("--dataview=")))
+            dataViewMode = a.mid(QStringLiteral("--dataview=").size());
         /* --autoconnect=host:port:user:password:db */
         if(a.startsWith(QStringLiteral("--autoconnect="))) {
             const QStringList parts = a.mid(14).split(':');
@@ -212,6 +216,8 @@ int main(int argc, char *argv[])
                 QTimer::singleShot(400, [&, w] {
                     if(editRow >= 0)
                         w->editTableCell(editRow, editCol, editValue, stageOnly);
+                    if(!dataViewMode.isEmpty())
+                        w->setDataViewMode(dataViewMode);
                     QTimer::singleShot(600, [w, screenshot] {
                         w->grab().save(screenshot);
                         QApplication::quit();
