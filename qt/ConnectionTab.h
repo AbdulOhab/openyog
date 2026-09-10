@@ -147,7 +147,9 @@ private:
 
     QStringList         m_databases;
     QString             m_lastFind;       /* for Find Next / F3 */
-    QStringList         m_completions;    /* schema identifiers for autocomplete */
+    QStringList         m_completions;    /* schema identifiers for autocomplete (union) */
+    QStringList         m_tableNames;     /* offered after FROM / JOIN / INTO / UPDATE */
+    QStringList         m_columnNames;    /* offered after SELECT / WHERE / ON / SET … */
     void updateCompletions();
 
     /* selected table in the browser: [db, table] or empty */

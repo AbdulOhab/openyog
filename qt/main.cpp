@@ -90,15 +90,33 @@ int main(int argc, char *argv[])
             ed.setCompletions({ QStringLiteral("employees"),
                                 QStringLiteral("emp_dept"),
                                 QStringLiteral("orders") });
-            ed.setPlainText(QStringLiteral("SELECT emp"));
-            QTextCursor c = ed.textCursor();
-            c.movePosition(QTextCursor::End);
-            ed.setTextCursor(c);
-            ed.triggerCompletion();
-            const int n = ed.completionCountForTest();
-            QTextStream(stdout) << "comptest: completions for 'emp' = " << n
-                                << (n >= 2 ? "  PASS\n" : "  FAIL\n");
-            return n >= 2 ? 0 : 1;
+            const auto countFor = [&ed](const QString &sql) {
+                ed.setPlainText(sql);
+                QTextCursor c = ed.textCursor();
+                c.movePosition(QTextCursor::End);
+                ed.setTextCursor(c);
+                ed.triggerCompletion();
+                return ed.completionCountForTest();
+            };
+            /* 1. generic fallback (no schema split) */
+            const int n = countFor(QStringLiteral("SELECT emp"));
+            bool ok = n >= 2;
+            QTextStream(stdout) << "comptest: 'SELECT emp' = " << n
+                                << (ok ? "  PASS\n" : "  FAIL\n");
+            /* 2. clause-aware routing */
+            ed.setCompletions({});
+            ed.setSchema({ QStringLiteral("employees"), QStringLiteral("emp_dept") },
+                         { QStringLiteral("emp_id"), QStringLiteral("emp_name"),
+                           QStringLiteral("hire_dt") });
+            const int t = countFor(QStringLiteral("SELECT * FROM emp"));
+            const int col = countFor(QStringLiteral("SELECT emp"));
+            const int colW = countFor(QStringLiteral("SELECT * FROM x WHERE emp"));
+            const bool okT = t == 2, okC = col == 2 && colW == 2;
+            QTextStream(stdout) << "comptest: FROM->tables 'emp' = " << t
+                                << (okT ? "  PASS" : "  FAIL")
+                                << " | SELECT/WHERE->columns 'emp' = " << col
+                                << "/" << colW << (okC ? "  PASS\n" : "  FAIL\n");
+            return (ok && okT && okC) ? 0 : 1;
         }
         if(a.startsWith(QStringLiteral("--opentable="))) {
             const QStringList parts = a.mid(12).split(':');

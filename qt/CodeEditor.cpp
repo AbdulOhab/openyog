@@ -5,6 +5,7 @@
 #include <QFontDatabase>
 #include <QKeyEvent>
 #include <QPainter>
+#include <QRegularExpression>
 #include <QScrollBar>
 #include <QStringListModel>
 #include <QTextBlock>
@@ -51,11 +52,82 @@ CodeEditor::CodeEditor(QWidget *parent)
 
 void CodeEditor::setCompletions(const QStringList &words)
 {
-    QStringList all = kKeywordWords;
-    all += words;
-    all.removeDuplicates();
-    all.sort(Qt::CaseInsensitive);
-    qobject_cast<QStringListModel *>(m_completer->model())->setStringList(all);
+    m_generic = words;
+}
+
+void CodeEditor::setSchema(const QStringList &tables, const QStringList &columns)
+{
+    m_tables = tables;
+    m_columns = columns;
+}
+
+/* Which identifiers to offer, from the last significant keyword before the
+ * cursor on the current statement.  Mirrors SQLyog's AutoCompleteInterface
+ * clause tracking (tables after FROM/JOIN, columns after SELECT/WHERE …). */
+CodeEditor::ClauseCtx CodeEditor::clauseContextAtCursor() const
+{
+    const int pos = textCursor().position();
+    const QString doc = toPlainText();
+    const int stmtStart = doc.lastIndexOf(QLatin1Char(';'), qMax(0, pos - 1)) + 1;
+    QString head = doc.mid(stmtStart, pos - stmtStart);
+
+    /* drop the partial identifier currently being typed */
+    int e = head.size();
+    while(e > 0 && (head[e - 1].isLetterOrNumber() || head[e - 1] == QLatin1Char('_')))
+        --e;
+    head.truncate(e);
+
+    /* "alias." / "table." → completing a column of that qualifier */
+    int k = head.size();
+    while(k > 0 && head[k - 1].isSpace())
+        --k;
+    if(k > 0 && head[k - 1] == QLatin1Char('.'))
+        return CtxColumn;
+
+    static const QRegularExpression tok(
+        QStringLiteral("[A-Za-z_][A-Za-z0-9_]*|,|\\(|\\)"));
+    QStringList toks;
+    auto it = tok.globalMatch(head);
+    while(it.hasNext())
+        toks << it.next().captured(0);
+
+    for(int i = toks.size() - 1; i >= 0; --i) {
+        const QString u = toks[i].toUpper();
+        if(u == QLatin1String("FROM") || u == QLatin1String("JOIN")
+           || u == QLatin1String("INTO") || u == QLatin1String("UPDATE")
+           || u == QLatin1String("TABLE") || u == QLatin1String("DESCRIBE"))
+            return CtxTable;
+        if(u == QLatin1String("SELECT") || u == QLatin1String("WHERE")
+           || u == QLatin1String("ON") || u == QLatin1String("SET")
+           || u == QLatin1String("HAVING") || u == QLatin1String("BY")
+           || u == QLatin1String("USING") || u == QLatin1String("VALUES")
+           || u == QLatin1String("RETURNING"))
+            return CtxColumn;
+        /* AND / OR / NOT / commas / parens are transparent — keep scanning */
+    }
+    return CtxAll;
+}
+
+void CodeEditor::applyModelForContext()
+{
+    QStringList list = kKeywordWords;
+    switch(clauseContextAtCursor()) {
+    case CtxTable:
+        list += m_tables.isEmpty() ? m_generic : m_tables;
+        break;
+    case CtxColumn:
+        list += m_columns.isEmpty() ? m_generic : m_columns;
+        break;
+    case CtxAll:
+    default:
+        list += m_generic;
+        list += m_tables;
+        list += m_columns;
+        break;
+    }
+    list.removeDuplicates();
+    list.sort(Qt::CaseInsensitive);
+    qobject_cast<QStringListModel *>(m_completer->model())->setStringList(list);
 }
 
 QString CodeEditor::wordUnderCursor() const
@@ -85,11 +157,10 @@ void CodeEditor::popupCompleter(bool force)
         m_completer->popup()->hide();
         return;
     }
-    if(prefix != m_completer->completionPrefix()) {
-        m_completer->setCompletionPrefix(prefix);
-        m_completer->popup()->setCurrentIndex(
-            m_completer->completionModel()->index(0, 0));
-    }
+    applyModelForContext();                 /* clause-aware identifier set */
+    m_completer->setCompletionPrefix(prefix);
+    m_completer->popup()->setCurrentIndex(
+        m_completer->completionModel()->index(0, 0));
     if(m_completer->completionCount() == 0
        || (m_completer->completionCount() == 1
            && m_completer->currentCompletion().compare(
