@@ -129,9 +129,10 @@ private:
     QWidget          * m_historyPage = nullptr;
     class QTextBrowser * m_history  = nullptr;
     class QLineEdit  * m_historySearch = nullptr;
-    QStringList        m_historyLines;
-    static QString     historyLineQuery(const QString &line);  /* strip "[ts] " */
+    QStringList        m_historyLines;    /* display: "[ts] flattened sql" (or divider) */
+    QStringList        m_historyQueries;  /* index-aligned: the real query text ("" = divider) */
     void sendHistoryToEditor(const QString &sql);
+    void copyAllShownHistory();
     FindBar          * m_findBar    = nullptr;
 
     QTabWidget       * m_resultTabs = nullptr;
