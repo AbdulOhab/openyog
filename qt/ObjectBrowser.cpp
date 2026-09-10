@@ -1,6 +1,8 @@
 #include "ObjectBrowser.h"
 #include "Icons.h"
 
+#include <QApplication>
+#include <QClipboard>
 #include <QMenu>
 #include <QVBoxLayout>
 
@@ -160,6 +162,23 @@ ObjectBrowser::ObjectBrowser(QWidget *parent)
                            [this, db, table] { emit dropTableRequested(db, table); });
             menu.addAction(QStringLiteral("&Truncate Table…"), this,
                            [this, db, table] { emit truncateTableRequested(db, table); });
+            menu.addSeparator();
+            menu.addAction(QStringLiteral("&Copy CREATE Statement"), this,
+                           [this, db, table] { copyCreateTable(db, table); });
+            menu.addAction(QStringLiteral("Copy Column &Names"), this,
+                           [this, item] { copyColumnNames(item); });
+            menu.addAction(QStringLiteral("Re&fresh Node"), this,
+                           [this, item] {
+                item->takeChildren();
+                onItemExpanded(item);
+                item->setExpanded(true);
+            });
+        } else if(kind == KLeaf && item->parent()
+                  && item->parent()->data(0, Qt::UserRole).toInt() == KTable) {
+            const QString col = item->text(0).section(QStringLiteral("  :  "), 0, 0);
+            menu.addAction(QStringLiteral("&Copy Column Name"), this, [col] {
+                QApplication::clipboard()->setText(col);
+            });
         }
         if(!menu.isEmpty())
             menu.exec(m_tree->viewport()->mapToGlobal(pos));
@@ -282,6 +301,15 @@ void ObjectBrowser::onItemExpanded(QTreeWidgetItem *item)
                 mysql_free_result(res);
             }
         }
+        /* Indexes / Foreign Keys / Triggers sub-folders (table name on +2) */
+        for(const QString &sub : { QStringLiteral("Indexes"),
+                                   QStringLiteral("Foreign Keys"),
+                                   QStringLiteral("Triggers") }) {
+            auto *f = makeItem(KFolder, sub, db);
+            f->setData(0, Qt::UserRole + 2, item->text(0));
+            f->setIcon(0, Icons::get(QStringLiteral("closed_folder.ico")));
+            item->addChild(f);
+        }
         return;
     }
 
@@ -290,6 +318,82 @@ void ObjectBrowser::onItemExpanded(QTreeWidgetItem *item)
 
     const QString bq = QString(db).replace('`', QStringLiteral("``"));
     const QString folder = item->text(0);
+
+    /* table-scoped folder (Indexes / Foreign Keys / Triggers) */
+    if(const QString tbl = item->data(0, Qt::UserRole + 2).toString();
+       !tbl.isEmpty()) {
+        const QString q = QString(tbl).replace('\'', QStringLiteral("''"));
+        const auto add = [&](const QString &text, const QString &icon) {
+            auto *l = makeItem(KLeaf, text);
+            l->setIcon(0, Icons::get(icon));
+            item->addChild(l);
+        };
+        if(folder == QStringLiteral("Indexes")) {
+            if(mysql_query(m_conn, QStringLiteral("SHOW INDEX FROM `%1`.`%2`")
+                    .arg(bq, QString(tbl).replace('`', QStringLiteral("``")))
+                    .toUtf8().constData()) == 0) {
+                if(MYSQL_RES *res = mysql_store_result(m_conn)) {
+                    QString curName;
+                    QStringList curCols;
+                    bool curUnique = false;
+                    const auto flush = [&] {
+                        if(curName.isEmpty()) return;
+                        add(QStringLiteral("%1  %2(%3)").arg(curName,
+                                curUnique ? QStringLiteral("UNIQUE ") : QString(),
+                                curCols.join(QStringLiteral(", "))),
+                            QStringLiteral("altertable.ico"));
+                    };
+                    while(MYSQL_ROW row = mysql_fetch_row(res)) {
+                        const QString name = QString::fromUtf8(row[2] ? row[2] : "");
+                        if(name != curName) { flush(); curName = name; curCols.clear();
+                            curUnique = row[1] && QString::fromUtf8(row[1]) == QStringLiteral("0"); }
+                        if(row[4]) curCols << QString::fromUtf8(row[4]);
+                    }
+                    flush();
+                    mysql_free_result(res);
+                }
+            }
+        } else if(folder == QStringLiteral("Foreign Keys")) {
+            if(mysql_query(m_conn, QStringLiteral(
+                    "SELECT CONSTRAINT_NAME, COLUMN_NAME, REFERENCED_TABLE_NAME, "
+                    "REFERENCED_COLUMN_NAME FROM information_schema.KEY_COLUMN_USAGE "
+                    "WHERE TABLE_SCHEMA='%1' AND TABLE_NAME='%2' "
+                    "AND REFERENCED_TABLE_NAME IS NOT NULL "
+                    "ORDER BY CONSTRAINT_NAME, ORDINAL_POSITION")
+                    .arg(QString(db).replace('\'', QStringLiteral("''")), q)
+                    .toUtf8().constData()) == 0) {
+                if(MYSQL_RES *res = mysql_store_result(m_conn)) {
+                    while(MYSQL_ROW row = mysql_fetch_row(res))
+                        add(QStringLiteral("%1:  %2 → %3(%4)").arg(
+                                QString::fromUtf8(row[0] ? row[0] : ""),
+                                QString::fromUtf8(row[1] ? row[1] : ""),
+                                QString::fromUtf8(row[2] ? row[2] : ""),
+                                QString::fromUtf8(row[3] ? row[3] : "")),
+                            QStringLiteral("altertable.ico"));
+                    mysql_free_result(res);
+                }
+            }
+        } else if(folder == QStringLiteral("Triggers")) {
+            if(mysql_query(m_conn, QStringLiteral("SHOW TRIGGERS FROM `%1` WHERE "
+                    "`Table` = '%2'").arg(bq, q).toUtf8().constData()) == 0) {
+                if(MYSQL_RES *res = mysql_store_result(m_conn)) {
+                    while(MYSQL_ROW row = mysql_fetch_row(res))
+                        add(QStringLiteral("%1  (%2 %3)").arg(
+                                QString::fromUtf8(row[0] ? row[0] : ""),
+                                QString::fromUtf8(row[4] ? row[4] : ""),
+                                QString::fromUtf8(row[1] ? row[1] : "")),
+                            QStringLiteral("altertrigger.ico"));
+                    mysql_free_result(res);
+                }
+            }
+        }
+        if(item->childCount() == 0) {
+            auto *l = makeItem(KLeaf, QStringLiteral("(none)"));
+            l->setDisabled(true);
+            item->addChild(l);
+        }
+        return;
+    }
     if(folder == QStringLiteral("Tables")) {
         if(mysql_query(m_conn,
                QStringLiteral("SHOW FULL TABLES FROM `%1` WHERE Table_type='BASE TABLE'")
@@ -329,6 +433,46 @@ void ObjectBrowser::onItemExpanded(QTreeWidgetItem *item)
         fillLeaves(m_conn, item,
             QStringLiteral("SHOW EVENTS FROM `%1`").arg(bq),
             1, QStringLiteral("alterevent.ico"));   /* col 1 = Name */
+    }
+}
+
+void ObjectBrowser::copyCreateTable(const QString &db, const QString &table)
+{
+    if(!m_conn)
+        return;
+    const QString sql = QStringLiteral("SHOW CREATE TABLE `%1`.`%2`")
+                            .arg(QString(db).replace('`', QStringLiteral("``")),
+                                 QString(table).replace('`', QStringLiteral("``")));
+    if(mysql_query(m_conn, sql.toUtf8().constData()) != 0)
+        return;
+    if(MYSQL_RES *res = mysql_store_result(m_conn)) {
+        if(MYSQL_ROW row = mysql_fetch_row(res); row && row[1]) {
+            QApplication::clipboard()->setText(QString::fromUtf8(row[1])
+                                               + QLatin1Char(';'));
+            emit statusMessage(QStringLiteral("CREATE statement for `%1` copied")
+                                   .arg(table));
+        }
+        mysql_free_result(res);
+    }
+}
+
+void ObjectBrowser::copyColumnNames(QTreeWidgetItem *tableItem)
+{
+    if(!tableItem)
+        return;
+    if(tableItem->childCount() == 0)
+        onItemExpanded(tableItem);
+    QStringList names;
+    for(int i = 0; i < tableItem->childCount(); ++i) {
+        QTreeWidgetItem *c = tableItem->child(i);
+        if(c->data(0, Qt::UserRole).toInt() != KLeaf)
+            continue;               /* skip the Indexes/FK/Triggers sub-folders */
+        names << c->text(0).section(QStringLiteral("  :  "), 0, 0).trimmed();
+    }
+    if(!names.isEmpty()) {
+        QApplication::clipboard()->setText(names.join(QStringLiteral(", ")));
+        emit statusMessage(QStringLiteral("%1 column name(s) copied")
+                               .arg(names.size()));
     }
 }
 
