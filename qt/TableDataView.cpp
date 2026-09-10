@@ -22,11 +22,15 @@
 #include <QMenu>
 #include <QFontDatabase>
 #include <QMessageBox>
+#include <QMouseEvent>
+#include <QPainter>
 #include <QPlainTextEdit>
 #include <QPushButton>
+#include <QSet>
 #include <QSpinBox>
 #include <QStackedWidget>
 #include <QStyle>
+#include <QStyleOptionButton>
 #include <QTabWidget>
 #include <QTextStream>
 #include <QToolButton>
@@ -34,6 +38,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include <functional>
 
 #include <mysql/mysql.h>
 
@@ -224,6 +229,101 @@ private:
     QVector<RowState>    m_state;
 };
 
+/* ---------------- row-select checkbox column ----------------------------- *
+ * SQLyog's leftmost grid column is a checkbox (DataView tracks m_checkcount
+ * and copy / export / delete act on the checked rows).  A vertical header
+ * that paints a checkbox beside each row number gives the same behaviour
+ * without shifting every data column by one.                               */
+
+class RowCheckHeader : public QHeaderView
+{
+    Q_OBJECT
+public:
+    explicit RowCheckHeader(QWidget *parent = nullptr)
+        : QHeaderView(Qt::Vertical, parent)
+    {
+        setSectionsClickable(true);
+        setSectionResizeMode(QHeaderView::Fixed);
+        setDefaultSectionSize(24);
+        setFixedWidth(34);
+    }
+
+    QList<int> checkedRows() const
+    {
+        QList<int> out(m_checked.cbegin(), m_checked.cend());
+        std::sort(out.begin(), out.end());
+        return out;
+    }
+
+    void clearChecks()
+    {
+        if(m_checked.isEmpty())
+            return;
+        m_checked.clear();
+        viewport()->update();
+        emit checkedChanged();
+    }
+
+    void setAllChecked(bool on)
+    {
+        m_checked.clear();
+        if(on && model())
+            for(int r = 0; r < model()->rowCount(); ++r)
+                m_checked.insert(r);
+        viewport()->update();
+        emit checkedChanged();
+    }
+
+    void setRowChecked(int row, bool on)          /* selftest helper */
+    {
+        if(on) m_checked.insert(row);
+        else   m_checked.remove(row);
+        viewport()->update();
+        emit checkedChanged();
+    }
+
+signals:
+    void checkedChanged();
+
+protected:
+    void paintSection(QPainter *p, const QRect &rect, int logical) const override
+    {
+        QHeaderView::paintSection(p, rect, logical);      /* bg + row number */
+        QStyleOptionButton o;
+        o.rect  = checkboxRect(rect);
+        o.state = QStyle::State_Enabled
+                | (m_checked.contains(logical) ? QStyle::State_On
+                                               : QStyle::State_Off);
+        style()->drawPrimitive(QStyle::PE_IndicatorCheckBox, &o, p);
+    }
+
+    void mousePressEvent(QMouseEvent *e) override
+    {
+        const int logical = logicalIndexAt(e->pos());
+        if(logical >= 0) {
+            const int y = sectionViewportPosition(logical);
+            const QRect sec(0, y, width(), sectionSize(logical));
+            if(checkboxRect(sec).adjusted(-3, -3, 3, 3).contains(e->pos())) {
+                if(!m_checked.remove(logical))
+                    m_checked.insert(logical);
+                viewport()->update();
+                emit checkedChanged();
+                return;                        /* don't start a row selection */
+            }
+        }
+        QHeaderView::mousePressEvent(e);
+    }
+
+private:
+    static QRect checkboxRect(const QRect &sec)
+    {
+        const int sz = 13;
+        return QRect(sec.left() + 3, sec.center().y() - sz / 2, sz, sz);
+    }
+
+    QSet<int> m_checked;
+};
+
 /* ---------------- the view ---------------- */
 
 TableDataView::TableDataView(QWidget *parent)
@@ -233,7 +333,8 @@ TableDataView::TableDataView(QWidget *parent)
         QStringLiteral("Double-click a table in the Object Browser to open it."),
         this);
     m_label->setStyleSheet(QStringLiteral(
-        "color: palette(mid); padding: 2px 6px;"));
+        "color: palette(mid); padding: 3px 6px;"));
+    m_label->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
     { QFont f = m_label->font(); f.setPointSizeF(f.pointSizeF() - 0.5);
       m_label->setFont(f); }
 
@@ -496,6 +597,15 @@ TableDataView::TableDataView(QWidget *parent)
     connect(m_grid->horizontalHeader(), &QHeaderView::sectionClicked, this,
             &TableDataView::sortByColumn);
 
+    /* row-select checkbox column on the left (SQLyog's leftmost grid column) */
+    m_checkHeader = new RowCheckHeader(m_grid);
+    m_grid->setVerticalHeader(m_checkHeader);
+    connect(m_checkHeader, &RowCheckHeader::checkedChanged, this, [this] {
+        const int n = m_checkHeader->checkedRows().size();
+        emit statusMessage(n ? QStringLiteral("%1 row(s) checked").arg(n)
+                             : QStringLiteral("row selection cleared"));
+    });
+
     /* read-only text rendering (SQLyog's TEXT view — a Scintilla box upstream) */
     m_textView = new QPlainTextEdit(this);
     m_textView->setReadOnly(true);
@@ -508,6 +618,7 @@ TableDataView::TableDataView(QWidget *parent)
 
     auto *layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
+    layout->setSpacing(0);        /* bars sit flush against the grid, no gap band */
     layout->addWidget(m_tools);
     layout->addWidget(m_applyBar);
     layout->addWidget(m_viewStack, 1);
@@ -539,12 +650,22 @@ TableDataView::TableDataView(QWidget *parent)
             &TableDataView::editCellInTextEditor);
         bigEdit->setEnabled(m_grid->currentIndex().isValid() && !del);
         menu.addSeparator();
-        menu.addAction(del ? QStringLiteral("&Undelete Row")
-                           : QStringLiteral("Mark Row for &Deletion"),
+        const int nchecked = checkedRows().size();
+        menu.addAction(nchecked > 0
+                           ? QStringLiteral("Mark %1 Checked Row(s) for &Deletion")
+                                 .arg(nchecked)
+                           : (del ? QStringLiteral("&Undelete Row")
+                                  : QStringLiteral("Mark Row for &Deletion")),
                        this, &TableDataView::deleteSelectedRow);
         menu.addAction(QStringLiteral("&Add Row"), this, &TableDataView::addRow);
         menu.addAction(QStringLiteral("Add Row (with &values…)"), this,
                        &TableDataView::insertRowWithValues);
+        menu.addSeparator();
+        menu.addAction(QStringLiteral("&Check All Rows"), this,
+                       [this] { checkAllRows(true); });
+        QAction *uncheck = menu.addAction(QStringLiteral("&Uncheck All Rows"), this,
+                                          [this] { checkAllRows(false); });
+        uncheck->setEnabled(nchecked > 0);
         menu.addSeparator();
         menu.addAction(QStringLiteral("&Refresh"), this, &TableDataView::refresh);
         menu.exec(m_grid->viewport()->mapToGlobal(pos));
@@ -654,6 +775,7 @@ void TableDataView::clear()
 {
     m_valid = false;
     m_model->setGrid({}, {});
+    if(m_checkHeader) m_checkHeader->clearChecks();
     m_label->setText(
         QStringLiteral("Double-click a table in the Object Browser to open it."));
 }
@@ -697,6 +819,32 @@ void TableDataView::refreshTextViewIfShown()
 {
     if(m_viewMode == 2 && m_textView)
         m_textView->setPlainText(renderTextView());
+}
+
+/* ---- row-select checkbox column -------------------------------------- */
+
+QList<int> TableDataView::checkedRows() const
+{
+    return m_checkHeader ? m_checkHeader->checkedRows() : QList<int>();
+}
+
+void TableDataView::checkAllRows(bool on)
+{
+    if(m_checkHeader)
+        m_checkHeader->setAllChecked(on);
+}
+
+void TableDataView::checkRowsForTest(const QString &csv)
+{
+    if(!m_checkHeader)
+        return;
+    m_checkHeader->setAllChecked(false);
+    for(const QString &tok : csv.split(QLatin1Char(','), Qt::SkipEmptyParts)) {
+        bool ok = false;
+        const int r = tok.trimmed().toInt(&ok);
+        if(ok)
+            m_checkHeader->setRowChecked(r, true);
+    }
 }
 
 /* column-aligned dump, à la upstream FormatResultSet: header row, a dashed
@@ -750,11 +898,14 @@ void TableDataView::copyRows(bool withHeader)
     if(!m_valid)
         return;
     const QStringList cols = m_model->columns();
-    QList<int> rows;
-    const auto sel = m_grid->selectionModel()
-                     ? m_grid->selectionModel()->selectedRows() : QModelIndexList();
-    for(const QModelIndex &idx : sel)
-        rows << idx.row();
+    /* checkbox column wins; then the QTableView selection; then every row */
+    QList<int> rows = checkedRows();
+    if(rows.isEmpty()) {
+        const auto sel = m_grid->selectionModel()
+                         ? m_grid->selectionModel()->selectedRows() : QModelIndexList();
+        for(const QModelIndex &idx : sel)
+            rows << idx.row();
+    }
     if(rows.isEmpty())
         for(int r = 0; r < m_model->rowCount(); ++r)
             rows << r;
@@ -799,19 +950,23 @@ void TableDataView::exportRows()
         return v;
     };
     const QStringList cols = m_model->columns();
+    QList<int> rows = checkedRows();          /* checked rows only, else all */
+    if(rows.isEmpty())
+        for(int r = 0; r < m_model->rowCount(); ++r)
+            rows << r;
     QTextStream out(&f);
     QStringList head;
     for(const QString &c : cols)
         head << csv(c);
     out << head.join(QLatin1Char(',')) << '\n';
-    for(int r = 0; r < m_model->rowCount(); ++r) {
+    for(int r : rows) {
         QStringList vals;
         for(int c = 0; c < cols.size(); ++c)
             vals << csv(m_model->cur(r, c));
         out << vals.join(QLatin1Char(',')) << '\n';
     }
     emit statusMessage(QStringLiteral("Exported %1 row(s) → %2")
-                           .arg(m_model->rowCount()).arg(path));
+                           .arg(rows.size()).arg(path));
 }
 
 void TableDataView::reload()
@@ -930,6 +1085,7 @@ void TableDataView::reload()
         return;
     }
     m_model->setGrid(header, rows);
+    if(m_checkHeader) m_checkHeader->clearChecks();
     m_valid = true;
 
     /* keep the header's sort arrow in sync after the model reset */
@@ -1076,8 +1232,21 @@ void TableDataView::revertPendingEdits()
 
 void TableDataView::deleteSelectedRow()
 {
+    if(!m_valid)
+        return;
+    /* checked rows win: toggle-delete each.  Descending order so that an
+     * Inserted row being removed outright doesn't shift the rows below it. */
+    QList<int> chk = checkedRows();
+    if(!chk.isEmpty()) {
+        std::sort(chk.begin(), chk.end(), std::greater<int>());
+        for(int r : chk)
+            m_model->toggleDeleted(r);
+        if(m_checkHeader)
+            m_checkHeader->clearChecks();   /* indices may have shifted */
+        return;
+    }
     const QModelIndex idx = m_grid->currentIndex();
-    if(!m_valid || !idx.isValid())
+    if(!idx.isValid())
         return;
     m_model->toggleDeleted(idx.row());   /* staged — commit with Apply */
 }
