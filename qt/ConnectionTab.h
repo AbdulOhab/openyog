@@ -75,6 +75,10 @@ public slots:
     void promptCopyDatabase(const QString &database = {});
     void promptImportCsv(const QString &database, const QString &table);
     void promptImportXml(const QString &database, const QString &table);
+    /* export every row of a table (re-queries — not just the loaded page) */
+    void exportTableData(const QString &database, const QString &table);
+    /* Tools ▸ Export All Rows… — picks table-data vs result grid by context */
+    void exportCurrent();
     void promptUserManager();
     /* non-interactive core, also used by the --copydb selftest */
     bool copyDatabaseTo(const QString &srcDb, const QString &tgtDb,

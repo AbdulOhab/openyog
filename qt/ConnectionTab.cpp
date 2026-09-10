@@ -476,6 +476,8 @@ ConnectionTab::ConnectionTab(const ConnectionParams &params, QWidget *parent)
             &ConnectionTab::promptImportCsv);
     connect(m_browser, &ObjectBrowser::importXmlRequested, this,
             &ConnectionTab::promptImportXml);
+    connect(m_browser, &ObjectBrowser::exportTableRequested, this,
+            &ConnectionTab::exportTableData);
     connect(m_browser, &ObjectBrowser::truncateTableRequested, this,
             &ConnectionTab::truncateTable);
     connect(m_browser, &ObjectBrowser::createObjectRequested, this,
@@ -1823,6 +1825,82 @@ void ConnectionTab::promptUserManager()
 {
     if(m_conn)
         UserManagerDialog(m_conn, this).exec();
+}
+
+void ConnectionTab::exportCurrent()
+{
+    if(m_resultTabs->currentWidget() == m_tableData
+       && !m_tableData->loadedTable().isEmpty())
+        exportTableData(m_tableData->loadedDb(), m_tableData->loadedTable());
+    else
+        exportResult();
+}
+
+void ConnectionTab::exportTableData(const QString &database, const QString &table)
+{
+    if(!m_conn || table.isEmpty())
+        return;
+    const QString db = database.isEmpty() ? m_params.database : database;
+
+    /* structure, for the SQL "include CREATE TABLE" option */
+    QString createDdl;
+    wyString cq;
+    cq.Sprintf("SHOW CREATE TABLE `%s`.`%s`", db.toUtf8().constData(),
+               table.toUtf8().constData());
+    if(mysql_query(m_conn, cq.GetString()) == 0) {
+        if(MYSQL_RES *r = mysql_store_result(m_conn)) {
+            if(MYSQL_ROW row = mysql_fetch_row(r); row && row[1])
+                createDdl = QString::fromUtf8(row[1]);
+            mysql_free_result(r);
+        }
+    }
+
+    /* all rows — re-query without the Table Data pane's LIMIT */
+    QStringList headers;
+    QVector<QStringList> rows;
+    constexpr int kCap = 500000;
+    wyString sq;
+    sq.Sprintf("SELECT * FROM `%s`.`%s`", db.toUtf8().constData(),
+               table.toUtf8().constData());
+    if(mysql_query(m_conn, sq.GetString()) != 0) {
+        QMessageBox::warning(this, QStringLiteral("Export Table Data"),
+                             QString::fromUtf8(mysql_error(m_conn)));
+        return;
+    }
+    if(MYSQL_RES *res = mysql_store_result(m_conn)) {
+        const unsigned nf = mysql_num_fields(res);
+        for(unsigned i = 0; i < nf; ++i)
+            headers << QString::fromUtf8(mysql_fetch_field(res)->name);
+        while(MYSQL_ROW row = mysql_fetch_row(res)) {
+            QStringList r;
+            for(unsigned i = 0; i < nf; ++i)
+                r << (row[i] ? QString::fromUtf8(row[i]) : QStringLiteral("NULL"));
+            rows << r;
+            if(rows.size() >= kCap)
+                break;
+        }
+        mysql_free_result(res);
+    }
+    if(rows.size() >= kCap)
+        m_messages->appendPlainText(
+            QStringLiteral("note: export capped at %1 rows").arg(kCap));
+
+    ExportDialog dlg(table, table, rows.size(), false, this);
+    if(dlg.exec() != QDialog::Accepted || dlg.path().isEmpty())
+        return;
+
+    ResultExport::Options opt = dlg.options();
+    opt.sqlStructure = dlg.includeStructure();
+    opt.sqlCreate = createDdl;
+    const auto cell = [&](int r, int c) { return rows.at(r).at(c); };
+    QString err;
+    if(ResultExport::write(dlg.path(), dlg.format(), headers, cell,
+                           rows.size(), headers.size(), opt, &err))
+        m_messages->appendPlainText(QStringLiteral("Exported %1 row(s) of `%2` → %3")
+                                        .arg(rows.size()).arg(table, dlg.path()));
+    else
+        m_messages->appendPlainText(QStringLiteral("Export failed: ") + err);
+    m_resultTabs->setCurrentWidget(m_messages);
 }
 
 void ConnectionTab::promptImportXml(const QString &database, const QString &table)

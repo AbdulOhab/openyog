@@ -53,6 +53,7 @@ public slots:
     void setViewMode(int mode);   /* 0 = grid, 2 = text (1 = form, unused) */
 
     QString loadedTable() const { return m_valid ? m_table : QString(); }
+    QString loadedDb() const { return m_valid ? m_db : QString(); }
 
 signals:
     void statusMessage(const QString &text);

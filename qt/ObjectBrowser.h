@@ -37,6 +37,7 @@ signals:
     void copyDatabaseRequested(const QString &db);
     void importCsvRequested(const QString &db, const QString &table);
     void importXmlRequested(const QString &db, const QString &table);
+    void exportTableRequested(const QString &db, const QString &table);
     void dumpDatabaseRequested(const QString &db);
     /* schema objects — objType is the SQL keyword: VIEW / PROCEDURE / FUNCTION
      * / TRIGGER / EVENT */
