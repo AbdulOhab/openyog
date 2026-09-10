@@ -127,9 +127,11 @@ private:
     QTabWidget       * m_editorTabs = nullptr;
     CodeEditor       * m_editor     = nullptr;
     QWidget          * m_historyPage = nullptr;
-    QPlainTextEdit   * m_history    = nullptr;
+    class QTextBrowser * m_history  = nullptr;
     class QLineEdit  * m_historySearch = nullptr;
     QStringList        m_historyLines;
+    static QString     historyLineQuery(const QString &line);  /* strip "[ts] " */
+    void sendHistoryToEditor(const QString &sql);
     FindBar          * m_findBar    = nullptr;
 
     QTabWidget       * m_resultTabs = nullptr;
