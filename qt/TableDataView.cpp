@@ -11,6 +11,7 @@
 #include <QFrame>
 #include <QHBoxLayout>
 #include <QHeaderView>
+#include <QIcon>
 #include <QLineEdit>
 #include <QMenu>
 #include <QFontDatabase>
@@ -18,6 +19,7 @@
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QSpinBox>
+#include <QStyle>
 #include <QTabWidget>
 #include <QToolButton>
 #include <QVBoxLayout>
@@ -243,7 +245,7 @@ TableDataView::TableDataView(QWidget *parent)
     connect(m_revertBtn, &QPushButton::clicked, this,
             &TableDataView::revertPendingEdits);
 
-    /* ---- view controls, laid out like SQLyog's "2 Table Data" strip ----- */
+    /* ---- toolbar strip, laid out like SQLyog's "2 Table Data" pane ------ */
     auto *tools = new QWidget(this);
     tools->setObjectName(QStringLiteral("tdvTools"));
     tools->setStyleSheet(QStringLiteral(
@@ -251,10 +253,73 @@ TableDataView::TableDataView(QWidget *parent)
         "border-top: 1px solid palette(mid); "
         "border-bottom: 1px solid palette(mid); }"));
 
+    /* small helpers: theme icon with a QStyle fallback, and a flat tool button */
+    const auto themed = [this](const char *name, QStyle::StandardPixmap fb) {
+        QIcon ic = QIcon::fromTheme(QLatin1String(name));
+        return ic.isNull() ? style()->standardIcon(fb) : ic;
+    };
+    const auto mkTool = [tools](const QIcon &ic, const QString &tip) {
+        auto *b = new QToolButton(tools);
+        b->setAutoRaise(true);
+        b->setIcon(ic);
+        b->setIconSize(QSize(18, 18));
+        b->setToolTip(tip);
+        return b;
+    };
+
+    /* left group: refresh · insert row (▾ menu) · duplicate │ save · revert · delete */
+    auto *btnRefresh = mkTool(themed("view-refresh", QStyle::SP_BrowserReload),
+                              QStringLiteral("Refresh data"));
+    connect(btnRefresh, &QToolButton::clicked, this, &TableDataView::refresh);
+
+    auto *btnAdd = mkTool(themed("list-add", QStyle::SP_FileDialogNewFolder),
+                          QStringLiteral("Insert row"));
+    btnAdd->setPopupMode(QToolButton::MenuButtonPopup);
+    {
+        auto *m = new QMenu(btnAdd);
+        m->addAction(QStringLiteral("Insert blank row"),
+                     this, &TableDataView::addRow);
+        m->addAction(QStringLiteral("Insert row with values…"),
+                     this, &TableDataView::insertRowWithValues);
+        btnAdd->setMenu(m);
+    }
+    connect(btnAdd, &QToolButton::clicked, this, &TableDataView::addRow);
+
+    auto *btnDup = mkTool(themed("edit-copy", QStyle::SP_FileDialogDetailedView),
+                          QStringLiteral("Duplicate current row"));
+    connect(btnDup, &QToolButton::clicked, this, &TableDataView::duplicateRow);
+
+    m_tbApply = mkTool(themed("document-save", QStyle::SP_DialogSaveButton),
+                       QStringLiteral("Save staged changes (Apply)"));
+    connect(m_tbApply, &QToolButton::clicked, this,
+            &TableDataView::applyPendingEdits);
+
+    m_tbRevert = mkTool(themed("edit-undo", QStyle::SP_DialogResetButton),
+                        QStringLiteral("Discard staged changes (Revert)"));
+    connect(m_tbRevert, &QToolButton::clicked, this,
+            &TableDataView::revertPendingEdits);
+
+    m_tbDelRow = mkTool(themed("edit-delete", QStyle::SP_TrashIcon),
+                        QStringLiteral("Mark current row for deletion"));
+    connect(m_tbDelRow, &QToolButton::clicked, this,
+            &TableDataView::deleteSelectedRow);
+
+    m_tbApply->setEnabled(false);
+    m_tbRevert->setEnabled(false);
+
+    /* filter box (SQLyog uses a funnel dialog; an inline WHERE box is handier) */
+    QToolButton *btnFilter = nullptr;
+    if(QIcon fn = QIcon::fromTheme(QStringLiteral("view-filter")); !fn.isNull()) {
+        btnFilter = mkTool(fn, QStringLiteral("Apply filter"));
+        connect(btnFilter, &QToolButton::clicked, this,
+                &TableDataView::applyViewControls);
+    }
     m_whereEdit = new QLineEdit(tools);
     m_whereEdit->setPlaceholderText(
         QStringLiteral("Filter:  WHERE clause — press Enter"));
     m_whereEdit->setClearButtonEnabled(true);
+    m_whereEdit->setMinimumWidth(200);
+    m_whereEdit->setMaximumWidth(340);
     connect(m_whereEdit, &QLineEdit::returnPressed, this,
             &TableDataView::applyViewControls);
 
@@ -305,11 +370,6 @@ TableDataView::TableDataView(QWidget *parent)
             reload();
     });
 
-    auto *refreshBtn = new QToolButton(tools);
-    refreshBtn->setText(QStringLiteral("⟳"));
-    refreshBtn->setToolTip(QStringLiteral("Refresh"));
-    connect(refreshBtn, &QToolButton::clicked, this, &TableDataView::refresh);
-
     const auto vsep = [tools] {
         auto *f = new QFrame(tools);
         f->setFrameShape(QFrame::VLine);
@@ -318,18 +378,28 @@ TableDataView::TableDataView(QWidget *parent)
     };
 
     auto *tl = new QHBoxLayout(tools);
-    tl->setContentsMargins(6, 3, 6, 3);
-    tl->setSpacing(4);
-    tl->addWidget(m_whereEdit, 1);
+    tl->setContentsMargins(4, 2, 6, 2);
+    tl->setSpacing(2);
+    tl->addWidget(btnRefresh);
+    tl->addWidget(btnAdd);
+    tl->addWidget(btnDup);
+    tl->addWidget(vsep());
+    tl->addWidget(m_tbApply);
+    tl->addWidget(m_tbRevert);
+    tl->addWidget(m_tbDelRow);
+    tl->addStretch(1);
+    if(btnFilter)
+        tl->addWidget(btnFilter);
+    tl->addWidget(m_whereEdit);
     tl->addWidget(vsep());
     tl->addWidget(m_limitChk);
+    tl->addSpacing(4);
     tl->addWidget(new QLabel(QStringLiteral("First row"), tools));
     tl->addWidget(m_firstRow);
     tl->addWidget(m_nextBtn);
+    tl->addSpacing(4);
     tl->addWidget(new QLabel(QStringLiteral("# of rows"), tools));
     tl->addWidget(m_rowCount);
-    tl->addWidget(vsep());
-    tl->addWidget(refreshBtn);
     m_tools = tools;
 
     m_model = new TableDataModel(this);
@@ -506,6 +576,8 @@ void TableDataView::updateApplyBar()
     m_applyBar->setVisible(ops > 0);
     m_applyBtn->setEnabled(ops > 0);
     m_revertBtn->setEnabled(ops > 0);
+    if(m_tbApply)  m_tbApply->setEnabled(ops > 0);
+    if(m_tbRevert) m_tbRevert->setEnabled(ops > 0);
     QStringList parts;
     if(edits) parts << QStringLiteral("%1 edited row(s)").arg(edits);
     if(ins)   parts << QStringLiteral("%1 new").arg(ins);
@@ -786,6 +858,26 @@ void TableDataView::addRow()
     const int r = m_model->stageNewRow();
     m_grid->setCurrentIndex(m_model->index(r, 0));
     m_grid->edit(m_model->index(r, 0));   /* jump straight into editing */
+}
+
+/* SQLyog "duplicate row": stage a new row pre-filled from the current one
+ * (AUTO_INCREMENT columns left blank so the server assigns a fresh value) */
+void TableDataView::duplicateRow()
+{
+    const QModelIndex idx = m_grid->currentIndex();
+    if(!m_valid || !idx.isValid())
+        return;
+    const int src = idx.row();
+    const int r = m_model->stageNewRow();
+    for(int c = 0; c < m_columns.size(); ++c) {
+        if(m_colInfo.value(c).autoInc)
+            continue;
+        m_model->stage(r, c, m_model->cur(src, c));
+    }
+    m_grid->setCurrentIndex(m_model->index(r, 0));
+    emit statusMessage(
+        QStringLiteral("Row %1 copied to a new staged row — Apply to insert")
+            .arg(src + 1));
 }
 
 void TableDataView::setCellNull()
