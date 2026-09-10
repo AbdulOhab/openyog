@@ -881,6 +881,12 @@ void MainWindow::openTableData(const QString &db, const QString &table)
         tab->openTableData(db, table);
 }
 
+void MainWindow::setDataViewMode(const QString &mode)
+{
+    if(auto *tab = currentTab())
+        tab->setDataViewMode(mode);
+}
+
 void MainWindow::closeTab(int index)
 {
     QWidget *w = m_tabs->widget(index);

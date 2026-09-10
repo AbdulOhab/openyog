@@ -1,12 +1,18 @@
 #include "TableDataView.h"
+#include "Icons.h"
 #include "wyString.h"
 
+#include <QApplication>
+#include <QButtonGroup>
 #include <QCheckBox>
+#include <QClipboard>
 #include <QColor>
 #include <QFont>
 #include <QContextMenuEvent>
 #include <QDialog>
 #include <QDialogButtonBox>
+#include <QFile>
+#include <QFileDialog>
 #include <QFormLayout>
 #include <QFrame>
 #include <QHBoxLayout>
@@ -19,11 +25,14 @@
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QSpinBox>
+#include <QStackedWidget>
 #include <QStyle>
 #include <QTabWidget>
+#include <QTextStream>
 #include <QToolButton>
 #include <QVBoxLayout>
 
+#include <algorithm>
 #include <cstring>
 
 #include <mysql/mysql.h>
@@ -224,7 +233,7 @@ TableDataView::TableDataView(QWidget *parent)
         QStringLiteral("Double-click a table in the Object Browser to open it."),
         this);
     m_label->setStyleSheet(QStringLiteral(
-        "color: palette(mid); padding: 2px 6px 1px;"));
+        "color: palette(mid); padding: 2px 6px;"));
     { QFont f = m_label->font(); f.setPointSizeF(f.pointSizeF() - 0.5);
       m_label->setFont(f); }
 
@@ -245,75 +254,135 @@ TableDataView::TableDataView(QWidget *parent)
     connect(m_revertBtn, &QPushButton::clicked, this,
             &TableDataView::revertPendingEdits);
 
-    /* ---- toolbar strip, laid out like SQLyog's "2 Table Data" pane ------ */
+    /* ---- toolbar strip, laid out like SQLyog's "2 Table Data" pane ------
+     * SQLyog's strip is near-frameless: flat 22 px buttons packed tight on
+     * the plain window ground, one hairline rule under it. */
     auto *tools = new QWidget(this);
     tools->setObjectName(QStringLiteral("tdvTools"));
     tools->setStyleSheet(QStringLiteral(
-        "#tdvTools { background: palette(window); "
-        "border-top: 1px solid palette(mid); "
-        "border-bottom: 1px solid palette(mid); }"));
+        "#tdvTools QToolButton { border: none; padding: 2px; border-radius: 3px; }"
+        "#tdvTools QToolButton:hover { background: palette(midlight); }"
+        "#tdvTools QToolButton:pressed,"
+        "#tdvTools QToolButton:checked { background: palette(highlight); }"
+        /* the container QSS otherwise renders the plain line edit shorter than
+         * the native spin boxes beside it — give it a matching box */
+        "#tdvTools QLineEdit { border: 1px solid palette(mid); border-radius: 3px; "
+        "padding: 3px 22px 3px 6px; background: palette(base); }"));
 
-    /* small helpers: theme icon with a QStyle fallback, and a flat tool button */
-    const auto themed = [this](const char *name, QStyle::StandardPixmap fb) {
-        QIcon ic = QIcon::fromTheme(QLatin1String(name));
-        return ic.isNull() ? style()->standardIcon(fb) : ic;
+    /* helpers: authentic SQLyog bitmap (include/bitmaps) with a QStyle fallback,
+     * and a flat tool button */
+    const auto ico = [this](const QString &file, QStyle::StandardPixmap fb) {
+        QIcon i = Icons::get(file);
+        return i.isNull() ? style()->standardIcon(fb) : i;
     };
     const auto mkTool = [tools](const QIcon &ic, const QString &tip) {
         auto *b = new QToolButton(tools);
         b->setAutoRaise(true);
         b->setIcon(ic);
-        b->setIconSize(QSize(18, 18));
+        b->setIconSize(QSize(16, 16));
         b->setToolTip(tip);
         return b;
     };
 
-    /* left group: refresh · insert row (▾ menu) · duplicate │ save · revert · delete */
-    auto *btnRefresh = mkTool(themed("view-refresh", QStyle::SP_BrowserReload),
-                              QStringLiteral("Refresh data"));
-    connect(btnRefresh, &QToolButton::clicked, this, &TableDataView::refresh);
+    /* left group, in SQLyog's ResultView::AddToolButtons order (command[] +
+     * command2[]):
+     *   [export] [copy ▾] │ [insert] [duplicate] [save] [delete] [revert]
+     *                     │ [grid] [form] [text]                            */
+    auto *btnExport = mkTool(ico(QStringLiteral("export_data.ico"),
+                                 QStyle::SP_DialogSaveButton),
+                             QStringLiteral("Export table data as CSV…"));
+    connect(btnExport, &QToolButton::clicked, this, [this] { exportRows(); });
 
-    auto *btnAdd = mkTool(themed("list-add", QStyle::SP_FileDialogNewFolder),
-                          QStringLiteral("Insert row"));
-    btnAdd->setPopupMode(QToolButton::MenuButtonPopup);
+    /* SQLyog's copy button is a BTNS_WHOLEDROPDOWN — the whole button opens
+     * the menu, a small arrow, no split divider.  InstantPopup matches it. */
+    auto *btnCopy = mkTool(ico(QStringLiteral("copy_data.ico"), QStyle::SP_FileIcon),
+                           QStringLiteral("Copy rows to the clipboard"));
+    btnCopy->setPopupMode(QToolButton::InstantPopup);
     {
-        auto *m = new QMenu(btnAdd);
-        m->addAction(QStringLiteral("Insert blank row"),
-                     this, &TableDataView::addRow);
-        m->addAction(QStringLiteral("Insert row with values…"),
-                     this, &TableDataView::insertRowWithValues);
-        btnAdd->setMenu(m);
+        auto *m = new QMenu(btnCopy);
+        m->addAction(QStringLiteral("Copy rows (tab-separated)"),
+                     this, [this] { copyRows(false); });
+        m->addAction(QStringLiteral("Copy rows with column names"),
+                     this, [this] { copyRows(true); });
+        btnCopy->setMenu(m);
     }
+
+    /* insert is a plain button upstream (TBSTYLE_BUTTON); "insert with values"
+     * lives in the right-click menu, like SQLyog */
+    auto *btnAdd = mkTool(ico(QStringLiteral("result_insert.ico"),
+                              QStyle::SP_FileDialogNewFolder),
+                          QStringLiteral("Insert row"));
     connect(btnAdd, &QToolButton::clicked, this, &TableDataView::addRow);
 
-    auto *btnDup = mkTool(themed("edit-copy", QStyle::SP_FileDialogDetailedView),
+    auto *btnDup = mkTool(ico(QStringLiteral("duplicaterow.ico"),
+                              QStyle::SP_FileDialogDetailedView),
                           QStringLiteral("Duplicate current row"));
     connect(btnDup, &QToolButton::clicked, this, &TableDataView::duplicateRow);
 
-    m_tbApply = mkTool(themed("document-save", QStyle::SP_DialogSaveButton),
+    m_tbApply = mkTool(ico(QStringLiteral("result_save.ico"),
+                           QStyle::SP_DialogSaveButton),
                        QStringLiteral("Save staged changes (Apply)"));
     connect(m_tbApply, &QToolButton::clicked, this,
             &TableDataView::applyPendingEdits);
 
-    m_tbRevert = mkTool(themed("edit-undo", QStyle::SP_DialogResetButton),
-                        QStringLiteral("Discard staged changes (Revert)"));
-    connect(m_tbRevert, &QToolButton::clicked, this,
-            &TableDataView::revertPendingEdits);
-
-    m_tbDelRow = mkTool(themed("edit-delete", QStyle::SP_TrashIcon),
+    m_tbDelRow = mkTool(ico(QStringLiteral("result_delete.ico"),
+                            QStyle::SP_TrashIcon),
                         QStringLiteral("Mark current row for deletion"));
     connect(m_tbDelRow, &QToolButton::clicked, this,
             &TableDataView::deleteSelectedRow);
 
+    m_tbRevert = mkTool(ico(QStringLiteral("result_cancel.ico"),
+                            QStyle::SP_DialogResetButton),
+                        QStringLiteral("Discard staged changes (Revert)"));
+    connect(m_tbRevert, &QToolButton::clicked, this,
+            &TableDataView::revertPendingEdits);
+
     m_tbApply->setEnabled(false);
     m_tbRevert->setEnabled(false);
 
-    /* filter box (SQLyog uses a funnel dialog; an inline WHERE box is handier) */
+    /* view toggles — exclusive & checkable, like SQLyog's grid / form / text.
+     * Form view ships only in SQLyog Ultimate, so the button is present but
+     * disabled (Community merely pops the upgrade dialog on it). */
+    auto *viewGrp = new QButtonGroup(this);
+    viewGrp->setExclusive(true);
+    const auto mkView = [&](const QString &file, QStyle::StandardPixmap fb,
+                            const QString &tip, int mode) {
+        QToolButton *b = mkTool(ico(file, fb), tip);
+        b->setCheckable(true);
+        viewGrp->addButton(b, mode);
+        return b;
+    };
+    m_tbGrid = mkView(QStringLiteral("grid_view.ico"),
+                      QStyle::SP_FileDialogListView,
+                      QStringLiteral("Grid view"), 0);
+    m_tbForm = mkView(QStringLiteral("form_view.ico"),
+                      QStyle::SP_FileDialogInfoView,
+                      QStringLiteral("Form view — a SQLyog Ultimate feature"), 1);
+    m_tbText = mkView(QStringLiteral("text_View.ico"),
+                      QStyle::SP_FileDialogContentsView,
+                      QStringLiteral("Text view — column-aligned dump"), 2);
+    m_tbGrid->setChecked(true);
+    m_tbForm->setEnabled(false);
+    connect(viewGrp, &QButtonGroup::idClicked, this, &TableDataView::setViewMode);
+
+    /* right group: filter · refresh │ [x] Limit rows …  (SQLyog keeps refresh
+     * over here, next to the filter funnel — not with the DML icons) */
     QToolButton *btnFilter = nullptr;
-    if(QIcon fn = QIcon::fromTheme(QStringLiteral("view-filter")); !fn.isNull()) {
-        btnFilter = mkTool(fn, QStringLiteral("Apply filter"));
-        connect(btnFilter, &QToolButton::clicked, this,
-                &TableDataView::applyViewControls);
+    {
+        QIcon fn = Icons::get(QStringLiteral("filter.ico"));
+        if(fn.isNull())
+            fn = QIcon::fromTheme(QStringLiteral("view-filter"));
+        if(!fn.isNull()) {
+            btnFilter = mkTool(fn, QStringLiteral("Apply the WHERE filter"));
+            connect(btnFilter, &QToolButton::clicked, this,
+                    &TableDataView::applyViewControls);
+        }
     }
+    auto *btnRefresh = mkTool(ico(QStringLiteral("refresh.ico"),
+                                  QStyle::SP_BrowserReload),
+                              QStringLiteral("Refresh data"));
+    connect(btnRefresh, &QToolButton::clicked, this, &TableDataView::refresh);
+
     m_whereEdit = new QLineEdit(tools);
     m_whereEdit->setPlaceholderText(
         QStringLiteral("Filter:  WHERE clause — press Enter"));
@@ -370,27 +439,39 @@ TableDataView::TableDataView(QWidget *parent)
             reload();
     });
 
+    /* keep the filter box the same height as the native spin boxes beside it */
+    m_whereEdit->setMinimumHeight(m_rowCount->sizeHint().height());
+
+    /* short hairline separator — a 16 px tick, not a full-height rule */
     const auto vsep = [tools] {
         auto *f = new QFrame(tools);
         f->setFrameShape(QFrame::VLine);
-        f->setFrameShadow(QFrame::Sunken);
+        f->setFrameShadow(QFrame::Plain);
+        f->setFixedHeight(16);
+        f->setStyleSheet(QStringLiteral("color: palette(mid);"));
         return f;
     };
 
     auto *tl = new QHBoxLayout(tools);
-    tl->setContentsMargins(4, 2, 6, 2);
-    tl->setSpacing(2);
-    tl->addWidget(btnRefresh);
+    tl->setContentsMargins(3, 1, 5, 1);
+    tl->setSpacing(1);
+    tl->addWidget(btnExport);
+    tl->addWidget(btnCopy);
+    tl->addWidget(vsep());
     tl->addWidget(btnAdd);
     tl->addWidget(btnDup);
-    tl->addWidget(vsep());
     tl->addWidget(m_tbApply);
-    tl->addWidget(m_tbRevert);
     tl->addWidget(m_tbDelRow);
+    tl->addWidget(m_tbRevert);
+    tl->addWidget(vsep());
+    tl->addWidget(m_tbGrid);
+    tl->addWidget(m_tbForm);
+    tl->addWidget(m_tbText);
     tl->addStretch(1);
+    tl->addWidget(m_whereEdit);
     if(btnFilter)
         tl->addWidget(btnFilter);
-    tl->addWidget(m_whereEdit);
+    tl->addWidget(btnRefresh);
     tl->addWidget(vsep());
     tl->addWidget(m_limitChk);
     tl->addSpacing(4);
@@ -415,12 +496,22 @@ TableDataView::TableDataView(QWidget *parent)
     connect(m_grid->horizontalHeader(), &QHeaderView::sectionClicked, this,
             &TableDataView::sortByColumn);
 
+    /* read-only text rendering (SQLyog's TEXT view — a Scintilla box upstream) */
+    m_textView = new QPlainTextEdit(this);
+    m_textView->setReadOnly(true);
+    m_textView->setLineWrapMode(QPlainTextEdit::NoWrap);
+    m_textView->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
+
+    m_viewStack = new QStackedWidget(this);
+    m_viewStack->addWidget(m_grid);       /* index 0 — grid */
+    m_viewStack->addWidget(m_textView);   /* index 1 — text */
+
     auto *layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
-    layout->addWidget(m_label);
     layout->addWidget(m_tools);
     layout->addWidget(m_applyBar);
-    layout->addWidget(m_grid, 1);
+    layout->addWidget(m_viewStack, 1);
+    layout->addWidget(m_label);   /* row-count caption sits under the grid, SQLyog-style */
 
     connect(m_model, &TableDataModel::pendingChanged, this,
             &TableDataView::updateApplyBar);
@@ -585,6 +676,144 @@ void TableDataView::updateApplyBar()
     m_pendingLabel->setText(parts.join(QStringLiteral(", ")));
 }
 
+/* ---- Grid / Form / Text view toggle (SQLyog DataView::SwitchView) --------- */
+
+void TableDataView::setViewMode(int mode)
+{
+    if(mode == 1)                       /* Form — Ultimate only; ignore */
+        return;
+    m_viewMode = mode;
+    if(mode == 2) {
+        m_textView->setPlainText(renderTextView());
+        m_viewStack->setCurrentWidget(m_textView);
+    } else {
+        m_viewStack->setCurrentWidget(m_grid);
+    }
+    if(m_tbGrid) m_tbGrid->setChecked(mode == 0);
+    if(m_tbText) m_tbText->setChecked(mode == 2);
+}
+
+void TableDataView::refreshTextViewIfShown()
+{
+    if(m_viewMode == 2 && m_textView)
+        m_textView->setPlainText(renderTextView());
+}
+
+/* column-aligned dump, à la upstream FormatResultSet: header row, a dashed
+ * rule, then the rows — each column padded to max(name, widest value) + gutter */
+QString TableDataView::renderTextView() const
+{
+    const QStringList cols = m_model->columns();
+    const int nrows = m_model->rowCount();
+    const int ncols = cols.size();
+    if(ncols == 0)
+        return QString();
+
+    QVector<int> w(ncols);
+    for(int c = 0; c < ncols; ++c) {
+        w[c] = cols[c].length();
+        for(int r = 0; r < nrows; ++r)
+            w[c] = qMax(w[c], m_model->cur(r, c).length());
+    }
+
+    const auto padRow = [&](const QStringList &vals) {
+        QString line;
+        for(int c = 0; c < ncols; ++c) {
+            QString cell = vals.value(c);
+            cell.replace('\t', QLatin1Char(' '));
+            cell.replace('\n', QLatin1Char(' '));
+            line += cell.leftJustified(w[c], QLatin1Char(' '));
+            if(c + 1 < ncols)
+                line += QStringLiteral("  ");
+        }
+        return line;
+    };
+
+    QStringList out;
+    out << padRow(cols);
+    QStringList rule;
+    for(int c = 0; c < ncols; ++c)
+        rule << QString(w[c], QLatin1Char('-'));
+    out << rule.join(QStringLiteral("  "));
+    for(int r = 0; r < nrows; ++r) {
+        QStringList vals;
+        for(int c = 0; c < ncols; ++c)
+            vals << m_model->cur(r, c);
+        out << padRow(vals);
+    }
+    return out.join(QLatin1Char('\n'));
+}
+
+/* copy the selected rows (or all, if nothing is selected) as TSV */
+void TableDataView::copyRows(bool withHeader)
+{
+    if(!m_valid)
+        return;
+    const QStringList cols = m_model->columns();
+    QList<int> rows;
+    const auto sel = m_grid->selectionModel()
+                     ? m_grid->selectionModel()->selectedRows() : QModelIndexList();
+    for(const QModelIndex &idx : sel)
+        rows << idx.row();
+    if(rows.isEmpty())
+        for(int r = 0; r < m_model->rowCount(); ++r)
+            rows << r;
+    std::sort(rows.begin(), rows.end());
+
+    QStringList lines;
+    if(withHeader)
+        lines << cols.join(QLatin1Char('\t'));
+    for(int r : rows) {
+        QStringList vals;
+        for(int c = 0; c < cols.size(); ++c)
+            vals << m_model->cur(r, c);
+        lines << vals.join(QLatin1Char('\t'));
+    }
+    QApplication::clipboard()->setText(lines.join(QLatin1Char('\n')));
+    emit statusMessage(QStringLiteral("Copied %1 row(s) to the clipboard")
+                           .arg(rows.size()));
+}
+
+/* dump every loaded row to a CSV file (SQLyog's IDM_IMEX_EXPORTDATA, minus
+ * the format picker — CSV only for now) */
+void TableDataView::exportRows()
+{
+    if(!m_valid)
+        return;
+    const QString path = QFileDialog::getSaveFileName(
+        this, QStringLiteral("Export table data as CSV"),
+        QStringLiteral("%1.csv").arg(m_table),
+        QStringLiteral("CSV (*.csv);;All files (*)"));
+    if(path.isEmpty())
+        return;
+    QFile f(path);
+    if(!f.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        emit statusMessage(QStringLiteral("cannot write %1").arg(path));
+        return;
+    }
+    const auto csv = [](QString v) {
+        if(v.contains(QLatin1Char('"')) || v.contains(QLatin1Char(','))
+           || v.contains(QLatin1Char('\n')))
+            return QLatin1Char('"') + v.replace(QLatin1Char('"'),
+                                                QStringLiteral("\"\"")) + QLatin1Char('"');
+        return v;
+    };
+    const QStringList cols = m_model->columns();
+    QTextStream out(&f);
+    QStringList head;
+    for(const QString &c : cols)
+        head << csv(c);
+    out << head.join(QLatin1Char(',')) << '\n';
+    for(int r = 0; r < m_model->rowCount(); ++r) {
+        QStringList vals;
+        for(int c = 0; c < cols.size(); ++c)
+            vals << csv(m_model->cur(r, c));
+        out << vals.join(QLatin1Char(',')) << '\n';
+    }
+    emit statusMessage(QStringLiteral("Exported %1 row(s) → %2")
+                           .arg(m_model->rowCount()).arg(path));
+}
+
 void TableDataView::reload()
 {
     /* columns + keys, upstream-style: SHOW COLUMNS + SHOW KEYS */
@@ -722,6 +951,8 @@ void TableDataView::reload()
     emit statusMessage(
         QStringLiteral("%1.%2 — rows %3–%4 of %5")
             .arg(m_db, m_table).arg(from).arg(to).arg(m_totalRows));
+
+    refreshTextViewIfShown();
 }
 
 QString TableDataView::quoteValue(const QString &v)

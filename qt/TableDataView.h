@@ -21,8 +21,10 @@
 class QCheckBox;
 class QComboBox;
 class QLineEdit;
+class QPlainTextEdit;
 class QPushButton;
 class QSpinBox;
+class QStackedWidget;
 class QToolButton;
 
 class TableDataView : public QWidget
@@ -43,6 +45,10 @@ public slots:
     void insertRowWithValues();
     void applyPendingEdits();
     void revertPendingEdits();
+    /* SQLyog's Grid / Form / Text view toggle (ID_VIEW_GRIDVIEW/FORMVIEW/TEXTVIEW).
+     * Form view is a SQLyog Ultimate feature — the button is present but disabled,
+     * mirroring Community, where it only pops the upgrade dialog. */
+    void setViewMode(int mode);   /* 0 = grid, 2 = text (1 = form, unused) */
 
     QString loadedTable() const { return m_valid ? m_table : QString(); }
 
@@ -52,6 +58,8 @@ signals:
 private slots:
     void deleteSelectedRow();
     void duplicateRow();          /* stage a new row copied from the current one */
+    void copyRows(bool withHeader);
+    void exportRows();            /* write the current rows to a .csv file */
     void updateApplyBar();
     void applyViewControls();      /* re-run with the current WHERE filter */
     void pageStep(int delta);
@@ -65,6 +73,8 @@ private:
 
     void reload();
     QByteArray fetchCellBytes(int row, int col) const;   /* raw bytes for hex view */
+    QString renderTextView() const;   /* column-aligned dump, upstream FormatResultSet */
+    void refreshTextViewIfShown();
 
     struct ColumnInfo { QString name; bool nullable = true; bool autoInc = false; };
 
@@ -81,7 +91,9 @@ private:
     QPushButton * m_applyBtn = nullptr;
     QPushButton * m_revertBtn = nullptr;
     QLabel      * m_pendingLabel = nullptr;
+    QStackedWidget * m_viewStack = nullptr;   /* grid ⇆ text */
     QTableView  * m_grid  = nullptr;
+    QPlainTextEdit * m_textView = nullptr;
     class TableDataModel * m_model = nullptr;
 
     /* toolbar laid out like SQLyog's "2 Table Data" strip:
@@ -91,6 +103,10 @@ private:
     QToolButton * m_tbApply    = nullptr;   /* save staged edits (enabled when pending) */
     QToolButton * m_tbRevert   = nullptr;   /* discard staged edits */
     QToolButton * m_tbDelRow   = nullptr;   /* mark current row for deletion */
+    QToolButton * m_tbGrid     = nullptr;   /* view toggles — exclusive, checkable */
+    QToolButton * m_tbForm     = nullptr;
+    QToolButton * m_tbText     = nullptr;
+    int           m_viewMode   = 0;         /* 0 = grid, 2 = text */
     QLineEdit   * m_whereEdit  = nullptr;
     QCheckBox   * m_limitChk   = nullptr;   /* off = fetch every matching row */
     QSpinBox    * m_firstRow   = nullptr;   /* 0-based OFFSET */

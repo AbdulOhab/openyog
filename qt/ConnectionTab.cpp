@@ -1030,6 +1030,11 @@ void ConnectionTab::openTableData(const QString &db, const QString &table)
     m_resultTabs->setCurrentWidget(m_tableData);
 }
 
+void ConnectionTab::setDataViewMode(const QString &mode)
+{
+    m_tableData->setViewMode(mode == QStringLiteral("text") ? 2 : 0);
+}
+
 void ConnectionTab::promptCreateTable(const QString &database)
 {
     if(!m_conn)
