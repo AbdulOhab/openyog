@@ -292,7 +292,11 @@ ConnectionTab::ConnectionTab(const ConnectionParams &params, QWidget *parent)
     m_editorTabs = new QTabWidget(this);
     m_editorTabs->setObjectName(QStringLiteral("editorTabs"));
     m_editorTabs->setDocumentMode(true);
+    m_editorTabs->setTabsClosable(true);
+    m_editorTabs->setMovable(true);
     m_editorTabs->tabBar()->setExpanding(false);   /* SQLyog left-aligns tabs */
+    connect(m_editorTabs, &QTabWidget::tabCloseRequested,
+            this, &ConnectionTab::closeEditorTab);
     m_editorTabs->setCornerWidget(
         [&] {
             auto *plus = new QPushButton(QStringLiteral("+"), this);
@@ -482,7 +486,11 @@ CodeEditor *ConnectionTab::currentEditor() const
 {
     if(auto *ed = qobject_cast<CodeEditor *>(m_editorTabs->currentWidget()))
         return ed;
-    return m_editor;
+    /* current tab isn't an editor (e.g. History) — fall back to any editor */
+    for(int i = 0; i < m_editorTabs->count(); ++i)
+        if(auto *ed = qobject_cast<CodeEditor *>(m_editorTabs->widget(i)))
+            return ed;
+    return nullptr;
 }
 
 void ConnectionTab::attachEditor(CodeEditor *ed, const QString &title)
@@ -544,6 +552,35 @@ void ConnectionTab::addEditorTab()
             maxN = qMax(maxN, t.mid(6).toInt());
     }
     openEditorWithSql(QStringLiteral("Query %1").arg(maxN + 1), QString());
+}
+
+void ConnectionTab::closeEditorTab(int index)
+{
+    QWidget *w = m_editorTabs->widget(index);
+    if(!w)
+        return;
+
+    /* History is a member page — detach it, don't delete; reopen via the
+     * History button / menu */
+    if(w == m_historyPage) {
+        m_editorTabs->removeTab(index);
+        return;
+    }
+
+    m_editorTabs->removeTab(index);
+    if(w == m_editor)
+        m_editor = nullptr;
+    w->deleteLater();
+
+    /* keep at least one query editor open */
+    bool haveEditor = false;
+    for(int i = 0; i < m_editorTabs->count(); ++i)
+        if(qobject_cast<CodeEditor *>(m_editorTabs->widget(i)))
+            haveEditor = true;
+    if(!haveEditor)
+        addEditorTab();
+    if(!m_editor)
+        m_editor = currentEditor();
 }
 
 CodeEditor *ConnectionTab::openEditorWithSql(const QString &title,
@@ -809,6 +846,10 @@ void ConnectionTab::saveEditor()
 
 void ConnectionTab::showHistory()
 {
+    if(m_editorTabs->indexOf(m_historyPage) == -1)   /* was closed — bring it back */
+        m_editorTabs->addTab(m_historyPage,
+                             Icons::get(QStringLiteral("history.ico")),
+                             QStringLiteral("History"));
     m_editorTabs->setCurrentWidget(m_historyPage);
 }
 
