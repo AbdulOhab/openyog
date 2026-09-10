@@ -44,3 +44,6 @@ CMakeLists.txt.user*
 
 # generated symlink (CMakeLists.txt/build.sh recreate it)
 port/shim/mysql
+
+# stray CSV export test artifact
+employees.csv

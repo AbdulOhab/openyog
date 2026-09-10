@@ -31,6 +31,7 @@
 #include <QStackedWidget>
 #include <QStyle>
 #include <QStyleOptionButton>
+#include <QStyleOptionHeader>
 #include <QTabWidget>
 #include <QTextStream>
 #include <QToolButton>
@@ -245,7 +246,7 @@ public:
         setSectionsClickable(true);
         setSectionResizeMode(QHeaderView::Fixed);
         setDefaultSectionSize(24);
-        setFixedWidth(34);
+        setFixedWidth(24);
     }
 
     QList<int> checkedRows() const
@@ -288,13 +289,33 @@ signals:
 protected:
     void paintSection(QPainter *p, const QRect &rect, int logical) const override
     {
-        QHeaderView::paintSection(p, rect, logical);      /* bg + row number */
-        QStyleOptionButton o;
-        o.rect  = checkboxRect(rect);
-        o.state = QStyle::State_Enabled
-                | (m_checked.contains(logical) ? QStyle::State_On
-                                               : QStyle::State_Off);
-        style()->drawPrimitive(QStyle::PE_IndicatorCheckBox, &o, p);
+        if(!rect.isValid())
+            return;
+        p->save();
+
+        /* themed header background (no text — we place our own) */
+        QStyleOptionHeader ho;
+        ho.initFrom(this);
+        ho.rect = rect;
+        ho.section = logical;
+        ho.orientation = Qt::Vertical;
+        ho.text.clear();
+        style()->drawControl(QStyle::CE_Header, &ho, p, this);
+
+        /* just a checkbox, centred — no row number (SQLyog's leftmost column) */
+        QStyleOptionButton co;
+        co.initFrom(this);
+        co.rect = checkboxRect(rect);
+        co.state = QStyle::State_Enabled
+                 | (m_checked.contains(logical) ? QStyle::State_On
+                                                : QStyle::State_Off);
+        style()->drawPrimitive(QStyle::PE_IndicatorCheckBox, &co, p, this);
+
+        /* subtle rule down the right edge, to set the column off from the grid */
+        p->setPen(palette().color(QPalette::Mid));
+        p->drawLine(rect.right(), rect.top(), rect.right(), rect.bottom());
+
+        p->restore();
     }
 
     void mousePressEvent(QMouseEvent *e) override
@@ -318,7 +339,7 @@ private:
     static QRect checkboxRect(const QRect &sec)
     {
         const int sz = 13;
-        return QRect(sec.left() + 3, sec.center().y() - sz / 2, sz, sz);
+        return QRect(sec.center().x() - sz / 2, sec.center().y() - sz / 2, sz, sz);
     }
 
     QSet<int> m_checked;
