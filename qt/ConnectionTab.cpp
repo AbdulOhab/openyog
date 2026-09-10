@@ -1032,6 +1032,10 @@ void ConnectionTab::openTableData(const QString &db, const QString &table)
 
 void ConnectionTab::setDataViewMode(const QString &mode)
 {
+    if(mode.startsWith(QStringLiteral("check:"))) {
+        m_tableData->checkRowsForTest(mode.mid(6));
+        return;
+    }
     m_tableData->setViewMode(mode == QStringLiteral("text") ? 2 : 0);
 }
 

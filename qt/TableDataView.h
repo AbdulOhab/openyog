@@ -38,6 +38,7 @@ public slots:
     void clear();
     void editCell(int row, int col, const QString &value);   /* selftest: stage+apply */
     void stageCellOnly(int row, int col, const QString &value); /* selftest: stage, no apply */
+    void checkRowsForTest(const QString &csv);   /* selftest: tick the row-select column */
     void setCellNull();
     void editCellInTextEditor();   /* big multi-line editor for the current cell */
     void refresh();
@@ -60,6 +61,7 @@ private slots:
     void duplicateRow();          /* stage a new row copied from the current one */
     void copyRows(bool withHeader);
     void exportRows();            /* write the current rows to a .csv file */
+    void checkAllRows(bool on);   /* row-select checkbox column — select all / none */
     void updateApplyBar();
     void applyViewControls();      /* re-run with the current WHERE filter */
     void pageStep(int delta);
@@ -75,6 +77,9 @@ private:
     QByteArray fetchCellBytes(int row, int col) const;   /* raw bytes for hex view */
     QString renderTextView() const;   /* column-aligned dump, upstream FormatResultSet */
     void refreshTextViewIfShown();
+    /* checked rows from the row-select column (falls back to nothing);
+     * copy / export / delete prefer this set over the QTableView selection */
+    QList<int> checkedRows() const;
 
     struct ColumnInfo { QString name; bool nullable = true; bool autoInc = false; };
 
@@ -93,6 +98,7 @@ private:
     QLabel      * m_pendingLabel = nullptr;
     QStackedWidget * m_viewStack = nullptr;   /* grid ⇆ text */
     QTableView  * m_grid  = nullptr;
+    class RowCheckHeader * m_checkHeader = nullptr;   /* left checkbox column */
     QPlainTextEdit * m_textView = nullptr;
     class TableDataModel * m_model = nullptr;
 

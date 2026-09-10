@@ -41,6 +41,7 @@ int main(int argc, char *argv[])
     bool shotIndexDlg = false;
     QPair<QString, QString> openTableParts;
     QString dataViewMode;   /* --dataview=text|grid selftest */
+    QString checkRows;      /* --checkrows=0,2,4 selftest */
     int editRow = -1, editCol = -1;
     bool stageOnly = false;
     QString editValue;
@@ -107,6 +108,9 @@ int main(int argc, char *argv[])
         /* --dataview=text|grid : flip the Table Data pane's view toggle */
         if(a.startsWith(QStringLiteral("--dataview=")))
             dataViewMode = a.mid(QStringLiteral("--dataview=").size());
+        /* --checkrows=0,2,4 : tick those rows in the row-select column */
+        if(a.startsWith(QStringLiteral("--checkrows=")))
+            checkRows = a.mid(QStringLiteral("--checkrows=").size());
         /* --autoconnect=host:port:user:password:db */
         if(a.startsWith(QStringLiteral("--autoconnect="))) {
             const QStringList parts = a.mid(14).split(':');
@@ -218,6 +222,8 @@ int main(int argc, char *argv[])
                         w->editTableCell(editRow, editCol, editValue, stageOnly);
                     if(!dataViewMode.isEmpty())
                         w->setDataViewMode(dataViewMode);
+                    if(!checkRows.isEmpty())
+                        w->setDataViewMode(QStringLiteral("check:") + checkRows);
                     QTimer::singleShot(600, [w, screenshot] {
                         w->grab().save(screenshot);
                         QApplication::quit();
