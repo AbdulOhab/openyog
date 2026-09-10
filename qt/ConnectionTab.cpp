@@ -84,22 +84,25 @@ void appendHistoryLine(const QString &conn, const QString &sql)
 }
 
 /* the last `max` history lines for `conn`, oldest first, as "[time date] sql" */
-QStringList loadHistoryFor(const QString &conn, int max)
+/* {display line "[ts] sql", raw query} pairs for `conn`, oldest first */
+QList<QPair<QString, QString>> loadHistoryFor(const QString &conn, int max)
 {
     QFile f(historyPath());
     if(!f.open(QIODevice::ReadOnly | QIODevice::Text))
         return {};
-    QStringList out;
+    QList<QPair<QString, QString>> out;
     QTextStream in(&f);
     while(!in.atEnd()) {
         const QStringList p = in.readLine().split('\t');
         if(p.size() < 3 || p[1] != conn)
             continue;
         const QDateTime dt = QDateTime::fromString(p[0], Qt::ISODate);
-        out << QStringLiteral("[%1] %2")
-                   .arg(dt.isValid() ? dt.toString(QStringLiteral("MMM d  hh:mm:ss"))
-                                     : p[0],
-                        p.mid(2).join(QLatin1Char('\t')));
+        const QString sql = p.mid(2).join(QLatin1Char('\t'));
+        out << qMakePair(QStringLiteral("[%1] %2")
+                             .arg(dt.isValid()
+                                      ? dt.toString(QStringLiteral("MMM d  hh:mm:ss"))
+                                      : p[0], sql),
+                         sql);
     }
     return out.mid(qMax(0, out.size() - max));
 }
@@ -256,20 +259,22 @@ ConnectionTab::ConnectionTab(const ConnectionParams &params, QWidget *parent)
     connect(m_history, &QTextBrowser::anchorClicked, this,
             [this](const QUrl &u) {
         const int i = u.path().toInt();
-        if(i < 0 || i >= m_historyLines.size())
-            return;
-        const QString q = historyLineQuery(m_historyLines[i]);
-        if(q.isEmpty())
+        if(i < 0 || i >= m_historyQueries.size() || m_historyQueries[i].isEmpty())
             return;
         if(u.scheme() == QStringLiteral("c"))
-            QApplication::clipboard()->setText(q);
+            QApplication::clipboard()->setText(m_historyQueries[i]);
         else
-            sendHistoryToEditor(q);
+            sendHistoryToEditor(SqlFormat::pretty(m_historyQueries[i]));
     });
     /* previous sessions' history for this connection */
-    m_historyLines = loadHistoryFor(params.name, 500);
-    if(!m_historyLines.isEmpty())
+    for(const auto &pr : loadHistoryFor(params.name, 500)) {
+        m_historyLines << pr.first;
+        m_historyQueries << pr.second;
+    }
+    if(!m_historyLines.isEmpty()) {
         m_historyLines << QStringLiteral("——— this session ———");
+        m_historyQueries << QString();
+    }
 
     m_historySearch = new QLineEdit(this);
     m_historySearch->setPlaceholderText(QStringLiteral("filter history…"));
@@ -286,12 +291,18 @@ ConnectionTab::ConnectionTab(const ConnectionParams &params, QWidget *parent)
     auto *histClear = new QPushButton(QStringLiteral("Clear History…"), this);
     histClear->setToolTip(QStringLiteral("Delete the saved query history file"));
     connect(histClear, &QPushButton::clicked, this, &ConnectionTab::clearHistory);
+    auto *histCopyAll = new QPushButton(QStringLiteral("Copy All"), this);
+    histCopyAll->setToolTip(QStringLiteral(
+        "Copy every query shown (matching the filter) as one script"));
+    connect(histCopyAll, &QPushButton::clicked, this,
+            &ConnectionTab::copyAllShownHistory);
     auto *histTop = new QHBoxLayout;
     histTop->setContentsMargins(3, 3, 3, 0);
     histTop->addWidget(new QLabel(QStringLiteral("Filter:"), this));
     histTop->addWidget(m_historySearch, 1);
     histTop->addWidget(histReset);
     histTop->addSpacing(8);
+    histTop->addWidget(histCopyAll);
     histTop->addWidget(histClear);
     m_historyPage = new QWidget(this);
     auto *histCol = new QVBoxLayout(m_historyPage);
@@ -541,19 +552,13 @@ void ConnectionTab::addEditorTab()
 
 void ConnectionTab::logHistory(const QString &sql)
 {
+    QString flat = sql;
+    flat.replace('\n', QLatin1Char(' ')).replace('\r', QString());
     m_historyLines << QStringLiteral("[%1] %2")
-        .arg(QTime::currentTime().toString(QStringLiteral("hh:mm:ss")), sql);
+        .arg(QTime::currentTime().toString(QStringLiteral("hh:mm:ss")), flat);
+    m_historyQueries << sql;                 /* keep the original line breaks */
     renderHistory();
     appendHistoryLine(m_params.name, sql);
-}
-
-QString ConnectionTab::historyLineQuery(const QString &line)
-{
-    const QString t = line.trimmed();
-    if(t.isEmpty() || t.startsWith(QStringLiteral("———")))
-        return {};                                  /* session divider */
-    static const QRegularExpression ts(QStringLiteral("^\\[[^\\]]*\\]\\s*"));
-    return QString(t).remove(ts);
 }
 
 void ConnectionTab::sendHistoryToEditor(const QString &sql)
@@ -580,14 +585,14 @@ void ConnectionTab::renderHistory()
     const QString filter = m_historySearch->text().trimmed();
     QString html = QStringLiteral(
         "<style>a{text-decoration:none;font-size:13px}"
-        ".ts{color:#8a8a8a}</style>"
+        ".ts{color:#8a8a8a}"
+        ".q{white-space:pre-wrap}</style>"
         "<table cellspacing='0' cellpadding='1'>");
     for(int i = 0; i < m_historyLines.size(); ++i) {
         const QString &l = m_historyLines[i];
         if(!filter.isEmpty() && !l.contains(filter, Qt::CaseInsensitive))
             continue;
-        const QString q = historyLineQuery(l);
-        if(q.isEmpty()) {
+        if(m_historyQueries.value(i).isEmpty()) {          /* session divider */
             html += QStringLiteral("<tr><td></td><td><i>%1</i></td></tr>")
                         .arg(l.trimmed().toHtmlEscaped());
             continue;
@@ -597,15 +602,38 @@ void ConnectionTab::renderHistory()
         html += QStringLiteral(
             "<tr><td valign='top' style='white-space:nowrap'>"
             "<a href='c:%1' title='Copy query'>⧉</a>&#160;"
-            "<a href='e:%1' title='Send to editor'>&#8618;</a>&#160;&#160;</td>"
-            "<td><span class='ts'>%2</span> %3</td></tr>")
+            "<a href='e:%1' title='Send to editor (formatted)'>&#8618;</a>"
+            "&#160;&#160;</td>"
+            "<td><span class='ts'>%2</span> <span class='q'>%3</span></td></tr>")
             .arg(i)
-            .arg(tsPart.toHtmlEscaped(), q.toHtmlEscaped());
+            .arg(tsPart.toHtmlEscaped(), m_historyQueries[i].toHtmlEscaped());
     }
     html += QStringLiteral("</table>");
     m_history->setHtml(html);
     m_history->verticalScrollBar()->setValue(
         m_history->verticalScrollBar()->maximum());
+}
+
+void ConnectionTab::copyAllShownHistory()
+{
+    const QString filter = m_historySearch->text().trimmed();
+    QStringList out;
+    for(int i = 0; i < m_historyLines.size(); ++i) {
+        if(m_historyQueries.value(i).isEmpty())
+            continue;
+        if(!filter.isEmpty()
+           && !m_historyLines[i].contains(filter, Qt::CaseInsensitive))
+            continue;
+        QString q = m_historyQueries[i].trimmed();
+        if(!q.endsWith(';'))
+            q += QLatin1Char(';');
+        out << q;
+    }
+    if(out.isEmpty())
+        return;
+    QApplication::clipboard()->setText(out.join(QStringLiteral("\n\n")));
+    emit executed(QStringLiteral("Copied %1 quer%2 to the clipboard")
+                      .arg(out.size()).arg(out.size() == 1 ? "y" : "ies"));
 }
 
 void ConnectionTab::clearHistory()
@@ -616,6 +644,7 @@ void ConnectionTab::clearHistory()
         return;
     QFile(historyPath()).resize(0);
     m_historyLines.clear();
+    m_historyQueries.clear();
     renderHistory();
 }
 
