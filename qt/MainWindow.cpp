@@ -23,11 +23,14 @@
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QFrame>
+#include <QKeySequence>
 #include <QStatusBar>
 #include <QStackedWidget>
 #include <QTabWidget>
 #include <QToolBar>
 #include <QVBoxLayout>
+
+#include <functional>
 
 namespace {
 /* apply clipboard/undo/redo/case ops to whatever editor has focus */
@@ -668,6 +671,41 @@ MainWindow::MainWindow(QWidget *parent)
         l->setMinimumWidth(90);
         l->setFrameStyle(QFrame::Panel | QFrame::Sunken);
         statusBar()->addPermanentWidget(l);
+    }
+
+    /* Menu actions carry their shortcut as a "\t<keys>" hint in the text, which
+     * only *displays* the accelerator. Turn each hint into a real QKeySequence
+     * so the keys actually work. (Actions that already called setShortcut, or
+     * whose hint isn't a parseable sequence, are left alone.) */
+    std::function<void(const QList<QAction *> &)> wireShortcuts =
+        [&](const QList<QAction *> &actions) {
+        for(QAction *a : actions) {
+            if(a->menu()) {
+                wireShortcuts(a->menu()->actions());
+                continue;
+            }
+            const int tab = a->text().indexOf(QLatin1Char('\t'));
+            if(tab < 0 || !a->shortcut().isEmpty())
+                continue;
+            const QKeySequence ks(a->text().mid(tab + 1).trimmed());
+            if(!ks.isEmpty())
+                a->setShortcut(ks);
+        }
+    };
+    wireShortcuts(menuBar()->actions());
+
+    /* Toolbar buttons duplicate a menu action's job; strip the "\t<keys>" from
+     * their text (it would show literally in the tooltip) and fold it into a
+     * clean tooltip — the menu owns the actual shortcut. */
+    for(QAction *a : toolbar->actions()) {
+        const int tab = a->text().indexOf(QLatin1Char('\t'));
+        if(tab < 0)
+            continue;
+        const QString name = a->text().left(tab);
+        const QString keys = a->text().mid(tab + 1).trimmed();
+        a->setText(name);
+        a->setToolTip(keys.isEmpty() ? name
+                                     : QStringLiteral("%1 (%2)").arg(name, keys));
     }
 
     syncToolbarToCurrentTab();
