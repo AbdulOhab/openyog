@@ -52,8 +52,9 @@ signals:
 private slots:
     void deleteSelectedRow();
     void updateApplyBar();
-    void applyViewControls();      /* re-run with the current WHERE / sort / page */
+    void applyViewControls();      /* re-run with the current WHERE filter */
     void pageStep(int delta);
+    void sortByColumn(int section);   /* header click → ORDER BY, toggles dir */
 
 private:
     static QString quoteValue(const QString &v);   /* v or NULL */
@@ -62,7 +63,6 @@ private:
     bool discardStagedEdits(const QString &action);  /* prompt if pending */
 
     void reload();
-    void rebuildSortCombo();
     QByteArray fetchCellBytes(int row, int col) const;   /* raw bytes for hex view */
 
     struct ColumnInfo { QString name; bool nullable = true; bool autoInc = false; };
@@ -83,18 +83,18 @@ private:
     QTableView  * m_grid  = nullptr;
     class TableDataModel * m_model = nullptr;
 
-    /* view controls: WHERE filter + ORDER BY + SQLyog-style row window
-     * ("Limit rows" checkbox + First row OFFSET + # of rows LIMIT) */
+    /* view controls, laid out like SQLyog's "2 Table Data" strip:
+     *   [ WHERE filter … ] | [x] Limit rows  First row [n] ▶  # of rows [n]  ⟳
+     * sorting is by column-header click only (no combo), also like SQLyog */
     QWidget     * m_tools      = nullptr;
     QLineEdit   * m_whereEdit  = nullptr;
-    QComboBox   * m_sortCombo  = nullptr;
-    QToolButton * m_sortDirBtn = nullptr;
     QCheckBox   * m_limitChk   = nullptr;   /* off = fetch every matching row */
     QSpinBox    * m_firstRow   = nullptr;   /* 0-based OFFSET */
     QSpinBox    * m_rowCount   = nullptr;   /* LIMIT */
     QToolButton * m_nextBtn    = nullptr;   /* ▶ — advance by # of rows */
     QString       m_where;
     QString       m_orderBy;       /* "`col` ASC" or empty */
+    int           m_sortColumn = -1;   /* header index currently sorted, or -1 */
     bool          m_sortDesc = false;
     long long     m_totalRows = 0;   /* COUNT(*) with the WHERE applied */
 };
