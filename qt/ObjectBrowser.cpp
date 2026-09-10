@@ -436,6 +436,13 @@ void ObjectBrowser::onItemExpanded(QTreeWidgetItem *item)
     }
 }
 
+void ObjectBrowser::collapseTree()
+{
+    m_tree->collapseAll();
+    if(QTreeWidgetItem *root = m_tree->topLevelItem(0))
+        root->setExpanded(true);   /* keep the connection node open */
+}
+
 void ObjectBrowser::copyCreateTable(const QString &db, const QString &table)
 {
     if(!m_conn)

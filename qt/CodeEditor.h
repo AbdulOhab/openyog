@@ -21,6 +21,8 @@ public:
     bool findText(const QString &needle, bool caseSensitive, bool backward);
     void gotoLine(int line);                 /* 1-based */
     void toggleLineComment(bool add);        /* prefix/strip "-- " on sel lines */
+    void copyWithNormalizedWhitespace();     /* selection → clipboard, ws runs → " " */
+    void insertFromFile();                   /* pick a file, insert at the cursor */
 
     /* keyword + schema identifier list for autocomplete (Ctrl+Space / typing) */
     void setCompletions(const QStringList &words);   /* generic bucket / fallback */

@@ -60,7 +60,13 @@ public:
 public slots:
     void runQuery();                 /* F9 — selection or current statement */
     void runAll();                   /* Ctrl+F9 — the whole editor */
+    void runAndEdit();               /* F8 — run, and open a single-table SELECT editable */
     void explainCurrent(bool json);  /* EXPLAIN [FORMAT=JSON] the current stmt */
+    void renameCurrentEditorTab();   /* Alt+F2 */
+    void dumpTable(const QString &db, const QString &table);   /* one-table SQL dump */
+    void editorCopyNormalizedWhitespace();   /* Alt+C */
+    void editorInsertFromFile();
+    void collapseBrowser();
     void runStatements(const QStringList &statements, const QString &tabPrefix);
     void openTable(const QString &db, const QString &table);
     void useDatabase(const QString &db);
