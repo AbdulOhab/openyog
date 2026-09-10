@@ -323,20 +323,34 @@ MainWindow::MainWindow(QWidget *parent)
     QAction *createDb = database->addAction(
         QStringLiteral("Create &Database…\tCtrl+D"));
     connect(createDb, &QAction::triggered, this, &MainWindow::createDatabase);
-    addDisabled(database, QStringLiteral("&Alter Database…\tF6"));
+    QAction *alterDb = database->addAction(QStringLiteral("&Alter Database…\tF6"));
+    connect(alterDb, &QAction::triggered, this, [this] {
+        if(auto *t = currentTab()) t->promptAlterDatabase({});
+    });
     QMenu *create = database->addMenu(QStringLiteral("C&reate"));
     QAction *createTblFromDb = create->addAction(QStringLiteral("&Table"));
     connect(createTblFromDb, &QAction::triggered, this,
             [this] { createTable(); });
-    addDisabled(create, QStringLiteral("&View…"));
-    addDisabled(create, QStringLiteral("&Stored Procedure…"));
-    addDisabled(create, QStringLiteral("&Function…"));
-    addDisabled(create, QStringLiteral("Tri&gger…"));
-    addDisabled(create, QStringLiteral("&Event…"));
+    for(const auto &pair : {
+            std::pair<QString, QString>{ QStringLiteral("&View…"), QStringLiteral("VIEW") },
+            { QStringLiteral("&Stored Procedure…"), QStringLiteral("PROCEDURE") },
+            { QStringLiteral("&Function…"), QStringLiteral("FUNCTION") },
+            { QStringLiteral("Tri&gger…"), QStringLiteral("TRIGGER") },
+            { QStringLiteral("&Event…"), QStringLiteral("EVENT") } }) {
+        const QString kw = pair.second;
+        connect(create->addAction(pair.first), &QAction::triggered, this,
+                [this, kw] { if(auto *t = currentTab()) t->createSchemaObject({}, kw); });
+    }
     QMenu *dbOps = database->addMenu(QStringLiteral("More Database &Operations"));
-    addDisabled(dbOps, QStringLiteral("Dro&p Database…\tDel"));
-    addDisabled(dbOps, QStringLiteral("Tr&uncate Database…\tShift+Del"));
-    addDisabled(dbOps, QStringLiteral("E&mpty Database…"));
+    connect(dbOps->addAction(QStringLiteral("Dro&p Database…\tDel")),
+            &QAction::triggered, this,
+            [this] { if(auto *t = currentTab()) t->dropDatabase({}); });
+    connect(dbOps->addAction(QStringLiteral("Tr&uncate Database…\tShift+Del")),
+            &QAction::triggered, this,
+            [this] { if(auto *t = currentTab()) t->truncateDatabase({}); });
+    connect(dbOps->addAction(QStringLiteral("E&mpty Database…")),
+            &QAction::triggered, this,
+            [this] { if(auto *t = currentTab()) t->emptyDatabase({}); });
     database->addSeparator();
     QMenu *dbBackup = database->addMenu(QStringLiteral("&Backup/Export"));
     addDisabled(dbBackup, QStringLiteral("&Scheduled Backups…\tCtrl+Alt+S"));
@@ -885,6 +899,12 @@ void MainWindow::setDataViewMode(const QString &mode)
 {
     if(auto *tab = currentTab())
         tab->setDataViewMode(mode);
+}
+
+void MainWindow::openSchemaObjectTab(const QString &objType)
+{
+    if(auto *tab = currentTab())
+        tab->createSchemaObject({}, objType);
 }
 
 void MainWindow::closeTab(int index)

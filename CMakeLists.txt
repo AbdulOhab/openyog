@@ -60,6 +60,8 @@ add_executable(openyog
     qt/ObjectBrowser.h     qt/ObjectBrowser.cpp
     qt/CreateTableDialog.h qt/CreateTableDialog.cpp
     qt/IndexDialog.h       qt/IndexDialog.cpp
+    qt/SchemaSql.h         qt/SchemaSql.cpp
+    qt/SqlSplit.h          qt/SqlSplit.cpp
     qt/UserManagerDialog.h qt/UserManagerDialog.cpp
     qt/ForeignKeyDialog.h  qt/ForeignKeyDialog.cpp
     qt/SqlDump.h           qt/SqlDump.cpp

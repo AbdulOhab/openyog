@@ -18,6 +18,8 @@
 #include "ConnectionStore.h"
 #include "CreateTableDialog.h"
 #include "IndexDialog.h"
+#include "SchemaSql.h"
+#include "SqlSplit.h"
 #include "SqlFormat.h"
 #include "CodeEditor.h"
 #include "Theme.h"
@@ -43,6 +45,7 @@ int main(int argc, char *argv[])
     QString dataViewMode;   /* --dataview=text|grid selftest */
     QString checkRows;      /* --checkrows=0,2,4 selftest */
     QString hexCell;        /* --hexcell=row:col:hexdigits selftest */
+    QString mkObj;          /* --mkobj=VIEW|PROCEDURE|… selftest */
     int editRow = -1, editCol = -1;
     bool stageOnly = false;
     QString editValue;
@@ -83,6 +86,105 @@ int main(int argc, char *argv[])
         if(a.startsWith(QStringLiteral("--fmtsql="))) {
             QTextStream(stdout) << SqlFormat::pretty(a.mid(9)) << '\n';
             return 0;
+        }
+        /* --schematest=host:port:user:pw:db — exercise the schema-object DDL
+         * helpers (createTemplate / stripDefiner / alterStatements) against a
+         * live server: create → alter → drop a View / Procedure / Function /
+         * Trigger / Event, checking information_schema at each step. */
+        if(a.startsWith(QStringLiteral("--schematest="))) {
+            qputenv("QT_QPA_PLATFORM", "offscreen");
+            QApplication app2(argc, argv);
+            const QStringList p = a.mid(13).split(':');
+            if(p.size() != 5) {
+                QTextStream(stdout) << "schematest: need host:port:user:pw:db\n";
+                return 2;
+            }
+            MYSQL *c = mysql_init(nullptr);
+            if(!mysql_real_connect(c, p[0].toUtf8(), p[2].toUtf8(), p[3].toUtf8(),
+                                   p[4].toUtf8(), p[1].toUInt(), nullptr, 0)) {
+                QTextStream(stdout) << "schematest: connect failed: "
+                                    << mysql_error(c) << '\n';
+                return 1;
+            }
+            const QString db = p[4];
+            auto run = [&](const QString &sql) {
+                return mysql_query(c, sql.toUtf8().constData()) == 0;
+            };
+            auto exists = [&](const QString &q) {
+                if(mysql_query(c, q.toUtf8().constData()) != 0) return -1;
+                MYSQL_RES *r = mysql_store_result(c);
+                if(!r) return -1;
+                MYSQL_ROW row = mysql_fetch_row(r);
+                int n = (row && row[0]) ? QString::fromUtf8(row[0]).toInt() : 0;
+                mysql_free_result(r);
+                return n;
+            };
+            struct Case { QString kw, name, iq; };
+            const QList<Case> cases = {
+                { QStringLiteral("VIEW"), QStringLiteral("oy_st_view"),
+                  QStringLiteral("SELECT COUNT(*) FROM information_schema.VIEWS "
+                    "WHERE TABLE_SCHEMA='%1' AND TABLE_NAME='oy_st_view'").arg(db) },
+                { QStringLiteral("PROCEDURE"), QStringLiteral("oy_st_proc"),
+                  QStringLiteral("SELECT COUNT(*) FROM information_schema.ROUTINES "
+                    "WHERE ROUTINE_SCHEMA='%1' AND ROUTINE_NAME='oy_st_proc' "
+                    "AND ROUTINE_TYPE='PROCEDURE'").arg(db) },
+                { QStringLiteral("FUNCTION"), QStringLiteral("oy_st_func"),
+                  QStringLiteral("SELECT COUNT(*) FROM information_schema.ROUTINES "
+                    "WHERE ROUTINE_SCHEMA='%1' AND ROUTINE_NAME='oy_st_func' "
+                    "AND ROUTINE_TYPE='FUNCTION'").arg(db) },
+                { QStringLiteral("TRIGGER"), QStringLiteral("oy_st_trg"),
+                  QStringLiteral("SELECT COUNT(*) FROM information_schema.TRIGGERS "
+                    "WHERE TRIGGER_SCHEMA='%1' AND TRIGGER_NAME='oy_st_trg'").arg(db) },
+                { QStringLiteral("EVENT"), QStringLiteral("oy_st_event"),
+                  QStringLiteral("SELECT COUNT(*) FROM information_schema.EVENTS "
+                    "WHERE EVENT_SCHEMA='%1' AND EVENT_NAME='oy_st_event'").arg(db) },
+            };
+            bool allOk = true;
+            for(const Case &cs : cases) {
+                run(QStringLiteral("DROP %1 IF EXISTS `%2`.`%3`")
+                        .arg(cs.kw, db, cs.name));
+                QString tmpl = SchemaSql::createTemplate(cs.kw, db);
+                tmpl.replace(QStringLiteral("new_view"),    cs.name);
+                tmpl.replace(QStringLiteral("new_proc"),    cs.name);
+                tmpl.replace(QStringLiteral("new_func"),    cs.name);
+                tmpl.replace(QStringLiteral("new_trigger"), cs.name);
+                tmpl.replace(QStringLiteral("new_event"),   cs.name);
+                tmpl.replace(QStringLiteral("some_table"),  QStringLiteral("employees"));
+                bool cOk = true;
+                for(const QString &s : splitStatements(SchemaSql::editorText(
+                        cs.kw, db, cs.name, tmpl, true)))
+                    cOk = run(s) && cOk;
+                const bool present = exists(cs.iq) == 1;
+                /* alter round-trip */
+                QString ddl;
+                if(mysql_query(c, QStringLiteral("SHOW CREATE %1 `%2`.`%3`")
+                        .arg(cs.kw, db, cs.name).toUtf8().constData()) == 0) {
+                    if(MYSQL_RES *r = mysql_store_result(c)) {
+                        if(MYSQL_ROW row = mysql_fetch_row(r)) {
+                            int col = SchemaSql::showCreateColumn(cs.kw);
+                            if(row[col]) ddl = QString::fromUtf8(row[col]);
+                        }
+                        mysql_free_result(r);
+                    }
+                }
+                bool aOk = !ddl.isEmpty();
+                for(const QString &s : splitStatements(SchemaSql::editorText(
+                        cs.kw, db, cs.name, SchemaSql::stripDefiner(ddl), false)))
+                    aOk = run(s) && aOk;
+                const bool stillThere = exists(cs.iq) == 1;
+                const bool dOk = run(QStringLiteral("DROP %1 IF EXISTS `%2`.`%3`")
+                                         .arg(cs.kw, db, cs.name));
+                const bool gone = exists(cs.iq) == 0;
+                const bool caseOk = cOk && present && aOk && stillThere && dOk && gone;
+                allOk = allOk && caseOk;
+                QTextStream(stdout)
+                    << "schematest " << cs.kw << ": create=" << cOk
+                    << " present=" << present << " alter=" << aOk
+                    << " kept=" << stillThere << " drop=" << dOk << " gone=" << gone
+                    << (caseOk ? "  PASS\n" : "  FAIL\n");
+            }
+            mysql_close(c);
+            return allOk ? 0 : 1;
         }
         if(a == QStringLiteral("--comptest")) {
             qputenv("QT_QPA_PLATFORM", "offscreen");
@@ -133,6 +235,9 @@ int main(int argc, char *argv[])
         /* --hexcell=row:col:deadbeef : stage a binary x'…' edit and apply */
         if(a.startsWith(QStringLiteral("--hexcell=")))
             hexCell = a.mid(QStringLiteral("--hexcell=").size());
+        /* --mkobj=VIEW : open the Create <obj> editor tab */
+        if(a.startsWith(QStringLiteral("--mkobj=")))
+            mkObj = a.mid(QStringLiteral("--mkobj=").size());
         /* --autoconnect=host:port:user:password:db */
         if(a.startsWith(QStringLiteral("--autoconnect="))) {
             const QStringList parts = a.mid(14).split(':');
@@ -248,6 +353,8 @@ int main(int argc, char *argv[])
                         w->setDataViewMode(QStringLiteral("check:") + checkRows);
                     if(!hexCell.isEmpty())
                         w->setDataViewMode(QStringLiteral("hex:") + hexCell);
+                    if(!mkObj.isEmpty())
+                        w->openSchemaObjectTab(mkObj);
                     QTimer::singleShot(600, [w, screenshot] {
                         w->grab().save(screenshot);
                         QApplication::quit();

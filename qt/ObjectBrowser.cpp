@@ -15,6 +15,18 @@ constexpr int KFolder     = 1003;
 constexpr int KTable      = 1004;
 constexpr int KLeaf       = 1005;   /* view / proc / func / trigger / event / column */
 
+/* schema-object folder name → the SQL keyword for CREATE/ALTER/DROP … , or
+ * empty if the folder isn't a routine/view/trigger/event folder */
+QString folderObjType(const QString &folder)
+{
+    if(folder == QStringLiteral("Views"))       return QStringLiteral("VIEW");
+    if(folder == QStringLiteral("Stored Procs")) return QStringLiteral("PROCEDURE");
+    if(folder == QStringLiteral("Functions"))   return QStringLiteral("FUNCTION");
+    if(folder == QStringLiteral("Triggers"))    return QStringLiteral("TRIGGER");
+    if(folder == QStringLiteral("Events"))      return QStringLiteral("EVENT");
+    return {};
+}
+
 /* extra = db name for KDatabase/KFolder/KTable; the folder's leaf query lives
  * on the KFolder item's text(0) */
 QTreeWidgetItem *makeItem(int kind, const QString &name, const QString &extra = {})
@@ -77,16 +89,49 @@ ObjectBrowser::ObjectBrowser(QWidget *parent)
             const QString db = item->text(0);
             menu.addAction(QStringLiteral("Create &Table…"), this,
                            [this, db] { emit createTableRequested(db); });
+            QMenu *create = menu.addMenu(QStringLiteral("&Create Object"));
+            for(const auto &kw : { QStringLiteral("VIEW"), QStringLiteral("PROCEDURE"),
+                                   QStringLiteral("FUNCTION"), QStringLiteral("TRIGGER"),
+                                   QStringLiteral("EVENT") }) {
+                const QString t = kw;
+                create->addAction(t.at(0) + t.mid(1).toLower() + QStringLiteral("…"),
+                                  this, [this, db, t] { emit createObjectRequested(db, t); });
+            }
             menu.addAction(QStringLiteral("&Copy Database…"), this,
                            [this, db] { emit copyDatabaseRequested(db); });
+            menu.addAction(QStringLiteral("&Alter Database…"), this,
+                           [this, db] { emit alterDatabaseRequested(db); });
             menu.addSeparator();
             menu.addAction(QStringLiteral("&Backup Database As SQL Dump…"), this,
                            [this, db] { emit dumpDatabaseRequested(db); });
+            menu.addSeparator();
+            menu.addAction(QStringLiteral("&Empty Database (truncate all tables)…"),
+                           this, [this, db] { emit emptyDatabaseRequested(db); });
+            menu.addAction(QStringLiteral("&Truncate Database (drop all objects)…"),
+                           this, [this, db] { emit truncateDatabaseRequested(db); });
+            menu.addAction(QStringLiteral("&Drop Database…"), this,
+                           [this, db] { emit dropDatabaseRequested(db); });
         } else if(kind == KFolder
                   && item->text(0) == QStringLiteral("Tables")) {
             const QString db = item->data(0, Qt::UserRole + 1).toString();
             menu.addAction(QStringLiteral("Create &Table…"), this,
                            [this, db] { emit createTableRequested(db); });
+        } else if(kind == KFolder && !folderObjType(item->text(0)).isEmpty()) {
+            const QString db = item->data(0, Qt::UserRole + 1).toString();
+            const QString t = folderObjType(item->text(0));
+            menu.addAction(QStringLiteral("&Create %1…").arg(
+                               t.at(0) + t.mid(1).toLower()),
+                           this, [this, db, t] { emit createObjectRequested(db, t); });
+        } else if(kind == KLeaf && item->parent()
+                  && !folderObjType(item->parent()->text(0)).isEmpty()) {
+            const QString db = item->parent()->data(0, Qt::UserRole + 1).toString();
+            const QString t = folderObjType(item->parent()->text(0));
+            const QString name = item->text(0);
+            const QString nice = t.at(0) + t.mid(1).toLower();
+            menu.addAction(QStringLiteral("&Alter %1…").arg(nice), this,
+                           [this, db, t, name] { emit alterObjectRequested(db, t, name); });
+            menu.addAction(QStringLiteral("&Drop %1…").arg(nice), this,
+                           [this, db, t, name] { emit dropObjectRequested(db, t, name); });
         } else if(kind == KTable) {
             const QString db = item->data(0, Qt::UserRole + 1).toString();
             const QString table = item->text(0);
@@ -125,6 +170,11 @@ ObjectBrowser::ObjectBrowser(QWidget *parent)
                 else if(kind == KTable)
                     emit tableActivated(item->data(0, Qt::UserRole + 1).toString(),
                                         item->text(0));
+                else if(kind == KLeaf && item->parent()
+                        && !folderObjType(item->parent()->text(0)).isEmpty())
+                    emit alterObjectRequested(
+                        item->parent()->data(0, Qt::UserRole + 1).toString(),
+                        folderObjType(item->parent()->text(0)), item->text(0));
             });
 
     auto *layout = new QVBoxLayout(this);
