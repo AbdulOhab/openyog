@@ -3,12 +3,12 @@
 
 #include <QCheckBox>
 #include <QColor>
-#include <QComboBox>
 #include <QFont>
 #include <QContextMenuEvent>
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QFormLayout>
+#include <QFrame>
 #include <QHBoxLayout>
 #include <QHeaderView>
 #include <QLineEdit>
@@ -221,6 +221,10 @@ TableDataView::TableDataView(QWidget *parent)
     m_label = new QLabel(
         QStringLiteral("Double-click a table in the Object Browser to open it."),
         this);
+    m_label->setStyleSheet(QStringLiteral(
+        "color: palette(mid); padding: 2px 6px 1px;"));
+    { QFont f = m_label->font(); f.setPointSizeF(f.pointSizeF() - 0.5);
+      m_label->setFont(f); }
 
     /* Apply / Revert bar — hidden until there are staged edits */
     m_applyBar = new QWidget(this);
@@ -239,29 +243,22 @@ TableDataView::TableDataView(QWidget *parent)
     connect(m_revertBtn, &QPushButton::clicked, this,
             &TableDataView::revertPendingEdits);
 
-    /* ---- view controls: WHERE filter + sort + SQLyog-style row window --- */
+    /* ---- view controls, laid out like SQLyog's "2 Table Data" strip ----- */
     auto *tools = new QWidget(this);
+    tools->setObjectName(QStringLiteral("tdvTools"));
+    tools->setStyleSheet(QStringLiteral(
+        "#tdvTools { background: palette(window); "
+        "border-top: 1px solid palette(mid); "
+        "border-bottom: 1px solid palette(mid); }"));
+
     m_whereEdit = new QLineEdit(tools);
-    m_whereEdit->setPlaceholderText(QStringLiteral("WHERE …   (Enter to filter)"));
+    m_whereEdit->setPlaceholderText(
+        QStringLiteral("Filter:  WHERE clause — press Enter"));
     m_whereEdit->setClearButtonEnabled(true);
     connect(m_whereEdit, &QLineEdit::returnPressed, this,
             &TableDataView::applyViewControls);
 
-    m_sortCombo = new QComboBox(tools);
-    m_sortCombo->setMinimumContentsLength(12);
-    connect(m_sortCombo, &QComboBox::activated, this,
-            &TableDataView::applyViewControls);
-    m_sortDirBtn = new QToolButton(tools);
-    m_sortDirBtn->setText(QStringLiteral("▲"));
-    m_sortDirBtn->setToolTip(QStringLiteral("Sort ascending / descending"));
-    connect(m_sortDirBtn, &QToolButton::clicked, this, [this] {
-        m_sortDesc = !m_sortDesc;
-        m_sortDirBtn->setText(m_sortDesc ? QStringLiteral("▼")
-                                         : QStringLiteral("▲"));
-        applyViewControls();
-    });
-
-    /* SQLyog: [x] Limit rows   First row [0] ▶   # of rows [1000] */
+    /* SQLyog right group: [x] Limit rows   First row [0] ▶   # of rows [1000] */
     m_limitChk = new QCheckBox(QStringLiteral("Limit rows"), tools);
     m_limitChk->setChecked(true);
     m_limitChk->setToolTip(
@@ -270,6 +267,8 @@ TableDataView::TableDataView(QWidget *parent)
     m_firstRow = new QSpinBox(tools);
     m_firstRow->setRange(0, 2000000000);
     m_firstRow->setSingleStep(1000);
+    m_firstRow->setMinimumWidth(78);
+    m_firstRow->setAlignment(Qt::AlignRight);
     m_firstRow->setToolTip(
         QStringLiteral("First row — 0-based OFFSET; press Enter to apply"));
     connect(m_firstRow, &QSpinBox::editingFinished, this, [this] {
@@ -285,6 +284,8 @@ TableDataView::TableDataView(QWidget *parent)
     m_rowCount = new QSpinBox(tools);
     m_rowCount->setRange(1, 10000000);
     m_rowCount->setValue(1000);
+    m_rowCount->setMinimumWidth(78);
+    m_rowCount->setAlignment(Qt::AlignRight);
     m_rowCount->setToolTip(QStringLiteral("# of rows — LIMIT; press Enter"));
     connect(m_rowCount, &QSpinBox::editingFinished, this, [this] {
         m_firstRow->setSingleStep(qMax(1, m_rowCount->value()));
@@ -309,21 +310,25 @@ TableDataView::TableDataView(QWidget *parent)
     refreshBtn->setToolTip(QStringLiteral("Refresh"));
     connect(refreshBtn, &QToolButton::clicked, this, &TableDataView::refresh);
 
+    const auto vsep = [tools] {
+        auto *f = new QFrame(tools);
+        f->setFrameShape(QFrame::VLine);
+        f->setFrameShadow(QFrame::Sunken);
+        return f;
+    };
+
     auto *tl = new QHBoxLayout(tools);
-    tl->setContentsMargins(3, 2, 3, 2);
-    tl->setSpacing(3);
+    tl->setContentsMargins(6, 3, 6, 3);
+    tl->setSpacing(4);
     tl->addWidget(m_whereEdit, 1);
-    tl->addWidget(new QLabel(QStringLiteral("Sort:"), tools));
-    tl->addWidget(m_sortCombo);
-    tl->addWidget(m_sortDirBtn);
-    tl->addSpacing(12);
+    tl->addWidget(vsep());
     tl->addWidget(m_limitChk);
-    tl->addWidget(new QLabel(QStringLiteral("First row:"), tools));
+    tl->addWidget(new QLabel(QStringLiteral("First row"), tools));
     tl->addWidget(m_firstRow);
     tl->addWidget(m_nextBtn);
-    tl->addWidget(new QLabel(QStringLiteral("# of rows:"), tools));
+    tl->addWidget(new QLabel(QStringLiteral("# of rows"), tools));
     tl->addWidget(m_rowCount);
-    tl->addSpacing(6);
+    tl->addWidget(vsep());
     tl->addWidget(refreshBtn);
     m_tools = tools;
 
@@ -338,31 +343,7 @@ TableDataView::TableDataView(QWidget *parent)
     m_grid->horizontalHeader()->setSectionsClickable(true);
     m_grid->horizontalHeader()->setSortIndicatorShown(true);
     connect(m_grid->horizontalHeader(), &QHeaderView::sectionClicked, this,
-            [this](int section) {
-        if(!m_valid || section < 0 || section >= m_columns.size())
-            return;
-        if(!discardStagedEdits(QStringLiteral("Re-sort")))
-            return;
-        const QString col = m_columns[section];
-        const QString pfx = QStringLiteral("`%1` ").arg(col);
-        m_sortDesc = m_orderBy.startsWith(pfx) ? !m_sortDesc : false;
-        m_orderBy = pfx + (m_sortDesc ? QStringLiteral("DESC")
-                                      : QStringLiteral("ASC"));
-        const int ci = m_sortCombo->findText(col);
-        if(ci >= 0) {
-            m_sortCombo->blockSignals(true);
-            m_sortCombo->setCurrentIndex(ci);
-            m_sortCombo->blockSignals(false);
-        }
-        m_sortDirBtn->setText(m_sortDesc ? QStringLiteral("▼")
-                                         : QStringLiteral("▲"));
-        m_grid->horizontalHeader()->setSortIndicator(
-            section, m_sortDesc ? Qt::DescendingOrder : Qt::AscendingOrder);
-        m_firstRow->blockSignals(true);
-        m_firstRow->setValue(0);
-        m_firstRow->blockSignals(false);
-        reload();
-    });
+            &TableDataView::sortByColumn);
 
     auto *layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
@@ -418,9 +399,11 @@ void TableDataView::load(MYSQL *conn, const QString &db, const QString &table)
      * ("Limit rows" and "# of rows" stay as the user left them, like SQLyog) */
     m_where.clear();
     m_orderBy.clear();
+    m_sortColumn = -1;
     m_sortDesc = false;
     if(m_whereEdit) m_whereEdit->clear();
-    if(m_sortDirBtn) m_sortDirBtn->setText(QStringLiteral("▲"));
+    if(m_grid)
+        m_grid->horizontalHeader()->setSortIndicator(-1, Qt::AscendingOrder);
     if(m_firstRow) {
         m_firstRow->blockSignals(true);
         m_firstRow->setValue(0);
@@ -441,20 +424,37 @@ bool TableDataView::discardStagedEdits(const QString &action)
     return true;
 }
 
+/* WHERE-filter box: Enter re-queries; the header-click sort is left intact */
 void TableDataView::applyViewControls()
 {
     if(!m_valid || !discardStagedEdits(QStringLiteral("Re-query")))
         return;
     m_where = m_whereEdit->text().trimmed();
-    const int sc = m_sortCombo->currentIndex();
-    m_orderBy = (sc <= 0)
-        ? QString()
-        : QStringLiteral("`%1` %2").arg(m_sortCombo->currentText(),
-                                        m_sortDesc ? QStringLiteral("DESC")
-                                                   : QStringLiteral("ASC"));
     if(m_firstRow) {
         m_firstRow->blockSignals(true);
-        m_firstRow->setValue(0);          /* new filter/sort → back to the top */
+        m_firstRow->setValue(0);          /* new filter → back to the top */
+        m_firstRow->blockSignals(false);
+    }
+    reload();
+}
+
+/* SQLyog: clicking a column header sorts by it; re-clicking flips ASC/DESC */
+void TableDataView::sortByColumn(int section)
+{
+    if(!m_valid || section < 0 || section >= m_columns.size())
+        return;
+    if(!discardStagedEdits(QStringLiteral("Re-sort")))
+        return;
+    m_sortDesc = (section == m_sortColumn) ? !m_sortDesc : false;
+    m_sortColumn = section;
+    m_orderBy = QStringLiteral("`%1` %2")
+        .arg(m_columns[section],
+             m_sortDesc ? QStringLiteral("DESC") : QStringLiteral("ASC"));
+    m_grid->horizontalHeader()->setSortIndicator(
+        section, m_sortDesc ? Qt::DescendingOrder : Qt::AscendingOrder);
+    if(m_firstRow) {
+        m_firstRow->blockSignals(true);
+        m_firstRow->setValue(0);
         m_firstRow->blockSignals(false);
     }
     reload();
@@ -475,18 +475,6 @@ void TableDataView::pageStep(int delta)
     m_firstRow->setValue(int(qMin<long long>(want, m_firstRow->maximum())));
     m_firstRow->blockSignals(false);
     reload();
-}
-
-void TableDataView::rebuildSortCombo()
-{
-    const QString keep = m_sortCombo->currentText();
-    m_sortCombo->blockSignals(true);
-    m_sortCombo->clear();
-    m_sortCombo->addItem(QStringLiteral("(unsorted)"));
-    m_sortCombo->addItems(m_columns);
-    const int i = m_sortCombo->findText(keep);
-    m_sortCombo->setCurrentIndex(i > 0 ? i : 0);
-    m_sortCombo->blockSignals(false);
 }
 
 void TableDataView::editCell(int row, int col, const QString &value)
@@ -577,7 +565,6 @@ void TableDataView::reload()
         if(pkeys.contains(m_columns[i]))
             m_pkColumns << i;
     m_hasPrimary = !m_pkColumns.isEmpty();   /* upstream: PK only, else all-cols */
-    rebuildSortCombo();
 
     const QString qualified = QStringLiteral("`%1`.`%2`").arg(m_db, m_table);
     const QString whereSql = m_where.isEmpty()
@@ -643,6 +630,11 @@ void TableDataView::reload()
     }
     m_model->setGrid(header, rows);
     m_valid = true;
+
+    /* keep the header's sort arrow in sync after the model reset */
+    m_grid->horizontalHeader()->setSortIndicator(
+        m_sortColumn,
+        m_sortDesc ? Qt::DescendingOrder : Qt::AscendingOrder);
 
     const long long from = rows.isEmpty() ? 0 : offset + 1;
     const long long to = offset + rows.size();
