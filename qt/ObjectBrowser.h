@@ -57,6 +57,9 @@ private slots:
     void applyFilter(const QString &text);
 
 private:
+    void copyCreateTable(const QString &db, const QString &table);
+    void copyColumnNames(QTreeWidgetItem *tableItem);
+
     enum ItemRole { RoleKind = Qt::UserRole + 1, RoleName };
     enum Kind { KindConnection, KindDatabase, KindFolder, KindTable };
 
