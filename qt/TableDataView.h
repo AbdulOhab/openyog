@@ -18,9 +18,11 @@
 
 #include <mysql/mysql.h>   /* typedef struct st_mysql MYSQL — no forward decl */
 
+class QCheckBox;
 class QComboBox;
 class QLineEdit;
 class QPushButton;
+class QSpinBox;
 class QToolButton;
 
 class TableDataView : public QWidget
@@ -81,18 +83,18 @@ private:
     QTableView  * m_grid  = nullptr;
     class TableDataModel * m_model = nullptr;
 
-    /* view controls: WHERE filter + ORDER BY + LIMIT/OFFSET paging */
+    /* view controls: WHERE filter + ORDER BY + SQLyog-style row window
+     * ("Limit rows" checkbox + First row OFFSET + # of rows LIMIT) */
     QWidget     * m_tools      = nullptr;
     QLineEdit   * m_whereEdit  = nullptr;
     QComboBox   * m_sortCombo  = nullptr;
     QToolButton * m_sortDirBtn = nullptr;
-    QComboBox   * m_pageSize   = nullptr;
-    QToolButton * m_pagePrev   = nullptr;
-    QToolButton * m_pageNext   = nullptr;
-    QLabel      * m_pageLabel  = nullptr;
+    QCheckBox   * m_limitChk   = nullptr;   /* off = fetch every matching row */
+    QSpinBox    * m_firstRow   = nullptr;   /* 0-based OFFSET */
+    QSpinBox    * m_rowCount   = nullptr;   /* LIMIT */
+    QToolButton * m_nextBtn    = nullptr;   /* ▶ — advance by # of rows */
     QString       m_where;
     QString       m_orderBy;       /* "`col` ASC" or empty */
     bool          m_sortDesc = false;
-    int           m_page      = 0;
     long long     m_totalRows = 0;   /* COUNT(*) with the WHERE applied */
 };
