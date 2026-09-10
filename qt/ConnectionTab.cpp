@@ -3,6 +3,8 @@
 #include "TableDataView.h"
 #include "SqlHighlighter.h"
 #include "CreateTableDialog.h"
+#include "SchemaSql.h"
+#include "SqlSplit.h"
 #include "FindBar.h"
 #include "SqlFormat.h"
 #include "UserManagerDialog.h"
@@ -149,33 +151,6 @@ void installGridCopy(QTableView *grid)
         }
         QApplication::clipboard()->setText(out);
     });
-}
-
-/* split on ';', honoring single-quoted strings (good enough for now) */
-QStringList splitStatements(const QString &sql)
-{
-    QStringList out;
-    QString cur;
-    bool inString = false;
-    for(int i = 0; i < sql.size(); ++i) {
-        const QChar ch = sql[i];
-        if(ch == '\'' ) {
-            if(inString && i + 1 < sql.size() && sql[i + 1] == '\'')
-                cur += "''", ++i;
-            else
-                inString = !inString;
-        }
-        if(ch == ';' && !inString) {
-            if(!cur.trimmed().isEmpty())
-                out << cur.trimmed();
-            cur.clear();
-            continue;
-        }
-        cur += ch;
-    }
-    if(!cur.trimmed().isEmpty())
-        out << cur.trimmed();
-    return out;
 }
 
 /* runs in a worker thread: dedicated connection per batch, results
@@ -452,6 +427,20 @@ ConnectionTab::ConnectionTab(const ConnectionParams &params, QWidget *parent)
             &ConnectionTab::promptImportXml);
     connect(m_browser, &ObjectBrowser::truncateTableRequested, this,
             &ConnectionTab::truncateTable);
+    connect(m_browser, &ObjectBrowser::createObjectRequested, this,
+            &ConnectionTab::createSchemaObject);
+    connect(m_browser, &ObjectBrowser::alterObjectRequested, this,
+            &ConnectionTab::alterSchemaObject);
+    connect(m_browser, &ObjectBrowser::dropObjectRequested, this,
+            &ConnectionTab::dropSchemaObject);
+    connect(m_browser, &ObjectBrowser::dropDatabaseRequested, this,
+            &ConnectionTab::dropDatabase);
+    connect(m_browser, &ObjectBrowser::truncateDatabaseRequested, this,
+            &ConnectionTab::truncateDatabase);
+    connect(m_browser, &ObjectBrowser::emptyDatabaseRequested, this,
+            &ConnectionTab::emptyDatabase);
+    connect(m_browser, &ObjectBrowser::alterDatabaseRequested, this,
+            &ConnectionTab::promptAlterDatabase);
 
     m_infoBar->setText(QStringLiteral(
         "OpenYog — connected to %1@%2:%3%4")
@@ -552,13 +541,23 @@ void ConnectionTab::addEditorTab()
         if(t.startsWith(QStringLiteral("Query ")))
             maxN = qMax(maxN, t.mid(6).toInt());
     }
+    openEditorWithSql(QStringLiteral("Query %1").arg(maxN + 1), QString());
+}
+
+CodeEditor *ConnectionTab::openEditorWithSql(const QString &title,
+                                             const QString &sql)
+{
     auto *ed = new CodeEditor(this);
     attachEditor(ed, {});
-    const QString title = QStringLiteral("Query %1").arg(maxN + 1);
+    if(!sql.isEmpty())
+        ed->setPlainText(sql);
     const int histIdx = m_editorTabs->indexOf(m_historyPage);
     m_editorTabs->insertTab(histIdx == -1 ? m_editorTabs->count() : histIdx,
                             ed, Icons::get(QStringLiteral("query_16.ico")), title);
+    const int idx = m_editorTabs->indexOf(ed);
+    m_editorTabs->setTabToolTip(idx, title);
     m_editorTabs->setCurrentWidget(ed);
+    return ed;
 }
 
 void ConnectionTab::logHistory(const QString &sql)
@@ -1098,6 +1097,209 @@ void ConnectionTab::truncateTable(const QString &database, const QString &table)
     execDdl(QStringLiteral("TRUNCATE TABLE `%1`.`%2`").arg(db, table));
     if(m_tableData->loadedTable() == table)
         m_tableData->load(m_conn, db, table);   /* empty grid */
+}
+
+/* ---- schema objects: View / Procedure / Function / Trigger / Event ------- */
+
+void ConnectionTab::createSchemaObject(const QString &database,
+                                       const QString &objType)
+{
+    if(!m_conn)
+        return;
+    const QString db = database.isEmpty() ? m_params.database : database;
+    if(db.isEmpty()) {
+        QMessageBox::warning(this, QStringLiteral("Create %1").arg(objType),
+                             QStringLiteral("Select a database first."));
+        return;
+    }
+    const QString nice = objType.left(1) + objType.mid(1).toLower();
+    /* SQLyog opens the DDL in a new query-editor tab, not a modal dialog */
+    openEditorWithSql(
+        QStringLiteral("Create %1").arg(nice),
+        SchemaSql::editorText(objType, db, QString(),
+                              SchemaSql::createTemplate(objType, db), true));
+}
+
+void ConnectionTab::alterSchemaObject(const QString &database,
+                                      const QString &objType, const QString &name)
+{
+    if(!m_conn || name.isEmpty())
+        return;
+    const QString db = database.isEmpty() ? m_params.database : database;
+    const QString nice = objType.left(1) + objType.mid(1).toLower();
+
+    wyString q;
+    q.Sprintf("SHOW CREATE %s `%s`.`%s`", objType.toUtf8().constData(),
+              db.toUtf8().constData(), name.toUtf8().constData());
+    if(mysql_query(m_conn, q.GetString()) != 0) {
+        QMessageBox::warning(this, QStringLiteral("Alter %1").arg(nice),
+                             QString::fromUtf8(mysql_error(m_conn)));
+        return;
+    }
+    QString ddl;
+    if(MYSQL_RES *res = mysql_store_result(m_conn)) {
+        if(MYSQL_ROW row = mysql_fetch_row(res)) {
+            const int c = SchemaSql::showCreateColumn(objType);
+            if(row[c])
+                ddl = QString::fromUtf8(row[c]);
+        }
+        mysql_free_result(res);
+    }
+    if(ddl.isEmpty()) {
+        QMessageBox::warning(this, QStringLiteral("Alter %1").arg(nice),
+                             QStringLiteral("Could not read the object's DDL."));
+        return;
+    }
+    openEditorWithSql(
+        QStringLiteral("Alter %1 `%2`").arg(nice, name),
+        SchemaSql::editorText(objType, db, name,
+                              SchemaSql::stripDefiner(ddl), false));
+}
+
+void ConnectionTab::dropSchemaObject(const QString &database,
+                                     const QString &objType, const QString &name)
+{
+    if(!m_conn || name.isEmpty())
+        return;
+    const QString db = database.isEmpty() ? m_params.database : database;
+    const QString nice = objType.left(1) + objType.mid(1).toLower();
+    if(QMessageBox::question(this, QStringLiteral("Drop %1").arg(nice),
+            QStringLiteral("Permanently DROP %1 `%2`.`%3`?").arg(nice, db, name))
+            != QMessageBox::Yes)
+        return;
+    execDdl(QStringLiteral("DROP %1 IF EXISTS `%2`.`%3`").arg(objType, db, name));
+}
+
+/* ---- database-level operations ----------------------------------------- */
+
+void ConnectionTab::dropDatabase(const QString &database)
+{
+    const QString db = database.isEmpty() ? m_params.database : database;
+    if(db.isEmpty())
+        return;
+    if(QMessageBox::warning(this, QStringLiteral("Drop Database"),
+            QStringLiteral("Permanently DROP database `%1` and everything in it?")
+                .arg(db),
+            QMessageBox::Yes | QMessageBox::No, QMessageBox::No)
+            != QMessageBox::Yes)
+        return;
+    execDdl(QStringLiteral("DROP DATABASE `%1`").arg(db));
+}
+
+void ConnectionTab::truncateDatabase(const QString &database)
+{
+    const QString db = database.isEmpty() ? m_params.database : database;
+    if(db.isEmpty())
+        return;
+    if(QMessageBox::warning(this, QStringLiteral("Truncate Database"),
+            QStringLiteral("DROP every table, view, routine, trigger and event "
+                           "in `%1`?  (the empty database is kept)").arg(db),
+            QMessageBox::Yes | QMessageBox::No, QMessageBox::No)
+            != QMessageBox::Yes)
+        return;
+
+    /* read the current charset/collation so the recreated db keeps them */
+    QString charset = QStringLiteral("utf8mb4"), collation;
+    wyString q;
+    q.Sprintf("SELECT DEFAULT_CHARACTER_SET_NAME, DEFAULT_COLLATION_NAME "
+              "FROM information_schema.SCHEMATA WHERE SCHEMA_NAME='%s'",
+              QString(db).replace('\'', QStringLiteral("''")).toUtf8().constData());
+    if(mysql_query(m_conn, q.GetString()) == 0) {
+        if(MYSQL_RES *res = mysql_store_result(m_conn)) {
+            if(MYSQL_ROW r = mysql_fetch_row(res)) {
+                if(r[0]) charset = QString::fromUtf8(r[0]);
+                if(r[1]) collation = QString::fromUtf8(r[1]);
+            }
+            mysql_free_result(res);
+        }
+    }
+    const QString bq = QString(db).replace('`', QStringLiteral("``"));
+    QString create = QStringLiteral("CREATE DATABASE `%1` CHARACTER SET %2")
+                         .arg(bq, charset);
+    if(!collation.isEmpty())
+        create += QStringLiteral(" COLLATE %1").arg(collation);
+    if(execDdl(QStringLiteral("DROP DATABASE `%1`").arg(bq)))
+        execDdl(create);
+}
+
+void ConnectionTab::emptyDatabase(const QString &database)
+{
+    const QString db = database.isEmpty() ? m_params.database : database;
+    if(db.isEmpty())
+        return;
+    if(QMessageBox::warning(this, QStringLiteral("Empty Database"),
+            QStringLiteral("TRUNCATE every base table in `%1`?  All rows are lost.")
+                .arg(db),
+            QMessageBox::Yes | QMessageBox::No, QMessageBox::No)
+            != QMessageBox::Yes)
+        return;
+
+    QStringList tables;
+    wyString q;
+    q.Sprintf("SELECT TABLE_NAME FROM information_schema.TABLES "
+              "WHERE TABLE_SCHEMA='%s' AND TABLE_TYPE='BASE TABLE'",
+              QString(db).replace('\'', QStringLiteral("''")).toUtf8().constData());
+    if(mysql_query(m_conn, q.GetString()) == 0) {
+        if(MYSQL_RES *res = mysql_store_result(m_conn)) {
+            while(MYSQL_ROW r = mysql_fetch_row(res))
+                if(r[0]) tables << QString::fromUtf8(r[0]);
+            mysql_free_result(res);
+        }
+    }
+    execDdl(QStringLiteral("SET FOREIGN_KEY_CHECKS = 0"));
+    for(const QString &t : tables)
+        execDdl(QStringLiteral("TRUNCATE TABLE `%1`.`%2`").arg(db, t));
+    execDdl(QStringLiteral("SET FOREIGN_KEY_CHECKS = 1"));
+    if(!m_tableData->loadedTable().isEmpty()
+       && tables.contains(m_tableData->loadedTable()))
+        m_tableData->load(m_conn, db, m_tableData->loadedTable());
+}
+
+void ConnectionTab::promptAlterDatabase(const QString &database)
+{
+    if(!m_conn)
+        return;
+    const QString db = database.isEmpty() ? m_params.database : database;
+    if(db.isEmpty())
+        return;
+
+    QString curCharset, curCollation;
+    wyString q;
+    q.Sprintf("SELECT DEFAULT_CHARACTER_SET_NAME, DEFAULT_COLLATION_NAME "
+              "FROM information_schema.SCHEMATA WHERE SCHEMA_NAME='%s'",
+              QString(db).replace('\'', QStringLiteral("''")).toUtf8().constData());
+    if(mysql_query(m_conn, q.GetString()) == 0) {
+        if(MYSQL_RES *res = mysql_store_result(m_conn)) {
+            if(MYSQL_ROW r = mysql_fetch_row(res)) {
+                curCharset   = QString::fromUtf8(r[0] ? r[0] : "");
+                curCollation = QString::fromUtf8(r[1] ? r[1] : "");
+            }
+            mysql_free_result(res);
+        }
+    }
+
+    QDialog dlg(this);
+    dlg.setWindowTitle(QStringLiteral("Alter Database — `%1`").arg(db));
+    auto *form = new QFormLayout(&dlg);
+    auto *charsetEdit = new QLineEdit(curCharset, &dlg);
+    auto *collationEdit = new QLineEdit(curCollation, &dlg);
+    form->addRow(QStringLiteral("Character set"), charsetEdit);
+    form->addRow(QStringLiteral("Collation"), collationEdit);
+    auto *bb = new QDialogButtonBox(
+        QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
+    form->addRow(bb);
+    connect(bb, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
+    connect(bb, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
+    if(dlg.exec() != QDialog::Accepted)
+        return;
+
+    QString sql = QStringLiteral("ALTER DATABASE `%1`")
+                      .arg(QString(db).replace('`', QStringLiteral("``")));
+    if(!charsetEdit->text().trimmed().isEmpty())
+        sql += QStringLiteral(" CHARACTER SET %1").arg(charsetEdit->text().trimmed());
+    if(!collationEdit->text().trimmed().isEmpty())
+        sql += QStringLiteral(" COLLATE %1").arg(collationEdit->text().trimmed());
+    execDdl(sql);
 }
 
 void ConnectionTab::promptRenameTable(const QString &database,

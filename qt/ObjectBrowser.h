@@ -38,6 +38,17 @@ signals:
     void importCsvRequested(const QString &db, const QString &table);
     void importXmlRequested(const QString &db, const QString &table);
     void dumpDatabaseRequested(const QString &db);
+    /* schema objects — objType is the SQL keyword: VIEW / PROCEDURE / FUNCTION
+     * / TRIGGER / EVENT */
+    void createObjectRequested(const QString &db, const QString &objType);
+    void alterObjectRequested(const QString &db, const QString &objType,
+                              const QString &name);
+    void dropObjectRequested(const QString &db, const QString &objType,
+                             const QString &name);
+    void dropDatabaseRequested(const QString &db);
+    void truncateDatabaseRequested(const QString &db);
+    void emptyDatabaseRequested(const QString &db);
+    void alterDatabaseRequested(const QString &db);
     void statusMessage(const QString &text);
 
 private slots:

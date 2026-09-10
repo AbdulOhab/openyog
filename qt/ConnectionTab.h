@@ -84,11 +84,24 @@ public slots:
     void promptManageForeignKeys(const QString &database, const QString &table);
     void dropTable(const QString &database, const QString &table);
     void truncateTable(const QString &database, const QString &table);
+    /* schema objects — objType is VIEW / PROCEDURE / FUNCTION / TRIGGER / EVENT */
+    void createSchemaObject(const QString &db, const QString &objType);
+    void alterSchemaObject(const QString &db, const QString &objType,
+                           const QString &name);
+    void dropSchemaObject(const QString &db, const QString &objType,
+                          const QString &name);
+    void dropDatabase(const QString &db);
+    void truncateDatabase(const QString &db);   /* drop every object */
+    void emptyDatabase(const QString &db);      /* TRUNCATE every base table */
+    void promptAlterDatabase(const QString &db);
     void promptDumpDatabase(const QString &database = {});
     /* non-interactive core, also used by the --dumpdb selftest */
     bool dumpDatabaseToFile(const QString &database, const QString &path,
                             QString *error);
     void addEditorTab();
+    /* new editor tab pre-filled with `sql` and titled `title` (schema-object
+     * editors open here, like SQLyog, instead of a modal dialog) */
+    CodeEditor *openEditorWithSql(const QString &title, const QString &sql);
     void openTableData(const QString &db, const QString &table);
     void setDataViewMode(const QString &mode);   /* selftest: "text" | "grid" */
     void editTableCell(int row, int col, const QString &value, bool stageOnly = false);
