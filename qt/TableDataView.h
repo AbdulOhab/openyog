@@ -51,6 +51,7 @@ signals:
 
 private slots:
     void deleteSelectedRow();
+    void duplicateRow();          /* stage a new row copied from the current one */
     void updateApplyBar();
     void applyViewControls();      /* re-run with the current WHERE filter */
     void pageStep(int delta);
@@ -83,10 +84,13 @@ private:
     QTableView  * m_grid  = nullptr;
     class TableDataModel * m_model = nullptr;
 
-    /* view controls, laid out like SQLyog's "2 Table Data" strip:
-     *   [ WHERE filter … ] | [x] Limit rows  First row [n] ▶  # of rows [n]  ⟳
+    /* toolbar laid out like SQLyog's "2 Table Data" strip:
+     *   [↻ +row ⧉ 💾 ⤺ 🗑] │  … stretch …  [▽ filter] [x]Limit rows First row[n]▶ #ofrows[n]
      * sorting is by column-header click only (no combo), also like SQLyog */
     QWidget     * m_tools      = nullptr;
+    QToolButton * m_tbApply    = nullptr;   /* save staged edits (enabled when pending) */
+    QToolButton * m_tbRevert   = nullptr;   /* discard staged edits */
+    QToolButton * m_tbDelRow   = nullptr;   /* mark current row for deletion */
     QLineEdit   * m_whereEdit  = nullptr;
     QCheckBox   * m_limitChk   = nullptr;   /* off = fetch every matching row */
     QSpinBox    * m_firstRow   = nullptr;   /* 0-based OFFSET */
