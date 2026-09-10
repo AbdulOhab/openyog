@@ -503,13 +503,18 @@ void ConnectionTab::attachEditor(CodeEditor *ed, const QString &title)
                              .arg(c.blockNumber() + 1).arg(c.positionInBlock() + 1));
     });
     ed->setCompletions(m_completions);
+    ed->setSchema(m_tableNames, m_columnNames);
     Q_UNUSED(title);
 }
 
-/* schema identifiers (tables + columns of the current db) for autocomplete */
+/* schema identifiers (tables + columns of the current db) for autocomplete —
+ * kept split so the editor can offer tables after FROM/JOIN and columns after
+ * SELECT/WHERE (clause-aware, like SQLyog's AutoCompleteInterface) */
 void ConnectionTab::updateCompletions()
 {
     m_completions.clear();
+    m_tableNames.clear();
+    m_columnNames.clear();
     if(m_conn && !m_params.database.isEmpty()) {
         wyString q;
         q.Sprintf("SELECT TABLE_NAME, COLUMN_NAME FROM information_schema.COLUMNS "
@@ -518,19 +523,25 @@ void ConnectionTab::updateCompletions()
                       .toUtf8().constData());
         if(mysql_query(m_conn, q.GetString()) == 0) {
             if(MYSQL_RES *res = mysql_store_result(m_conn)) {
-                QSet<QString> seen;
+                QSet<QString> tables, columns;
                 while(MYSQL_ROW row = mysql_fetch_row(res)) {
-                    if(row[0]) seen.insert(QString::fromUtf8(row[0]));
-                    if(row[1]) seen.insert(QString::fromUtf8(row[1]));
+                    if(row[0]) tables.insert(QString::fromUtf8(row[0]));
+                    if(row[1]) columns.insert(QString::fromUtf8(row[1]));
                 }
                 mysql_free_result(res);
-                m_completions = QStringList(seen.cbegin(), seen.cend());
+                m_tableNames  = QStringList(tables.cbegin(), tables.cend());
+                m_columnNames = QStringList(columns.cbegin(), columns.cend());
+                QSet<QString> all = tables;
+                all.unite(columns);
+                m_completions = QStringList(all.cbegin(), all.cend());
             }
         }
     }
     for(int i = 0; i < m_editorTabs->count(); ++i)
-        if(auto *ed = qobject_cast<CodeEditor *>(m_editorTabs->widget(i)))
+        if(auto *ed = qobject_cast<CodeEditor *>(m_editorTabs->widget(i))) {
             ed->setCompletions(m_completions);
+            ed->setSchema(m_tableNames, m_columnNames);
+        }
 }
 
 void ConnectionTab::addEditorTab()

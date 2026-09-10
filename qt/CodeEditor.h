@@ -23,7 +23,11 @@ public:
     void toggleLineComment(bool add);        /* prefix/strip "-- " on sel lines */
 
     /* keyword + schema identifier list for autocomplete (Ctrl+Space / typing) */
-    void setCompletions(const QStringList &words);
+    void setCompletions(const QStringList &words);   /* generic bucket / fallback */
+    /* clause-aware split: tables offered after FROM/JOIN/INTO/UPDATE,
+     * columns after SELECT/WHERE/ON/SET/HAVING/GROUP BY/ORDER BY (and after
+     * a "." qualifier). Empty buckets fall back to the generic list. */
+    void setSchema(const QStringList &tables, const QStringList &columns);
     void triggerCompletion();               /* force the popup now */
     int  completionCountForTest() const;    /* selftest only */
 
@@ -43,8 +47,15 @@ private:
     QString wordUnderCursor() const;
     void popupCompleter(bool force);
 
+    enum ClauseCtx { CtxAll, CtxTable, CtxColumn };
+    ClauseCtx clauseContextAtCursor() const;
+    void applyModelForContext();
+
     QWidget    *m_lineNumberArea;
     QCompleter *m_completer = nullptr;
+    QStringList m_generic;    /* setCompletions() — fallback bucket */
+    QStringList m_tables;     /* setSchema() tables */
+    QStringList m_columns;    /* setSchema() columns */
     friend class LineNumberArea;
 };
 
