@@ -1,5 +1,7 @@
 #include "TableDataView.h"
+#include "ExportDialog.h"
 #include "Icons.h"
+#include "ResultExport.h"
 #include "wyString.h"
 
 #include <QAbstractButton>
@@ -499,7 +501,8 @@ TableDataView::TableDataView(QWidget *parent)
      *                     │ [grid] [form] [text]                            */
     auto *btnExport = mkTool(ico(QStringLiteral("export_data.ico"),
                                  QStyle::SP_DialogSaveButton),
-                             QStringLiteral("Export table data as CSV…"));
+                             QStringLiteral("Export table data…  (CSV / TSV / "
+                                            "HTML / JSON / XML / SQL / Excel)"));
     connect(btnExport, &QToolButton::clicked, this, [this] { exportRows(); });
 
     /* SQLyog's copy button is a BTNS_WHOLEDROPDOWN — the whole button opens
@@ -1054,42 +1057,28 @@ void TableDataView::exportRows()
 {
     if(!m_valid)
         return;
-    const QString path = QFileDialog::getSaveFileName(
-        this, QStringLiteral("Export table data as CSV"),
-        QStringLiteral("%1.csv").arg(m_table),
-        QStringLiteral("CSV (*.csv);;All files (*)"));
-    if(path.isEmpty())
-        return;
-    QFile f(path);
-    if(!f.open(QIODevice::WriteOnly | QIODevice::Text)) {
-        emit statusMessage(QStringLiteral("cannot write %1").arg(path));
-        return;
-    }
-    const auto csv = [](QString v) {
-        if(v.contains(QLatin1Char('"')) || v.contains(QLatin1Char(','))
-           || v.contains(QLatin1Char('\n')))
-            return QLatin1Char('"') + v.replace(QLatin1Char('"'),
-                                                QStringLiteral("\"\"")) + QLatin1Char('"');
-        return v;
-    };
     const QStringList cols = m_model->columns();
-    QList<int> rows = checkedRows();          /* checked rows only, else all */
+    const QList<int> checked = checkedRows();
+
+    ExportDialog dlg(m_table.isEmpty() ? QStringLiteral("table_data") : m_table,
+                     m_table, m_model->rowCount(), !checked.isEmpty(), this);
+    if(dlg.exec() != QDialog::Accepted || dlg.path().isEmpty())
+        return;
+
+    const bool selOnly = dlg.selectionOnly() && !checked.isEmpty();
+    QList<int> rows = selOnly ? checked : QList<int>();
     if(rows.isEmpty())
         for(int r = 0; r < m_model->rowCount(); ++r)
             rows << r;
-    QTextStream out(&f);
-    QStringList head;
-    for(const QString &c : cols)
-        head << csv(c);
-    out << head.join(QLatin1Char(',')) << '\n';
-    for(int r : rows) {
-        QStringList vals;
-        for(int c = 0; c < cols.size(); ++c)
-            vals << csv(m_model->cur(r, c));
-        out << vals.join(QLatin1Char(',')) << '\n';
-    }
-    emit statusMessage(QStringLiteral("Exported %1 row(s) → %2")
-                           .arg(rows.size()).arg(path));
+
+    const auto cell = [&](int r, int c) { return m_model->cur(rows.at(r), c); };
+    QString err;
+    if(ResultExport::write(dlg.path(), dlg.format(), cols, cell,
+                           rows.size(), cols.size(), dlg.options(), &err))
+        emit statusMessage(QStringLiteral("Exported %1 row(s) → %2")
+                               .arg(rows.size()).arg(dlg.path()));
+    else
+        emit statusMessage(QStringLiteral("Export failed: ") + err);
 }
 
 void TableDataView::reload()
