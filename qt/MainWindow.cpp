@@ -186,11 +186,16 @@ MainWindow::MainWindow(QWidget *parent)
     QAction *execQuery = execMenu->addAction(QStringLiteral("Exe&cute Query\tF9"));
     connect(execQuery, &QAction::triggered, this, &MainWindow::executeCurrentTab);
     QAction *execAll = execMenu->addAction(QStringLiteral("Execute &All Queries\tCtrl+F9"));
-    connect(execAll, &QAction::triggered, this, &MainWindow::executeCurrentTab);
+    connect(execAll, &QAction::triggered, this,
+            [this] { if(auto *t = currentTab()) t->runAll(); });
     addDisabled(execMenu, QStringLiteral("Execute And Edit &Resultset\tF8"));
     QMenu *explain = edit->addMenu(QStringLiteral("Execute Explain"));
-    addDisabled(explain, QStringLiteral("EXPLAIN <Query>"));
-    addDisabled(explain, QStringLiteral("EXPLAIN EXTENDED <Query>"));
+    connect(explain->addAction(QStringLiteral("&EXPLAIN Current Query")),
+            &QAction::triggered, this,
+            [this] { if(auto *t = currentTab()) t->explainCurrent(false); });
+    connect(explain->addAction(QStringLiteral("EXPLAIN &FORMAT=JSON")),
+            &QAction::triggered, this,
+            [this] { if(auto *t = currentTab()) t->explainCurrent(true); });
     edit->addSeparator();
     QMenu *formatter = edit->addMenu(QStringLiteral("S&QL Formatter"));
     const auto wireFormat = [this, formatter](const QString &label,
@@ -627,7 +632,8 @@ MainWindow::MainWindow(QWidget *parent)
     QAction *execAllTool = toolbar->addAction(
         Icons::get(QStringLiteral("execall_16.ico")),
         QStringLiteral("Execute All Queries\tCtrl+F9"));
-    connect(execAllTool, &QAction::triggered, this, &MainWindow::executeCurrentTab);
+    connect(execAllTool, &QAction::triggered, this,
+            [this] { if(auto *t = currentTab()) t->runAll(); });
     QAction *execEditTool = toolbar->addAction(
         Icons::get(QStringLiteral("execforupd_16.ico")),
         QStringLiteral("Execute Query & Edit Resultset\tF8"));

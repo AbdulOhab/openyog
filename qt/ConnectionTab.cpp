@@ -745,10 +745,44 @@ void ConnectionTab::clearHistory()
     renderHistory();
 }
 
+/* F9 — run the selected text, or the statement under the cursor */
 void ConnectionTab::runQuery()
 {
-    runStatements(splitStatements(currentEditor()->toPlainText()),
-                  QStringLiteral("Result"));
+    CodeEditor *ed = currentEditor();
+    if(!ed)
+        return;
+    const QTextCursor c = ed->textCursor();
+    const QString sql = c.hasSelection()
+        ? c.selectedText().replace(QChar(0x2029), QLatin1Char('\n'))
+        : statementAt(ed->toPlainText(), c.position());
+    runStatements(splitStatements(sql), QStringLiteral("Result"));
+}
+
+/* Ctrl+F9 — run the whole editor */
+void ConnectionTab::runAll()
+{
+    if(CodeEditor *ed = currentEditor())
+        runStatements(splitStatements(ed->toPlainText()), QStringLiteral("Result"));
+}
+
+/* Explain the current statement (FORMAT=JSON goes to the Messages pane) */
+void ConnectionTab::explainCurrent(bool json)
+{
+    CodeEditor *ed = currentEditor();
+    if(!ed)
+        return;
+    const QTextCursor c = ed->textCursor();
+    QString stmt = c.hasSelection()
+        ? c.selectedText().replace(QChar(0x2029), QLatin1Char('\n'))
+        : statementAt(ed->toPlainText(), c.position());
+    stmt = stmt.trimmed();
+    while(stmt.endsWith(QLatin1Char(';')))
+        stmt.chop(1);
+    if(stmt.isEmpty())
+        return;
+    runStatements({ QStringLiteral("EXPLAIN %1%2")
+                        .arg(json ? QStringLiteral("FORMAT=JSON ") : QString(), stmt) },
+                  QStringLiteral("Explain"));
 }
 
 void ConnectionTab::runStatements(const QStringList &statements,
