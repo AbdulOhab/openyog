@@ -880,10 +880,10 @@ void ConnectionTab::runStatements(const QStringList &statements,
 
 void ConnectionTab::openTable(const QString &db, const QString &table)
 {
-    if(m_running)
+    if(m_running || !m_conn)
         return;
-    const QString sql = QStringLiteral("SELECT * FROM `%1`.`%2` LIMIT 1000")
-                            .arg(db, table);
+    const QString sql = QStringLiteral("SELECT * FROM %1 LIMIT 1000")
+                            .arg(m_conn->qualify(db, table));
     logHistory(sql);
     runStatements(QStringList{ sql },
                   QStringLiteral("%1.%2").arg(db, table));
@@ -1298,7 +1298,7 @@ void ConnectionTab::dropTable(const QString &database, const QString &table)
             QStringLiteral("Permanently DROP table `%1`.`%2`?").arg(db, table))
             != QMessageBox::Yes)
         return;
-    execDdl(QStringLiteral("DROP TABLE `%1`.`%2`").arg(db, table));
+    execDdl(QStringLiteral("DROP TABLE %1").arg(m_conn->qualify(db, table)));
     if(m_tableData->loadedTable() == table)
         m_tableData->clear();
 }
@@ -1959,7 +1959,7 @@ void ConnectionTab::exportTableData(const QString &database, const QString &tabl
     constexpr int kCap = 500000;
     QString error;
     const bool ok = m_conn->streamQuery(
-        QStringLiteral("SELECT * FROM `%1`.`%2`").arg(db, table), &error,
+        QStringLiteral("SELECT * FROM %1").arg(m_conn->qualify(db, table)), &error,
         [&](const QStringList &h) { headers = h; },
         [&](const QVector<QByteArray> &fields, const QVector<bool> &isNull) {
             QStringList r;

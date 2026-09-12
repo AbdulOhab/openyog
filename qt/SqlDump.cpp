@@ -12,8 +12,13 @@ QStringList baseTables(IDbConnection *c, const QString &db, QString *error)
     const QStringList out = c->listTables(db, QStringLiteral("BASE TABLE"));
     /* an empty table list is normal for an empty db — but a db we cannot see
      * at all is a hard error (upstream BUG-1: never report success and leave
-     * a bogus empty target behind) */
-    if(out.isEmpty() && !c->listDatabases().contains(db) && error)
+     * a bogus empty target behind). Only meaningful when a specific db name
+     * was actually requested: an empty `db` is SQLite's normal "no database
+     * concept, the file is main" convention, not "no db selected" — and
+     * listDatabases() for SQLite returns "main", never "", so this check
+     * would otherwise misfire "does not exist" on every empty-but-valid
+     * SQLite file. */
+    if(out.isEmpty() && !db.isEmpty() && !c->listDatabases().contains(db) && error)
         *error = QStringLiteral("database '%1' does not exist on this connection")
                      .arg(db);
     return out;
@@ -93,8 +98,8 @@ bool SqlDump::write(IDbConnection *conn, const QString &db, const QStringList &t
         if(!opt.data)
             continue;
 
-        const QString select = QStringLiteral("SELECT * FROM %1.%2")
-                                   .arg(conn->quoteIdent(db), conn->quoteIdent(t));
+        const QString select = QStringLiteral("SELECT * FROM %1")
+                                   .arg(conn->qualify(db, t));
         int inBatch = 0;
         bool streamOk = conn->streamQuery(
             select,
@@ -168,8 +173,8 @@ bool SqlDump::forEachStatement(
             inBatch = 0;
             return ok;
         };
-        const QString select = QStringLiteral("SELECT * FROM %1.%2")
-                                   .arg(conn->quoteIdent(db), conn->quoteIdent(t));
+        const QString select = QStringLiteral("SELECT * FROM %1")
+                                   .arg(conn->qualify(db, t));
         bool streamOk = conn->streamQuery(
             select,
             error, nullptr,
