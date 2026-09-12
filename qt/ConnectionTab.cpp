@@ -16,7 +16,6 @@
 #include "Icons.h"
 #include "db/IDbDriver.h"
 #include "db/IDbConnection.h"
-#include "wyString.h"
 
 #include <QApplication>
 
@@ -64,8 +63,6 @@
 #include <QKeySequence>
 #include <QShortcut>
 #include <QSortFilterProxyModel>
-
-#include <mysql/mysql.h>
 
 #include <algorithm>
 #include <thread>
@@ -211,22 +208,18 @@ void installGridCopy(QTableView *grid)
 }
 
 /* runs in a worker thread: dedicated connection per batch, results
- * collected as plain data (no libmariadb objects cross threads) */
+ * collected as plain data (no driver objects cross threads) */
 QVector<QueryResult> runOnConnection(const ConnectionParams &p,
                                      const QStringList &statements)
 {
     QVector<QueryResult> results;
-    MYSQL *c = mysql_init(nullptr);
-    mysql_options(c, MYSQL_SET_CHARSET_NAME, "utf8mb4");
-    if(!mysql_real_connect(c, p.host.toUtf8(), p.user.toUtf8(),
-                           p.password.toUtf8(),
-                           p.database.isEmpty() ? nullptr : p.database.toUtf8(),
-                           p.port, nullptr, 0)) {
+    QString error;
+    IDbConnection *c = dbDriverFor(p.driverType)->connect(p, &error);
+    if(!c) {
         QueryResult r;
         r.ok = false;
-        r.message = QString::fromUtf8(mysql_error(c));
+        r.message = error;
         results.append(r);
-        mysql_close(c);
         return results;
     }
 
@@ -234,40 +227,24 @@ QVector<QueryResult> runOnConnection(const ConnectionParams &p,
         QueryResult r;
         QElapsedTimer timer;
         timer.start();
-        wyString q;
-        q.SetAs(stmt.toUtf8().constData());
 
-        if(mysql_query(c, q.GetString()) != 0) {
-            r.ok = false;
-            r.message = QString::fromUtf8(mysql_error(c));
-        } else if(MYSQL_RES *res = mysql_store_result(c)) {
-            const unsigned int n = mysql_num_fields(res);
-            MYSQL_FIELD *fields = mysql_fetch_fields(res);
-            for(unsigned int i = 0; i < n; ++i)
-                r.headers << QString::fromUtf8(fields[i].name);
-            while(MYSQL_ROW row = mysql_fetch_row(res)) {
-                QStringList cells;
-                for(unsigned int i = 0; i < n; ++i)
-                    cells << (row[i] ? QString::fromUtf8(row[i])
-                                     : QStringLiteral("NULL"));
-                r.rows << cells;
-            }
-            mysql_free_result(res);
-            r.ok = true;
-            r.message = QStringLiteral("%1 row(s)").arg(r.rows.size());
-        } else if(mysql_field_count(c) == 0) {
-            r.ok = true;
-            r.message = QStringLiteral("OK, %1 row(s) affected")
-                            .arg((long long)mysql_affected_rows(c));
+        DbResultSet rs;
+        QString message;
+        r.ok = c->query(stmt, &rs, &message);
+        if(r.ok) {
+            r.headers = rs.headers;
+            r.rows = rs.rows;
+            r.message = rs.headers.isEmpty()
+                ? QStringLiteral("OK, %1 row(s) affected").arg(c->affectedRows())
+                : QStringLiteral("%1 row(s)").arg(r.rows.size());
         } else {
-            r.ok = false;
-            r.message = QString::fromUtf8(mysql_error(c));
+            r.message = message;
         }
         r.secs = timer.elapsed() / 1000.0;
         results.append(r);
     }
 
-    mysql_close(c);
+    delete c;
     return results;
 }
 
@@ -1722,40 +1699,38 @@ void ConnectionTab::promptCopyDatabase(const QString &database)
         ok = copyDatabaseTo(srcDb, tgt, wantData->isChecked(),
                             dropFirst->isChecked(), wantRoutines->isChecked(), &err);
     } else {
-        MYSQL *dst = mysql_init(nullptr);
-        mysql_options(dst, MYSQL_SET_CHARSET_NAME, "utf8mb4");
-        if(!mysql_real_connect(dst, tHost->text().trimmed().toUtf8(),
-                               tUser->text().trimmed().toUtf8(),
-                               tPass->text().toUtf8(), nullptr,
-                               tPort->value(), nullptr, 0)) {
-            err = QStringLiteral("target connect failed: %1")
-                      .arg(QString::fromUtf8(mysql_error(dst)));
-            mysql_close(dst);
+        ConnectionParams tp;
+        tp.host = tHost->text().trimmed();
+        tp.user = tUser->text().trimmed();
+        tp.password = tPass->text();
+        tp.port = tPort->value();
+        IDbConnection *dst = dbDriverFor(DriverType::Mysql)->connect(tp, &err);
+        if(!dst) {
+            err = QStringLiteral("target connect failed: %1").arg(err);
             ok = false;
         } else {
             const QString tq = QString(tgt).replace('`', QStringLiteral("``"));
             if(dropFirst->isChecked())
-                mysql_query(dst, QStringLiteral("DROP DATABASE IF EXISTS `%1`")
-                                     .arg(tq).toUtf8().constData());
-            mysql_query(dst, QStringLiteral("CREATE DATABASE IF NOT EXISTS `%1` "
-                                            "CHARACTER SET utf8mb4")
-                                 .arg(tq).toUtf8().constData());
-            mysql_query(dst, QStringLiteral("USE `%1`").arg(tq).toUtf8().constData());
+                dst->query(QStringLiteral("DROP DATABASE IF EXISTS `%1`").arg(tq),
+                          nullptr, nullptr);
+            dst->query(QStringLiteral("CREATE DATABASE IF NOT EXISTS `%1` "
+                                      "CHARACTER SET utf8mb4").arg(tq),
+                      nullptr, nullptr);
+            dst->query(QStringLiteral("USE `%1`").arg(tq), nullptr, nullptr);
             SqlDump::Options opt;
             opt.data = wantData->isChecked();
             opt.routines = wantRoutines->isChecked();
             ok = SqlDump::forEachStatement(
                 m_conn, srcDb, {}, opt,
                 [&](const QString &stmt) {
-                    if(mysql_query(dst, stmt.toUtf8().constData()) == 0)
+                    QString stmtError;
+                    if(dst->query(stmt, nullptr, &stmtError))
                         return true;
-                    err = QStringLiteral("%1\n  at: %2")
-                              .arg(QString::fromUtf8(mysql_error(dst)),
-                                   stmt.left(120));
+                    err = QStringLiteral("%1\n  at: %2").arg(stmtError, stmt.left(120));
                     return false;
                 },
                 err.isEmpty() ? &err : nullptr);
-            mysql_close(dst);
+            delete dst;
         }
     }
     QApplication::restoreOverrideCursor();
