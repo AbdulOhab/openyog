@@ -22,16 +22,29 @@ bool ConnectionStore::load(const QString &name, ConnectionParams *out)
     const QByteArray n = toUtf8(name);
     wyString value;
 
+    /* "driver" is new — old files without it default to MySQL */
+    wyIni::IniGetString(n, "driver", "mysql", &value, iniPath().toUtf8());
+    const DriverType driver = driverTypeFromString(QString::fromUtf8(value.GetString()));
+
+    wyIni::IniGetString(n, "filepath", "", &value, iniPath().toUtf8());
+    const QString filePath = value.GetString();
+
+    if(driver == DriverType::Sqlite) {
+        if(filePath.isEmpty())
+            return false;
+        out->driverType = DriverType::Sqlite;
+        out->filePath   = filePath;
+        out->name       = name;
+        return true;
+    }
+
     if(wyIni::IniGetString(n, "host", "", &value, iniPath().toUtf8()) == 0 ||
        value.GetLength() == 0)
         return false;
 
-    out->name  = name;
+    out->name       = name;
+    out->driverType = DriverType::Mysql;
     out->host  = value.GetString();
-
-    /* "driver" is new — old files without it default to MySQL */
-    wyIni::IniGetString(n, "driver", "mysql", &value, iniPath().toUtf8());
-    out->driverType = DriverType::Mysql;   /* only value that exists today */
 
     wyIni::IniGetString(n, "user", "", &value, iniPath().toUtf8());
     out->user  = value.GetString();
@@ -57,7 +70,13 @@ void ConnectionStore::save(const ConnectionParams &params)
     const QByteArray n = toUtf8(params.name);
     const QByteArray p = iniPath().toUtf8();
 
-    wyIni::IniWriteString(n, "driver",   "mysql",                 p);
+    wyIni::IniWriteString(n, "driver", toUtf8(driverTypeToString(params.driverType)), p);
+
+    if(params.driverType == DriverType::Sqlite) {
+        wyIni::IniWriteString(n, "filepath", toUtf8(params.filePath), p);
+        return;
+    }
+
     wyIni::IniWriteString(n, "host",     toUtf8(params.host),     p);
     wyIni::IniWriteString(n, "user",     toUtf8(params.user),     p);
     wyIni::IniWriteString(n, "database", toUtf8(params.database), p);

@@ -477,20 +477,25 @@ ConnectionTab::ConnectionTab(const ConnectionParams &params, QWidget *parent)
     connect(m_browser, &ObjectBrowser::alterDatabaseRequested, this,
             &ConnectionTab::promptAlterDatabase);
 
-    m_infoBar->setText(QStringLiteral(
-        "OpenYog — connected to %1@%2:%3%4")
-        .arg(m_params.user, m_params.host).arg(m_params.port)
-        .arg(m_params.database.isEmpty() ? QString()
-                                         : QStringLiteral("/") + m_params.database));
+    const bool isSqlite = m_params.driverType == DriverType::Sqlite;
+    m_infoBar->setText(isSqlite
+        ? QStringLiteral("OpenYog — connected to %1").arg(m_params.filePath)
+        : QStringLiteral("OpenYog — connected to %1@%2:%3%4")
+              .arg(m_params.user, m_params.host).arg(m_params.port)
+              .arg(m_params.database.isEmpty() ? QString()
+                                               : QStringLiteral("/") + m_params.database));
 
-    m_browser->setConnectionLabel(
-        QStringLiteral("%1@%2").arg(m_params.user, m_params.host));
+    m_browser->setConnectionLabel(isSqlite
+        ? QFileInfo(m_params.filePath).fileName()
+        : QStringLiteral("%1@%2").arg(m_params.user, m_params.host));
     m_browser->loadDatabases(m_conn, m_params.database);
     updateCompletions();
-    m_messages->setPlainText(QStringLiteral(
-        "Connected to %1:%2 as %3\nServer version: %4")
-        .arg(m_params.host).arg(m_params.port)
-        .arg(m_params.user, m_conn->serverInfo()));
+    m_messages->setPlainText(isSqlite
+        ? QStringLiteral("Connected to %1\nSQLite version: %2")
+              .arg(m_params.filePath, m_conn->serverInfo())
+        : QStringLiteral("Connected to %1:%2 as %3\nServer version: %4")
+              .arg(m_params.host).arg(m_params.port)
+              .arg(m_params.user, m_conn->serverInfo()));
 
     QStringList dbs;
     {

@@ -4,9 +4,24 @@
 
 #include <QString>
 
-/* SQLite/PostgreSQL are added here later — the value stays MySQL-only until
- * then, and old saved connections with no "driver" key default to it. */
-enum class DriverType { Mysql = 0 };
+/* PostgreSQL is added here later. */
+enum class DriverType { Mysql = 0, Sqlite = 1 };
+
+inline QString driverTypeToString(DriverType t)
+{
+    return t == DriverType::Sqlite ? QStringLiteral("sqlite") : QStringLiteral("mysql");
+}
+
+/* Unknown/missing strings fall back to `fallback` — keeps old saved
+ * connections with no "driver" key (or a driver added by a newer build)
+ * loading instead of failing outright. */
+inline DriverType driverTypeFromString(const QString &s,
+                                       DriverType fallback = DriverType::Mysql)
+{
+    if(s == QStringLiteral("sqlite")) return DriverType::Sqlite;
+    if(s == QStringLiteral("mysql"))  return DriverType::Mysql;
+    return fallback;
+}
 
 struct ConnectionParams
 {
@@ -17,4 +32,5 @@ struct ConnectionParams
     QString    user;
     QString    password;
     QString    database;   // optional
+    QString    filePath;   // SQLite only: path to the .sqlite file
 };

@@ -5,6 +5,8 @@
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDialogButtonBox>
+#include <QFileDialog>
+#include <QFileInfo>
 #include <QFormLayout>
 #include <QGroupBox>
 #include <QHBoxLayout>
@@ -65,6 +67,19 @@ ConnectionDialog::ConnectionDialog(QWidget *parent)
     for(QPushButton *b : { newBtn, m_clone, m_save, m_rename, m_delete })
         btnRow->addWidget(b);
     btnRow->addStretch(1);
+
+    /* ---- driver picker --------------------------------------------- */
+    m_driverCombo = new QComboBox(this);
+    m_driverCombo->addItem(QStringLiteral("MySQL"), QVariant::fromValue(int(DriverType::Mysql)));
+    m_driverCombo->addItem(QStringLiteral("SQLite"), QVariant::fromValue(int(DriverType::Sqlite)));
+    connect(m_driverCombo, &QComboBox::currentIndexChanged, this,
+            &ConnectionDialog::driverChanged);
+    auto *driverLabel = new QLabel(QStringLiteral("Dri&ver"), this);
+    driverLabel->setBuddy(m_driverCombo);
+    auto *driverRow = new QHBoxLayout;
+    driverRow->addWidget(driverLabel);
+    driverRow->addWidget(m_driverCombo);
+    driverRow->addStretch(1);
 
     /* ---- Saved Connections combo ---------------------------------- */
     m_saved = new QComboBox(this);
@@ -140,18 +155,42 @@ ConnectionDialog::ConnectionDialog(QWidget *parent)
     groups->addWidget(idleBox, 3);
     groups->addWidget(kaBox, 2);
 
-    auto *mysqlTab = new QWidget(this);
-    auto *mysqlLayout = new QVBoxLayout(mysqlTab);
+    m_mysqlTab = new QWidget(this);
+    auto *mysqlLayout = new QVBoxLayout(m_mysqlTab);
     mysqlLayout->addLayout(form);
     mysqlLayout->addLayout(groups);
     mysqlLayout->addStretch(1);
 
-    auto *tabs = new QTabWidget(this);
-    tabs->addTab(mysqlTab, QStringLiteral("MySQL"));
-    tabs->addTab(placeholderTab(QStringLiteral("HTTP tunnel")), QStringLiteral("HTTP"));
-    tabs->addTab(placeholderTab(QStringLiteral("SSH tunnel")), QStringLiteral("SSH"));
-    tabs->addTab(placeholderTab(QStringLiteral("SSL")), QStringLiteral("SSL"));
-    tabs->addTab(placeholderTab(QStringLiteral("Advanced")), QStringLiteral("Advanced"));
+    /* ---- SQLite tab: just a file path + browse ---------------------- */
+    m_sqliteTab = new QWidget(this);
+    m_sqlitePath = new QLineEdit(m_sqliteTab);
+    auto *sqliteBrowse = new QPushButton(QStringLiteral("&Browse…"), m_sqliteTab);
+    connect(sqliteBrowse, &QPushButton::clicked, this,
+            &ConnectionDialog::browseSqliteFile);
+    auto *sqliteForm = new QFormLayout;
+    auto *pathRow = new QHBoxLayout;
+    pathRow->addWidget(m_sqlitePath, 1);
+    pathRow->addWidget(sqliteBrowse);
+    sqliteForm->addRow(QStringLiteral("&Database File"), pathRow);
+    auto *sqliteLayout = new QVBoxLayout(m_sqliteTab);
+    sqliteLayout->addLayout(sqliteForm);
+    sqliteLayout->addStretch(1);
+
+    m_tabs = new QTabWidget(this);
+    m_tabs->addTab(m_mysqlTab, QStringLiteral("MySQL"));
+    m_tabs->addTab(m_sqliteTab, QStringLiteral("SQLite"));
+    m_tabs->addTab(placeholderTab(QStringLiteral("HTTP tunnel")), QStringLiteral("HTTP"));
+    m_tabs->addTab(placeholderTab(QStringLiteral("SSH tunnel")), QStringLiteral("SSH"));
+    m_tabs->addTab(placeholderTab(QStringLiteral("SSL")), QStringLiteral("SSL"));
+    m_tabs->addTab(placeholderTab(QStringLiteral("Advanced")), QStringLiteral("Advanced"));
+    connect(m_tabs, &QTabWidget::currentChanged, this, [this](int) {
+        /* keep the driver combo in sync when the user clicks the SQLite tab
+         * directly instead of using the combo */
+        if(m_tabs->currentWidget() == m_mysqlTab)
+            m_driverCombo->setCurrentIndex(0);
+        else if(m_tabs->currentWidget() == m_sqliteTab)
+            m_driverCombo->setCurrentIndex(1);
+    });
 
     /* ---- Connect / Cancel / Test -------------------------------- */
     auto *buttons = new QDialogButtonBox(this);
@@ -168,8 +207,9 @@ ConnectionDialog::ConnectionDialog(QWidget *parent)
     /* ---- assemble ---------------------------------------------- */
     auto *right = new QVBoxLayout;
     right->addLayout(btnRow);
+    right->addLayout(driverRow);
     right->addLayout(savedRow);
-    right->addWidget(tabs, 1);
+    right->addWidget(m_tabs, 1);
     right->addWidget(buttons);
 
     auto *top = new QHBoxLayout;
@@ -291,15 +331,35 @@ void ConnectionDialog::testConnection()
     QString error;
     IDbConnection *c = dbDriverFor(p.driverType)->connect(p, &error);
     const bool ok = c != nullptr;
+    const QString where = p.driverType == DriverType::Sqlite
+        ? p.filePath : QStringLiteral("%1:%2").arg(p.host).arg(p.port);
     const QString msg = ok
-        ? QStringLiteral("Connected to %1:%2\nServer: %3")
-              .arg(p.host).arg(p.port).arg(c->serverInfo())
+        ? QStringLiteral("Connected to %1\nServer: %2").arg(where, c->serverInfo())
         : QStringLiteral("Connection failed:\n%1").arg(error);
     delete c;
     if(ok)
         QMessageBox::information(this, QStringLiteral("Test Connection"), msg);
     else
         QMessageBox::warning(this, QStringLiteral("Test Connection"), msg);
+}
+
+void ConnectionDialog::driverChanged(int index)
+{
+    const bool sqlite = index == 1;
+    m_tabs->setCurrentWidget(sqlite ? m_sqliteTab : m_mysqlTab);
+    setWindowTitle(sqlite ? QStringLiteral("Connect to SQLite Database")
+                          : QStringLiteral("Connect to MySQL Host"));
+}
+
+void ConnectionDialog::browseSqliteFile()
+{
+    QString path = QFileDialog::getSaveFileName(
+        this, QStringLiteral("Choose or Create a SQLite Database File"),
+        m_sqlitePath->text(),
+        QStringLiteral("SQLite database (*.sqlite *.db *.sqlite3);;All files (*)"),
+        nullptr, QFileDialog::DontConfirmOverwrite);
+    if(!path.isEmpty())
+        m_sqlitePath->setText(path);
 }
 
 void ConnectionDialog::setParams(const ConnectionParams &p)
@@ -309,19 +369,32 @@ void ConnectionDialog::setParams(const ConnectionParams &p)
     m_user->setText(p.user);
     m_password->setText(p.password);
     m_database->setText(p.database);
+    m_sqlitePath->setText(p.filePath);
+    m_driverCombo->setCurrentIndex(p.driverType == DriverType::Sqlite ? 1 : 0);
 }
 
 ConnectionParams ConnectionDialog::params() const
 {
     ConnectionParams p;
+    p.driverType = m_tabs->currentWidget() == m_sqliteTab ? DriverType::Sqlite
+                                                          : DriverType::Mysql;
+    const QString sel = m_saved->currentText().trimmed();
+    const bool hasSavedName = !sel.isEmpty() && sel != QStringLiteral("New Connection");
+
+    if(p.driverType == DriverType::Sqlite) {
+        p.filePath = m_sqlitePath->text().trimmed();
+        p.name = hasSavedName ? sel : QFileInfo(p.filePath).baseName();
+        if(p.name.isEmpty())
+            p.name = QStringLiteral("New SQLite connection");
+        return p;
+    }
+
     p.host     = m_host->text().trimmed();
     p.port     = m_port->value();
     p.user     = m_user->text().trimmed();
     p.password = m_password->text();
     p.database = m_database->text().trimmed();
-    const QString sel = m_saved->currentText().trimmed();
-    p.name = !sel.isEmpty() && sel != QStringLiteral("New Connection")
-                 ? sel
-                 : QStringLiteral("%1@%2:%3").arg(p.user, p.host).arg(p.port);
+    p.name = hasSavedName ? sel
+                          : QStringLiteral("%1@%2:%3").arg(p.user, p.host).arg(p.port);
     return p;
 }
