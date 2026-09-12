@@ -70,7 +70,7 @@ private slots:
     void sortByColumn(int section);   /* header click → ORDER BY, toggles dir */
 
 private:
-    static QString quoteValue(const QString &v);   /* v or NULL */
+    QString quoteValue(const QString &v) const;   /* quoted literal or NULL */
     /* row identity from the model's ORIGINAL values: "`pk`='v' and …" */
     QString whereFromOrigRow(int row) const;
     bool discardStagedEdits(const QString &action);  /* prompt if pending */
