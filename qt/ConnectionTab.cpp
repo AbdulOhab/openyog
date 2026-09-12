@@ -14,7 +14,8 @@
 #include "ForeignKeyDialog.h"
 #include "SqlDump.h"
 #include "Icons.h"
-#include "db/MySqlConnection.h"   /* bridges m_conn to already-migrated files during rollout */
+#include "db/IDbDriver.h"
+#include "db/IDbConnection.h"
 #include "wyString.h"
 
 #include <QApplication>
@@ -70,6 +71,12 @@
 #include <thread>
 
 namespace {
+
+/* DbResultSet renders a SQL NULL as the literal string "NULL" (matches the
+ * existing QueryModel/result-grid convention); callers that need "no value"
+ * semantics instead (e.g. an optional column default fed into generated DDL)
+ * must convert back — this undoes that sentinel where it matters. */
+QString orEmpty(const QString &v) { return v == QStringLiteral("NULL") ? QString() : v; }
 
 /* charset picker for the import dialogs — MySQL/MariaDB charset names */
 QComboBox *importCharsetCombo(QWidget *p)
@@ -428,26 +435,20 @@ ConnectionTab::ConnectionTab(const ConnectionParams &params, QWidget *parent)
     layout->addWidget(limitStrip);
 
     /* ---- open the connection ------------------------------------- */
-    m_conn = mysql_init(nullptr);
-    mysql_options(m_conn, MYSQL_SET_CHARSET_NAME, "utf8mb4");
-    { unsigned int on = 1; mysql_options(m_conn, MYSQL_OPT_LOCAL_INFILE, &on); }
-    if(!mysql_real_connect(m_conn, m_params.host.toUtf8(), m_params.user.toUtf8(),
-                           m_params.password.toUtf8(),
-                           m_params.database.isEmpty() ? nullptr
-                                                       : m_params.database.toUtf8(),
-                           m_params.port, nullptr, 0)) {
-        m_messages->setPlainText(QStringLiteral("Connection failed: ")
-                                 + mysql_error(m_conn));
-        mysql_close(m_conn);
-        m_conn = nullptr;
-        return;
+    {
+        QString error;
+        m_conn = dbDriverFor(m_params.driverType)
+                     ->connect(m_params, &error, /*localInfile=*/true);
+        if(!m_conn) {
+            m_messages->setPlainText(QStringLiteral("Connection failed: ") + error);
+            return;
+        }
     }
-    m_dbConn = new MySqlConnection(m_conn, /*owns=*/false);
 
     connect(m_browser, &ObjectBrowser::tableActivated, this,
             [this](const QString &db, const QString &table) {
         if(m_conn) {
-            m_tableData->load(m_dbConn, db, table);
+            m_tableData->load(m_conn, db, table);
             m_resultTabs->setCurrentWidget(m_tableData);
         }
     });
@@ -507,21 +508,19 @@ ConnectionTab::ConnectionTab(const ConnectionParams &params, QWidget *parent)
 
     m_browser->setConnectionLabel(
         QStringLiteral("%1@%2").arg(m_params.user, m_params.host));
-    m_browser->loadDatabases(m_dbConn, m_params.database);
+    m_browser->loadDatabases(m_conn, m_params.database);
     updateCompletions();
     m_messages->setPlainText(QStringLiteral(
         "Connected to %1:%2 as %3\nServer version: %4")
         .arg(m_params.host).arg(m_params.port)
-        .arg(m_params.user, QString::fromUtf8(mysql_get_server_info(m_conn))));
+        .arg(m_params.user, m_conn->serverInfo()));
 
     QStringList dbs;
-    if(mysql_query(m_conn, "SHOW DATABASES") == 0) {
-        if(MYSQL_RES *res = mysql_store_result(m_conn)) {
-            while(MYSQL_ROW row = mysql_fetch_row(res))
-                if(row[0])
-                    dbs << QString::fromUtf8(row[0]);
-            mysql_free_result(res);
-        }
+    {
+        DbResultSet rs;
+        if(m_conn->query(QStringLiteral("SHOW DATABASES"), &rs, nullptr))
+            for(const QStringList &row : rs.rows)
+                dbs << row.value(0);
     }
     m_databases = dbs;
     emit databasesChanged(dbs, m_params.database);
@@ -529,9 +528,7 @@ ConnectionTab::ConnectionTab(const ConnectionParams &params, QWidget *parent)
 
 ConnectionTab::~ConnectionTab()
 {
-    delete m_dbConn;
-    if(m_conn)
-        mysql_close(m_conn);
+    delete m_conn;
 }
 
 CodeEditor *ConnectionTab::currentEditor() const
@@ -567,25 +564,22 @@ void ConnectionTab::updateCompletions()
     m_tableNames.clear();
     m_columnNames.clear();
     if(m_conn && !m_params.database.isEmpty()) {
-        wyString q;
-        q.Sprintf("SELECT TABLE_NAME, COLUMN_NAME FROM information_schema.COLUMNS "
-                  "WHERE TABLE_SCHEMA = '%s'",
-                  QString(m_params.database).replace('\'', QStringLiteral("''"))
-                      .toUtf8().constData());
-        if(mysql_query(m_conn, q.GetString()) == 0) {
-            if(MYSQL_RES *res = mysql_store_result(m_conn)) {
-                QSet<QString> tables, columns;
-                while(MYSQL_ROW row = mysql_fetch_row(res)) {
-                    if(row[0]) tables.insert(QString::fromUtf8(row[0]));
-                    if(row[1]) columns.insert(QString::fromUtf8(row[1]));
-                }
-                mysql_free_result(res);
-                m_tableNames  = QStringList(tables.cbegin(), tables.cend());
-                m_columnNames = QStringList(columns.cbegin(), columns.cend());
-                QSet<QString> all = tables;
-                all.unite(columns);
-                m_completions = QStringList(all.cbegin(), all.cend());
+        DbResultSet rs;
+        if(m_conn->query(QStringLiteral(
+               "SELECT TABLE_NAME, COLUMN_NAME FROM information_schema.COLUMNS "
+               "WHERE TABLE_SCHEMA = '%1'")
+                   .arg(QString(m_params.database).replace('\'', QStringLiteral("''"))),
+               &rs, nullptr)) {
+            QSet<QString> tables, columns;
+            for(const QStringList &row : rs.rows) {
+                if(!row.value(0).isEmpty()) tables.insert(row.value(0));
+                if(!row.value(1).isEmpty()) columns.insert(row.value(1));
             }
+            m_tableNames  = QStringList(tables.cbegin(), tables.cend());
+            m_columnNames = QStringList(columns.cbegin(), columns.cend());
+            QSet<QString> all = tables;
+            all.unite(columns);
+            m_completions = QStringList(all.cbegin(), all.cend());
         }
     }
     for(int i = 0; i < m_editorTabs->count(); ++i)
@@ -1158,7 +1152,7 @@ void ConnectionTab::exportResult()
 void ConnectionTab::refreshBrowser()
 {
     if(m_conn) {
-        m_browser->loadDatabases(m_dbConn, m_params.database);
+        m_browser->loadDatabases(m_conn, m_params.database);
         updateCompletions();
     }
 }
@@ -1283,7 +1277,7 @@ void ConnectionTab::openTableData(const QString &db, const QString &table)
 {
     if(!m_conn)
         return;
-    m_tableData->load(m_dbConn, db, table);
+    m_tableData->load(m_conn, db, table);
     m_resultTabs->setCurrentWidget(m_tableData);
 }
 
@@ -1343,7 +1337,7 @@ void ConnectionTab::truncateTable(const QString &database, const QString &table)
         return;
     execDdl(QStringLiteral("TRUNCATE TABLE `%1`.`%2`").arg(db, table));
     if(m_tableData->loadedTable() == table)
-        m_tableData->load(m_dbConn, db, table);   /* empty grid */
+        m_tableData->load(m_conn, db, table);   /* empty grid */
 }
 
 /* ---- schema objects: View / Procedure / Function / Trigger / Event ------- */
@@ -1375,22 +1369,11 @@ void ConnectionTab::alterSchemaObject(const QString &database,
     const QString db = database.isEmpty() ? m_params.database : database;
     const QString nice = objType.left(1) + objType.mid(1).toLower();
 
-    wyString q;
-    q.Sprintf("SHOW CREATE %s `%s`.`%s`", objType.toUtf8().constData(),
-              db.toUtf8().constData(), name.toUtf8().constData());
-    if(mysql_query(m_conn, q.GetString()) != 0) {
-        QMessageBox::warning(this, QStringLiteral("Alter %1").arg(nice),
-                             QString::fromUtf8(mysql_error(m_conn)));
+    QString error;
+    const QString ddl = m_conn->showCreate(objType, db, name, &error);
+    if(ddl.isEmpty() && !error.isEmpty()) {
+        QMessageBox::warning(this, QStringLiteral("Alter %1").arg(nice), error);
         return;
-    }
-    QString ddl;
-    if(MYSQL_RES *res = mysql_store_result(m_conn)) {
-        if(MYSQL_ROW row = mysql_fetch_row(res)) {
-            const int c = SchemaSql::showCreateColumn(objType);
-            if(row[c])
-                ddl = QString::fromUtf8(row[c]);
-        }
-        mysql_free_result(res);
     }
     if(ddl.isEmpty()) {
         QMessageBox::warning(this, QStringLiteral("Alter %1").arg(nice),
@@ -1447,17 +1430,16 @@ void ConnectionTab::truncateDatabase(const QString &database)
 
     /* read the current charset/collation so the recreated db keeps them */
     QString charset = QStringLiteral("utf8mb4"), collation;
-    wyString q;
-    q.Sprintf("SELECT DEFAULT_CHARACTER_SET_NAME, DEFAULT_COLLATION_NAME "
-              "FROM information_schema.SCHEMATA WHERE SCHEMA_NAME='%s'",
-              QString(db).replace('\'', QStringLiteral("''")).toUtf8().constData());
-    if(mysql_query(m_conn, q.GetString()) == 0) {
-        if(MYSQL_RES *res = mysql_store_result(m_conn)) {
-            if(MYSQL_ROW r = mysql_fetch_row(res)) {
-                if(r[0]) charset = QString::fromUtf8(r[0]);
-                if(r[1]) collation = QString::fromUtf8(r[1]);
-            }
-            mysql_free_result(res);
+    {
+        DbResultSet rs;
+        if(m_conn->query(QStringLiteral(
+               "SELECT DEFAULT_CHARACTER_SET_NAME, DEFAULT_COLLATION_NAME "
+               "FROM information_schema.SCHEMATA WHERE SCHEMA_NAME='%1'")
+                   .arg(QString(db).replace('\'', QStringLiteral("''"))),
+               &rs, nullptr) && !rs.rows.isEmpty()) {
+            if(!orEmpty(rs.rows.first().value(0)).isEmpty())
+                charset = rs.rows.first().value(0);
+            collation = orEmpty(rs.rows.first().value(1));
         }
     }
     const QString bq = QString(db).replace('`', QStringLiteral("``"));
@@ -1482,16 +1464,14 @@ void ConnectionTab::emptyDatabase(const QString &database)
         return;
 
     QStringList tables;
-    wyString q;
-    q.Sprintf("SELECT TABLE_NAME FROM information_schema.TABLES "
-              "WHERE TABLE_SCHEMA='%s' AND TABLE_TYPE='BASE TABLE'",
-              QString(db).replace('\'', QStringLiteral("''")).toUtf8().constData());
-    if(mysql_query(m_conn, q.GetString()) == 0) {
-        if(MYSQL_RES *res = mysql_store_result(m_conn)) {
-            while(MYSQL_ROW r = mysql_fetch_row(res))
-                if(r[0]) tables << QString::fromUtf8(r[0]);
-            mysql_free_result(res);
-        }
+    {
+        DbResultSet rs;
+        if(m_conn->query(QStringLiteral(
+               "SELECT TABLE_NAME FROM information_schema.TABLES "
+               "WHERE TABLE_SCHEMA='%1' AND TABLE_TYPE='BASE TABLE'")
+                   .arg(QString(db).replace('\'', QStringLiteral("''"))), &rs, nullptr))
+            for(const QStringList &row : rs.rows)
+                tables << row.value(0);
     }
     execDdl(QStringLiteral("SET FOREIGN_KEY_CHECKS = 0"));
     for(const QString &t : tables)
@@ -1499,7 +1479,7 @@ void ConnectionTab::emptyDatabase(const QString &database)
     execDdl(QStringLiteral("SET FOREIGN_KEY_CHECKS = 1"));
     if(!m_tableData->loadedTable().isEmpty()
        && tables.contains(m_tableData->loadedTable()))
-        m_tableData->load(m_dbConn, db, m_tableData->loadedTable());
+        m_tableData->load(m_conn, db, m_tableData->loadedTable());
 }
 
 void ConnectionTab::promptAlterDatabase(const QString &database)
@@ -1511,17 +1491,15 @@ void ConnectionTab::promptAlterDatabase(const QString &database)
         return;
 
     QString curCharset, curCollation;
-    wyString q;
-    q.Sprintf("SELECT DEFAULT_CHARACTER_SET_NAME, DEFAULT_COLLATION_NAME "
-              "FROM information_schema.SCHEMATA WHERE SCHEMA_NAME='%s'",
-              QString(db).replace('\'', QStringLiteral("''")).toUtf8().constData());
-    if(mysql_query(m_conn, q.GetString()) == 0) {
-        if(MYSQL_RES *res = mysql_store_result(m_conn)) {
-            if(MYSQL_ROW r = mysql_fetch_row(res)) {
-                curCharset   = QString::fromUtf8(r[0] ? r[0] : "");
-                curCollation = QString::fromUtf8(r[1] ? r[1] : "");
-            }
-            mysql_free_result(res);
+    {
+        DbResultSet rs;
+        if(m_conn->query(QStringLiteral(
+               "SELECT DEFAULT_CHARACTER_SET_NAME, DEFAULT_COLLATION_NAME "
+               "FROM information_schema.SCHEMATA WHERE SCHEMA_NAME='%1'")
+                   .arg(QString(db).replace('\'', QStringLiteral("''"))),
+               &rs, nullptr) && !rs.rows.isEmpty()) {
+            curCharset   = orEmpty(rs.rows.first().value(0));
+            curCollation = orEmpty(rs.rows.first().value(1));
         }
     }
 
@@ -1565,7 +1543,7 @@ void ConnectionTab::promptRenameTable(const QString &database,
     execDdl(QStringLiteral("RENAME TABLE `%1`.`%2` TO `%1`.`%3`")
                 .arg(db, table, name.trimmed()));
     if(m_tableData->loadedTable() == table)
-        m_tableData->load(m_dbConn, db, name.trimmed());
+        m_tableData->load(m_conn, db, name.trimmed());
 }
 
 void ConnectionTab::promptCopyTable(const QString &database, const QString &table)
@@ -1630,44 +1608,35 @@ void ConnectionTab::promptManageIndexes(const QString &database,
                 return &ix;
         return nullptr;
     };
-    wyString q;
-    q.Sprintf("SHOW INDEX FROM `%s`.`%s`", db.toUtf8().constData(),
-              table.toUtf8().constData());
-    if(mysql_query(m_conn, q.GetString()) != 0) {
-        QMessageBox::warning(this, QStringLiteral("Manage Indexes"),
-                             QString::fromUtf8(mysql_error(m_conn)));
+    QString error;
+    DbResultSet indexRs;
+    if(!m_conn->query(QStringLiteral("SHOW INDEX FROM `%1`.`%2`").arg(db, table),
+                      &indexRs, &error)) {
+        QMessageBox::warning(this, QStringLiteral("Manage Indexes"), error);
         return;
     }
-    if(MYSQL_RES *res = mysql_store_result(m_conn)) {
-        while(MYSQL_ROW row = mysql_fetch_row(res)) {
-            /* 1=Non_unique 2=Key_name 4=Column_name */
-            const QString name = QString::fromUtf8(row[2] ? row[2] : "");
-            const QString col  = QString::fromUtf8(row[4] ? row[4] : "");
-            IndexDialog::IndexDef *ix = findIx(name);
-            if(!ix) {
-                IndexDialog::IndexDef nd;
-                nd.name = name;
-                nd.unique = row[1] && QString::fromUtf8(row[1]) == QStringLiteral("0");
-                nd.primary = name == QStringLiteral("PRIMARY");
-                indexes << nd;
-                ix = &indexes.last();
-            }
-            ix->columns << col;
+    for(const QStringList &row : indexRs.rows) {
+        /* 1=Non_unique 2=Key_name 4=Column_name */
+        const QString name = row.value(2);
+        const QString col  = row.value(4);
+        IndexDialog::IndexDef *ix = findIx(name);
+        if(!ix) {
+            IndexDialog::IndexDef nd;
+            nd.name = name;
+            nd.unique = row.value(1) == QStringLiteral("0");
+            nd.primary = name == QStringLiteral("PRIMARY");
+            indexes << nd;
+            ix = &indexes.last();
         }
-        mysql_free_result(res);
+        ix->columns << col;
     }
 
     QStringList cols;
-    q.Sprintf("SHOW COLUMNS FROM `%s`.`%s`", db.toUtf8().constData(),
-              table.toUtf8().constData());
-    if(mysql_query(m_conn, q.GetString()) == 0) {
-        if(MYSQL_RES *res = mysql_store_result(m_conn)) {
-            while(MYSQL_ROW row = mysql_fetch_row(res))
-                if(row[0])
-                    cols << QString::fromUtf8(row[0]);
-            mysql_free_result(res);
-        }
-    }
+    DbResultSet colRs;
+    if(m_conn->query(QStringLiteral("SHOW COLUMNS FROM `%1`.`%2`").arg(db, table),
+                     &colRs, nullptr))
+        for(const QStringList &row : colRs.rows)
+            cols << row.value(0);
 
     IndexDialog dlg(db, table, indexes, cols, this);
     if(dlg.exec() != QDialog::Accepted)
@@ -1776,7 +1745,7 @@ void ConnectionTab::promptCopyDatabase(const QString &database)
             opt.data = wantData->isChecked();
             opt.routines = wantRoutines->isChecked();
             ok = SqlDump::forEachStatement(
-                m_dbConn, srcDb, {}, opt,
+                m_conn, srcDb, {}, opt,
                 [&](const QString &stmt) {
                     if(mysql_query(dst, stmt.toUtf8().constData()) == 0)
                         return true;
@@ -1815,26 +1784,18 @@ bool ConnectionTab::copyDatabaseTo(const QString &srcDb, const QString &tgtDb,
 
     /* one-row helper: run `sql`, return column `col` of the first row */
     const auto oneRow = [&](const QString &sql, int col) -> QString {
-        QString out;
-        if(mysql_query(m_conn, sql.toUtf8().constData()) == 0) {
-            if(MYSQL_RES *r = mysql_store_result(m_conn)) {
-                if(MYSQL_ROW row = mysql_fetch_row(r))
-                    out = QString::fromUtf8(row[col] ? row[col] : "");
-                mysql_free_result(r);
-            }
-        }
-        return out;
+        DbResultSet rs;
+        if(m_conn->query(sql, &rs, nullptr) && !rs.rows.isEmpty())
+            return rs.rows.first().value(col);
+        return {};
     };
     /* names from a single-column query */
     const auto nameList = [&](const QString &sql, int col) {
         QStringList out;
-        if(mysql_query(m_conn, sql.toUtf8().constData()) == 0) {
-            if(MYSQL_RES *r = mysql_store_result(m_conn)) {
-                while(MYSQL_ROW row = mysql_fetch_row(r))
-                    if(row[col]) out << QString::fromUtf8(row[col]);
-                mysql_free_result(r);
-            }
-        }
+        DbResultSet rs;
+        if(m_conn->query(sql, &rs, nullptr))
+            for(const QStringList &row : rs.rows)
+                out << row.value(col);
         return out;
     };
     static const QRegularExpression kDefiner(
@@ -1852,20 +1813,13 @@ bool ConnectionTab::copyDatabaseTo(const QString &srcDb, const QString &tgtDb,
      * not silently "succeed" with an empty target */
     QStringList tables;
     {
-        const QByteArray q =
-            QStringLiteral("SHOW FULL TABLES FROM `%1` WHERE Table_type='BASE TABLE'")
-                .arg(sb).toUtf8();
-        if(mysql_query(m_conn, q.constData()) != 0) {
-            if(error)
-                *error = QString::fromUtf8(mysql_error(m_conn));
+        DbResultSet rs;
+        if(!m_conn->query(QStringLiteral(
+               "SHOW FULL TABLES FROM `%1` WHERE Table_type='BASE TABLE'").arg(sb),
+               &rs, error))
             return false;
-        }
-        if(MYSQL_RES *r = mysql_store_result(m_conn)) {
-            while(MYSQL_ROW row = mysql_fetch_row(r))
-                if(row[0])
-                    tables << QString::fromUtf8(row[0]);
-            mysql_free_result(r);
-        }
+        for(const QStringList &row : rs.rows)
+            tables << row.value(0);
     }
 
     QStringList stmts;
@@ -1888,38 +1842,34 @@ bool ConnectionTab::copyDatabaseTo(const QString &srcDb, const QString &tgtDb,
     {
         struct Fk { QString name, tbl, refTbl, onDel, onUpd; QStringList cols, refCols; };
         QList<Fk> fks;
-        wyString fq;
-        fq.Sprintf(
-            "SELECT k.CONSTRAINT_NAME, k.TABLE_NAME, k.COLUMN_NAME, "
-            "k.REFERENCED_TABLE_NAME, k.REFERENCED_COLUMN_NAME, "
-            "r.DELETE_RULE, r.UPDATE_RULE "
-            "FROM information_schema.KEY_COLUMN_USAGE k "
-            "JOIN information_schema.REFERENTIAL_CONSTRAINTS r "
-            "  ON r.CONSTRAINT_SCHEMA=k.CONSTRAINT_SCHEMA "
-            "  AND r.CONSTRAINT_NAME=k.CONSTRAINT_NAME "
-            "WHERE k.TABLE_SCHEMA='%s' AND k.REFERENCED_TABLE_NAME IS NOT NULL "
-            "ORDER BY k.CONSTRAINT_NAME, k.ORDINAL_POSITION",
-            sb.toUtf8().constData());
-        if(mysql_query(m_conn, fq.GetString()) == 0) {
-            if(MYSQL_RES *r = mysql_store_result(m_conn)) {
-                while(MYSQL_ROW row = mysql_fetch_row(r)) {
-                    const QString name = QString::fromUtf8(row[0] ? row[0] : "");
-                    Fk *f = nullptr;
-                    for(auto &e : fks)
-                        if(e.name == name && e.tbl == QString::fromUtf8(row[1] ? row[1] : "")) {
-                            f = &e; break;
-                        }
-                    if(!f) {
-                        fks << Fk{ name, QString::fromUtf8(row[1] ? row[1] : ""),
-                                   QString::fromUtf8(row[3] ? row[3] : ""),
-                                   QString::fromUtf8(row[5] ? row[5] : "RESTRICT"),
-                                   QString::fromUtf8(row[6] ? row[6] : "RESTRICT"), {}, {} };
-                        f = &fks.last();
+        DbResultSet rs;
+        if(m_conn->query(QStringLiteral(
+               "SELECT k.CONSTRAINT_NAME, k.TABLE_NAME, k.COLUMN_NAME, "
+               "k.REFERENCED_TABLE_NAME, k.REFERENCED_COLUMN_NAME, "
+               "r.DELETE_RULE, r.UPDATE_RULE "
+               "FROM information_schema.KEY_COLUMN_USAGE k "
+               "JOIN information_schema.REFERENTIAL_CONSTRAINTS r "
+               "  ON r.CONSTRAINT_SCHEMA=k.CONSTRAINT_SCHEMA "
+               "  AND r.CONSTRAINT_NAME=k.CONSTRAINT_NAME "
+               "WHERE k.TABLE_SCHEMA='%1' AND k.REFERENCED_TABLE_NAME IS NOT NULL "
+               "ORDER BY k.CONSTRAINT_NAME, k.ORDINAL_POSITION").arg(sb),
+               &rs, nullptr)) {
+            for(const QStringList &row : rs.rows) {
+                const QString name = row.value(0);
+                Fk *f = nullptr;
+                for(auto &e : fks)
+                    if(e.name == name && e.tbl == row.value(1)) {
+                        f = &e; break;
                     }
-                    f->cols    << QString::fromUtf8(row[2] ? row[2] : "");
-                    f->refCols << QString::fromUtf8(row[4] ? row[4] : "");
+                if(!f) {
+                    fks << Fk{ name, row.value(1), row.value(3),
+                               row.value(5) == QStringLiteral("NULL") ? QStringLiteral("RESTRICT") : row.value(5),
+                               row.value(6) == QStringLiteral("NULL") ? QStringLiteral("RESTRICT") : row.value(6),
+                               {}, {} };
+                    f = &fks.last();
                 }
-                mysql_free_result(r);
+                f->cols    << row.value(2);
+                f->refCols << row.value(4);
             }
         }
         for(const Fk &f : std::as_const(fks)) {
@@ -1953,17 +1903,14 @@ bool ConnectionTab::copyDatabaseTo(const QString &srcDb, const QString &tgtDb,
         /* procedures + functions */
         struct R { QString name, type; };
         QList<R> routines;
-        if(mysql_query(m_conn,
-               QStringLiteral("SELECT ROUTINE_NAME, ROUTINE_TYPE FROM "
-                              "information_schema.ROUTINES WHERE ROUTINE_SCHEMA='%1'")
-                   .arg(sb).toUtf8().constData()) == 0) {
-            if(MYSQL_RES *r = mysql_store_result(m_conn)) {
-                while(MYSQL_ROW row = mysql_fetch_row(r))
-                    if(row[0] && row[1])
-                        routines << R{ QString::fromUtf8(row[0]),
-                                       QString::fromUtf8(row[1]) };
-                mysql_free_result(r);
-            }
+        {
+            DbResultSet rs;
+            if(m_conn->query(QStringLiteral(
+                   "SELECT ROUTINE_NAME, ROUTINE_TYPE FROM "
+                   "information_schema.ROUTINES WHERE ROUTINE_SCHEMA='%1'").arg(sb),
+                   &rs, nullptr))
+                for(const QStringList &row : rs.rows)
+                    routines << R{ row.value(0), row.value(1) };
         }
         for(const R &rt : std::as_const(routines)) {
             const bool proc = rt.type == QStringLiteral("PROCEDURE");
@@ -1982,24 +1929,16 @@ bool ConnectionTab::copyDatabaseTo(const QString &srcDb, const QString &tgtDb,
         }
 
         /* triggers: SHOW TRIGGERS = Trigger,Event,Table,Statement,Timing,… */
-        if(mysql_query(m_conn,
-               QStringLiteral("SHOW TRIGGERS FROM `%1`").arg(sb)
-                   .toUtf8().constData()) == 0) {
-            if(MYSQL_RES *r = mysql_store_result(m_conn)) {
-                while(MYSQL_ROW row = mysql_fetch_row(r)) {
-                    if(!row[0])
-                        continue;
+        {
+            DbResultSet rs;
+            if(m_conn->query(QStringLiteral("SHOW TRIGGERS FROM `%1`").arg(sb),
+                             &rs, nullptr))
+                for(const QStringList &row : rs.rows)
                     stmts << QStringLiteral(
                         "CREATE TRIGGER `%1`.`%2` %3 %4 ON `%1`.`%5` "
                         "FOR EACH ROW %6")
-                        .arg(tgtDb, QString::fromUtf8(row[0]),
-                             QString::fromUtf8(row[4] ? row[4] : ""),
-                             QString::fromUtf8(row[1] ? row[1] : ""),
-                             QString::fromUtf8(row[2] ? row[2] : ""),
-                             QString::fromUtf8(row[3] ? row[3] : ""));
-                }
-                mysql_free_result(r);
-            }
+                        .arg(tgtDb, row.value(0), row.value(4), row.value(1),
+                             row.value(2), row.value(3));
         }
 
         for(const QString &e : nameList(
@@ -2017,29 +1956,26 @@ bool ConnectionTab::copyDatabaseTo(const QString &srcDb, const QString &tgtDb,
 
     bool ok = true;
     for(const QString &s : std::as_const(stmts)) {
-        if(mysql_query(m_conn, s.toUtf8().constData()) != 0) {
+        QString stmtError;
+        if(!m_conn->query(s, nullptr, &stmtError)) {
             if(error)
-                *error = QStringLiteral("%1\n  at: %2")
-                             .arg(QString::fromUtf8(mysql_error(m_conn)), s);
+                *error = QStringLiteral("%1\n  at: %2").arg(stmtError, s);
             ok = false;
             break;
         }
     }
-    mysql_query(m_conn, "SET FOREIGN_KEY_CHECKS=1");
+    m_conn->query(QStringLiteral("SET FOREIGN_KEY_CHECKS=1"), nullptr, nullptr);
     /* the "USE `tgt`" statement left the browsing connection on the target db;
      * put it back on this tab's database */
-    if(!m_params.database.isEmpty()) {
-        wyString use;
-        use.Sprintf("USE `%s`", m_params.database.toUtf8().constData());
-        mysql_query(m_conn, use.GetString());
-    }
+    if(!m_params.database.isEmpty())
+        m_conn->query(QStringLiteral("USE `%1`").arg(m_params.database), nullptr, nullptr);
     return ok;
 }
 
 void ConnectionTab::promptUserManager()
 {
     if(m_conn)
-        UserManagerDialog(m_dbConn, this).exec();
+        UserManagerDialog(m_conn, this).exec();
 }
 
 void ConnectionTab::exportCurrent()
@@ -2058,43 +1994,29 @@ void ConnectionTab::exportTableData(const QString &database, const QString &tabl
     const QString db = database.isEmpty() ? m_params.database : database;
 
     /* structure, for the SQL "include CREATE TABLE" option */
-    QString createDdl;
-    wyString cq;
-    cq.Sprintf("SHOW CREATE TABLE `%s`.`%s`", db.toUtf8().constData(),
-               table.toUtf8().constData());
-    if(mysql_query(m_conn, cq.GetString()) == 0) {
-        if(MYSQL_RES *r = mysql_store_result(m_conn)) {
-            if(MYSQL_ROW row = mysql_fetch_row(r); row && row[1])
-                createDdl = QString::fromUtf8(row[1]);
-            mysql_free_result(r);
-        }
-    }
+    const QString createDdl = m_conn->showCreate(QStringLiteral("TABLE"), db, table, nullptr);
 
-    /* all rows — re-query without the Table Data pane's LIMIT */
+    /* all rows — re-query without the Table Data pane's LIMIT. Streamed (not
+     * query()) so a huge table stops fetching at the cap instead of
+     * buffering every row before we get a chance to cap the result. */
     QStringList headers;
     QVector<QStringList> rows;
     constexpr int kCap = 500000;
-    wyString sq;
-    sq.Sprintf("SELECT * FROM `%s`.`%s`", db.toUtf8().constData(),
-               table.toUtf8().constData());
-    if(mysql_query(m_conn, sq.GetString()) != 0) {
-        QMessageBox::warning(this, QStringLiteral("Export Table Data"),
-                             QString::fromUtf8(mysql_error(m_conn)));
-        return;
-    }
-    if(MYSQL_RES *res = mysql_store_result(m_conn)) {
-        const unsigned nf = mysql_num_fields(res);
-        for(unsigned i = 0; i < nf; ++i)
-            headers << QString::fromUtf8(mysql_fetch_field(res)->name);
-        while(MYSQL_ROW row = mysql_fetch_row(res)) {
+    QString error;
+    const bool ok = m_conn->streamQuery(
+        QStringLiteral("SELECT * FROM `%1`.`%2`").arg(db, table), &error,
+        [&](const QStringList &h) { headers = h; },
+        [&](const QVector<QByteArray> &fields, const QVector<bool> &isNull) {
             QStringList r;
-            for(unsigned i = 0; i < nf; ++i)
-                r << (row[i] ? QString::fromUtf8(row[i]) : QStringLiteral("NULL"));
+            for(int i = 0; i < fields.size(); ++i)
+                r << (isNull[i] ? QStringLiteral("NULL")
+                                : QString::fromUtf8(fields[i]));
             rows << r;
-            if(rows.size() >= kCap)
-                break;
-        }
-        mysql_free_result(res);
+            return rows.size() < kCap;
+        });
+    if(!ok) {
+        QMessageBox::warning(this, QStringLiteral("Export Table Data"), error);
+        return;
     }
     if(rows.size() >= kCap)
         m_messages->appendPlainText(
@@ -2131,15 +2053,13 @@ void ConnectionTab::promptImportXml(const QString &database, const QString &tabl
         return;
 
     QStringList tbls;
-    wyString sq;
-    sq.Sprintf("SHOW TABLES FROM `%s`",
-               QString(db).replace('`', QStringLiteral("``")).toUtf8().constData());
-    if(mysql_query(m_conn, sq.GetString()) == 0) {
-        if(MYSQL_RES *res = mysql_store_result(m_conn)) {
-            while(MYSQL_ROW row = mysql_fetch_row(res))
-                if(row[0]) tbls << QString::fromUtf8(row[0]);
-            mysql_free_result(res);
-        }
+    {
+        DbResultSet rs;
+        if(m_conn->query(QStringLiteral("SHOW TABLES FROM `%1`")
+                             .arg(QString(db).replace('`', QStringLiteral("``"))),
+                         &rs, nullptr))
+            for(const QStringList &row : rs.rows)
+                tbls << row.value(0);
     }
 
     QDialog dlg(this);
@@ -2189,20 +2109,17 @@ void ConnectionTab::promptImportXml(const QString &database, const QString &tabl
         "CHARACTER SET %5 ROWS IDENTIFIED BY '<%6>'")
         .arg(esc(file), onDup->currentData().toString(),
              db, target, charset->currentText().trimmed(), esc(tag));
-    wyString q;
-    q.SetAs(sql.toUtf8().constData());
-    if(mysql_query(m_conn, q.GetString()) != 0) {
-        m_messages->setPlainText(QStringLiteral("XML import failed: %1")
-                                     .arg(QString::fromUtf8(mysql_error(m_conn))));
+    QString xmlError;
+    if(!m_conn->query(sql, nullptr, &xmlError)) {
+        m_messages->setPlainText(QStringLiteral("XML import failed: %1").arg(xmlError));
     } else {
-        const char *info = mysql_info(m_conn);
+        const QString info = m_conn->info();
         m_messages->setPlainText(QStringLiteral("Imported into `%1`.`%2` — %3")
             .arg(db, target,
-                 info ? QString::fromUtf8(info)
-                      : QStringLiteral("%1 row(s)")
-                            .arg((long long)mysql_affected_rows(m_conn))));
+                 !info.isEmpty() ? info
+                      : QStringLiteral("%1 row(s)").arg(m_conn->affectedRows())));
         if(m_tableData->loadedTable() == target)
-            m_tableData->load(m_dbConn, db, target);
+            m_tableData->load(m_conn, db, target);
     }
     m_resultTabs->setCurrentWidget(m_messages);
     refreshBrowser();
@@ -2222,15 +2139,13 @@ void ConnectionTab::promptImportCsv(const QString &database, const QString &tabl
 
     /* target table + parse options */
     QStringList tbls;
-    wyString sq;
-    sq.Sprintf("SHOW TABLES FROM `%s`",
-               QString(db).replace('`', QStringLiteral("``")).toUtf8().constData());
-    if(mysql_query(m_conn, sq.GetString()) == 0) {
-        if(MYSQL_RES *res = mysql_store_result(m_conn)) {
-            while(MYSQL_ROW row = mysql_fetch_row(res))
-                if(row[0]) tbls << QString::fromUtf8(row[0]);
-            mysql_free_result(res);
-        }
+    {
+        DbResultSet rs;
+        if(m_conn->query(QStringLiteral("SHOW TABLES FROM `%1`")
+                             .arg(QString(db).replace('`', QStringLiteral("``"))),
+                         &rs, nullptr))
+            for(const QStringList &row : rs.rows)
+                tbls << row.value(0);
     }
 
     QDialog dlg(this);
@@ -2340,20 +2255,17 @@ void ConnectionTab::promptImportCsv(const QString &database, const QString &tabl
              skip > 0 ? QStringLiteral(" IGNORE %1 LINES").arg(skip) : QString(),
              colList);
 
-    wyString q;
-    q.SetAs(sql.toUtf8().constData());
-    if(mysql_query(m_conn, q.GetString()) != 0) {
-        m_messages->setPlainText(QStringLiteral("Import failed: %1")
-                                     .arg(QString::fromUtf8(mysql_error(m_conn))));
+    QString csvError;
+    if(!m_conn->query(sql, nullptr, &csvError)) {
+        m_messages->setPlainText(QStringLiteral("Import failed: %1").arg(csvError));
     } else {
-        const char *info = mysql_info(m_conn);
+        const QString info = m_conn->info();
         m_messages->setPlainText(QStringLiteral("Imported into `%1`.`%2` — %3")
             .arg(db, target,
-                 info ? QString::fromUtf8(info)
-                      : QStringLiteral("%1 row(s)")
-                            .arg((long long)mysql_affected_rows(m_conn))));
+                 !info.isEmpty() ? info
+                      : QStringLiteral("%1 row(s)").arg(m_conn->affectedRows())));
         if(m_tableData->loadedTable() == target)
-            m_tableData->load(m_dbConn, db, target);
+            m_tableData->load(m_conn, db, target);
     }
     m_resultTabs->setCurrentWidget(m_messages);
     refreshBrowser();
@@ -2373,59 +2285,51 @@ void ConnectionTab::promptManageForeignKeys(const QString &database,
                 return &f;
         return nullptr;
     };
-    wyString q;
-    q.Sprintf(
-        "SELECT k.CONSTRAINT_NAME, k.COLUMN_NAME, k.REFERENCED_TABLE_NAME, "
-        "k.REFERENCED_COLUMN_NAME, r.DELETE_RULE, r.UPDATE_RULE "
-        "FROM information_schema.KEY_COLUMN_USAGE k "
-        "JOIN information_schema.REFERENTIAL_CONSTRAINTS r "
-        "  ON r.CONSTRAINT_SCHEMA=k.CONSTRAINT_SCHEMA "
-        "  AND r.CONSTRAINT_NAME=k.CONSTRAINT_NAME "
-        "WHERE k.TABLE_SCHEMA='%s' AND k.TABLE_NAME='%s' "
-        "  AND k.REFERENCED_TABLE_NAME IS NOT NULL "
-        "ORDER BY k.CONSTRAINT_NAME, k.ORDINAL_POSITION",
-        db.toUtf8().constData(), table.toUtf8().constData());
-    if(mysql_query(m_conn, q.GetString()) != 0) {
-        QMessageBox::warning(this, QStringLiteral("Foreign Keys"),
-                             QString::fromUtf8(mysql_error(m_conn)));
+    QString error;
+    DbResultSet fkRs;
+    if(!m_conn->query(QStringLiteral(
+           "SELECT k.CONSTRAINT_NAME, k.COLUMN_NAME, k.REFERENCED_TABLE_NAME, "
+           "k.REFERENCED_COLUMN_NAME, r.DELETE_RULE, r.UPDATE_RULE "
+           "FROM information_schema.KEY_COLUMN_USAGE k "
+           "JOIN information_schema.REFERENTIAL_CONSTRAINTS r "
+           "  ON r.CONSTRAINT_SCHEMA=k.CONSTRAINT_SCHEMA "
+           "  AND r.CONSTRAINT_NAME=k.CONSTRAINT_NAME "
+           "WHERE k.TABLE_SCHEMA='%1' AND k.TABLE_NAME='%2' "
+           "  AND k.REFERENCED_TABLE_NAME IS NOT NULL "
+           "ORDER BY k.CONSTRAINT_NAME, k.ORDINAL_POSITION").arg(db, table),
+           &fkRs, &error)) {
+        QMessageBox::warning(this, QStringLiteral("Foreign Keys"), error);
         return;
     }
-    if(MYSQL_RES *res = mysql_store_result(m_conn)) {
-        while(MYSQL_ROW row = mysql_fetch_row(res)) {
-            const QString name = QString::fromUtf8(row[0] ? row[0] : "");
-            ForeignKeyDialog::FkDef *f = find(name);
-            if(!f) {
-                ForeignKeyDialog::FkDef nf;
-                nf.name = name;
-                nf.refTable = QString::fromUtf8(row[2] ? row[2] : "");
-                nf.onDelete = QString::fromUtf8(row[4] ? row[4] : "RESTRICT");
-                nf.onUpdate = QString::fromUtf8(row[5] ? row[5] : "RESTRICT");
-                fks << nf;
-                f = &fks.last();
-            }
-            f->columns << QString::fromUtf8(row[1] ? row[1] : "");
-            f->refColumns << QString::fromUtf8(row[3] ? row[3] : "");
+    for(const QStringList &row : fkRs.rows) {
+        const QString name = row.value(0);
+        ForeignKeyDialog::FkDef *f = find(name);
+        if(!f) {
+            ForeignKeyDialog::FkDef nf;
+            nf.name = name;
+            nf.refTable = row.value(2);
+            nf.onDelete = row.value(4) == QStringLiteral("NULL") ? QStringLiteral("RESTRICT") : row.value(4);
+            nf.onUpdate = row.value(5) == QStringLiteral("NULL") ? QStringLiteral("RESTRICT") : row.value(5);
+            fks << nf;
+            f = &fks.last();
         }
-        mysql_free_result(res);
+        f->columns << row.value(1);
+        f->refColumns << row.value(3);
     }
 
     QStringList cols, tables;
-    q.Sprintf("SHOW COLUMNS FROM `%s`.`%s`", db.toUtf8().constData(),
-              table.toUtf8().constData());
-    if(mysql_query(m_conn, q.GetString()) == 0) {
-        if(MYSQL_RES *res = mysql_store_result(m_conn)) {
-            while(MYSQL_ROW row = mysql_fetch_row(res))
-                if(row[0]) cols << QString::fromUtf8(row[0]);
-            mysql_free_result(res);
-        }
+    {
+        DbResultSet rs;
+        if(m_conn->query(QStringLiteral("SHOW COLUMNS FROM `%1`.`%2`").arg(db, table),
+                         &rs, nullptr))
+            for(const QStringList &row : rs.rows)
+                cols << row.value(0);
     }
-    q.Sprintf("SHOW TABLES FROM `%s`", db.toUtf8().constData());
-    if(mysql_query(m_conn, q.GetString()) == 0) {
-        if(MYSQL_RES *res = mysql_store_result(m_conn)) {
-            while(MYSQL_ROW row = mysql_fetch_row(res))
-                if(row[0]) tables << QString::fromUtf8(row[0]);
-            mysql_free_result(res);
-        }
+    {
+        DbResultSet rs;
+        if(m_conn->query(QStringLiteral("SHOW TABLES FROM `%1`").arg(db), &rs, nullptr))
+            for(const QStringList &row : rs.rows)
+                tables << row.value(0);
     }
 
     ForeignKeyDialog dlg(db, table, fks, cols, tables, this);
@@ -2450,56 +2354,49 @@ void ConnectionTab::promptAlterTable(const QString &database,
     /* columns via SHOW FULL COLUMNS: Field Type Collation Null Key Default
      * Extra Privileges Comment */
     QList<CreateTableDialog::ColumnDef> cols;
-    wyString q;
-    q.Sprintf("SHOW FULL COLUMNS FROM `%s`.`%s`", db.toUtf8().constData(),
-              table.toUtf8().constData());
-    if(mysql_query(m_conn, q.GetString()) != 0) {
-        QMessageBox::warning(this, QStringLiteral("Alter Table"),
-                             QString::fromUtf8(mysql_error(m_conn)));
+    QString error;
+    DbResultSet colRs;
+    if(!m_conn->query(QStringLiteral("SHOW FULL COLUMNS FROM `%1`.`%2`").arg(db, table),
+                      &colRs, &error)) {
+        QMessageBox::warning(this, QStringLiteral("Alter Table"), error);
         return;
     }
-    if(MYSQL_RES *res = mysql_store_result(m_conn)) {
-        while(MYSQL_ROW row = mysql_fetch_row(res)) {
-            CreateTableDialog::ColumnDef c;
-            c.name = QString::fromUtf8(row[0] ? row[0] : "");
-            QString type = QString::fromUtf8(row[1] ? row[1] : "").trimmed();
-            c.isUnsigned = type.contains(QStringLiteral(" unsigned"),
-                                         Qt::CaseInsensitive);
-            type.remove(QStringLiteral(" unsigned"), Qt::CaseInsensitive);
-            type.remove(QStringLiteral(" zerofill"), Qt::CaseInsensitive);
-            const int lp = type.indexOf('(');
-            if(lp >= 0 && type.endsWith(')')) {
-                c.length = type.mid(lp + 1, type.size() - lp - 2);
-                c.type = type.left(lp).toUpper();
-            } else {
-                c.type = type.toUpper();
-            }
-            c.notNull = QString::fromUtf8(row[3] ? row[3] : "") == QStringLiteral("NO");
-            c.pk = QString::fromUtf8(row[4] ? row[4] : "") == QStringLiteral("PRI");
-            c.def = QString::fromUtf8(row[5] ? row[5] : "");
-            c.autoInc = QString::fromUtf8(row[6] ? row[6] : "")
-                            .contains(QStringLiteral("auto_increment"),
-                                      Qt::CaseInsensitive);
-            c.comment = QString::fromUtf8(row[8] ? row[8] : "");
-            cols << c;
+    for(const QStringList &row : colRs.rows) {
+        CreateTableDialog::ColumnDef c;
+        c.name = row.value(0);
+        QString type = row.value(1).trimmed();
+        c.isUnsigned = type.contains(QStringLiteral(" unsigned"),
+                                     Qt::CaseInsensitive);
+        type.remove(QStringLiteral(" unsigned"), Qt::CaseInsensitive);
+        type.remove(QStringLiteral(" zerofill"), Qt::CaseInsensitive);
+        const int lp = type.indexOf('(');
+        if(lp >= 0 && type.endsWith(')')) {
+            c.length = type.mid(lp + 1, type.size() - lp - 2);
+            c.type = type.left(lp).toUpper();
+        } else {
+            c.type = type.toUpper();
         }
-        mysql_free_result(res);
+        c.notNull = row.value(3) == QStringLiteral("NO");
+        c.pk = row.value(4) == QStringLiteral("PRI");
+        c.def = orEmpty(row.value(5));
+        c.autoInc = row.value(6).contains(QStringLiteral("auto_increment"),
+                                          Qt::CaseInsensitive);
+        c.comment = orEmpty(row.value(8));
+        cols << c;
     }
     if(cols.isEmpty())
         return;
 
     QString engine, charset;
-    q.Sprintf("SELECT ENGINE, SUBSTRING_INDEX(TABLE_COLLATION,'_',1) "
-              "FROM information_schema.TABLES "
-              "WHERE TABLE_SCHEMA='%s' AND TABLE_NAME='%s'",
-              db.toUtf8().constData(), table.toUtf8().constData());
-    if(mysql_query(m_conn, q.GetString()) == 0) {
-        if(MYSQL_RES *res = mysql_store_result(m_conn)) {
-            if(MYSQL_ROW row = mysql_fetch_row(res)) {
-                engine  = QString::fromUtf8(row[0] ? row[0] : "");
-                charset = QString::fromUtf8(row[1] ? row[1] : "");
-            }
-            mysql_free_result(res);
+    {
+        DbResultSet rs;
+        if(m_conn->query(QStringLiteral(
+               "SELECT ENGINE, SUBSTRING_INDEX(TABLE_COLLATION,'_',1) "
+               "FROM information_schema.TABLES "
+               "WHERE TABLE_SCHEMA='%1' AND TABLE_NAME='%2'").arg(db, table),
+               &rs, nullptr) && !rs.rows.isEmpty()) {
+            engine  = orEmpty(rs.rows.first().value(0));
+            charset = orEmpty(rs.rows.first().value(1));
         }
     }
 
@@ -2514,7 +2411,7 @@ void ConnectionTab::promptAlterTable(const QString &database,
     }
     execDdl(sql);
     if(m_tableData->loadedTable() == table)
-        m_tableData->load(m_dbConn, db, table);
+        m_tableData->load(m_conn, db, table);
 }
 
 void ConnectionTab::promptDumpDatabase(const QString &database)
@@ -2529,15 +2426,13 @@ void ConnectionTab::promptDumpDatabase(const QString &database)
     }
     /* table list for the "which tables" selector */
     QStringList allTables;
-    wyString tq;
-    tq.Sprintf("SHOW FULL TABLES FROM `%s` WHERE Table_type='BASE TABLE'",
-               QString(db).replace('`', QStringLiteral("``")).toUtf8().constData());
-    if(mysql_query(m_conn, tq.GetString()) == 0) {
-        if(MYSQL_RES *r = mysql_store_result(m_conn)) {
-            while(MYSQL_ROW row = mysql_fetch_row(r))
-                if(row[0]) allTables << QString::fromUtf8(row[0]);
-            mysql_free_result(r);
-        }
+    {
+        DbResultSet rs;
+        if(m_conn->query(QStringLiteral(
+               "SHOW FULL TABLES FROM `%1` WHERE Table_type='BASE TABLE'")
+                   .arg(QString(db).replace('`', QStringLiteral("``"))), &rs, nullptr))
+            for(const QStringList &row : rs.rows)
+                allTables << row.value(0);
     }
 
     QDialog dlg(this);
@@ -2637,7 +2532,7 @@ bool ConnectionTab::dumpDatabaseToFile(const QString &database,
         if(error) *error = QStringLiteral("cannot write %1").arg(path);
         return false;
     }
-    const bool ok = SqlDump::write(m_dbConn, db, tables, opt, &f, error);
+    const bool ok = SqlDump::write(m_conn, db, tables, opt, &f, error);
     f.close();
     return ok;
 }
@@ -2646,12 +2541,10 @@ bool ConnectionTab::execDdl(const QString &sql)
 {
     if(!m_conn)
         return false;
-    wyString q;
-    q.SetAs(sql.toUtf8().constData());
-    const bool ok = mysql_query(m_conn, q.GetString()) == 0;
+    QString error;
+    const bool ok = m_conn->query(sql, nullptr, &error);
     m_messages->appendPlainText(ok ? QStringLiteral("OK: ") + sql
-                                   : QStringLiteral("Error: ")
-                                         + mysql_error(m_conn));
+                                   : QStringLiteral("Error: ") + error);
     m_resultTabs->setCurrentWidget(m_messages);
     if(ok)
         refreshBrowser();
@@ -2677,16 +2570,12 @@ void ConnectionTab::pasteSqlTemplate(int kind)
     const QString db = info[0], table = info[1];
 
     QStringList cols;
-    wyString q;
-    q.Sprintf("SHOW COLUMNS FROM `%s`.`%s`", db.toUtf8().constData(),
-              table.toUtf8().constData());
-    if(m_conn && mysql_query(m_conn, q.GetString()) == 0) {
-        if(MYSQL_RES *res = mysql_store_result(m_conn)) {
-            while(MYSQL_ROW row = mysql_fetch_row(res))
-                if(row[0])
-                    cols << QString::fromUtf8(row[0]);
-            mysql_free_result(res);
-        }
+    if(m_conn) {
+        DbResultSet rs;
+        if(m_conn->query(QStringLiteral("SHOW COLUMNS FROM `%1`.`%2`").arg(db, table),
+                         &rs, nullptr))
+            for(const QStringList &row : rs.rows)
+                cols << row.value(0);
     }
     if(cols.isEmpty())
         return;
@@ -2742,14 +2631,13 @@ void ConnectionTab::useDatabase(const QString &db)
 {
     if(!m_conn)
         return;
-    wyString u;
-    u.Sprintf("USE `%s`", db.toUtf8().constData());
-    if(mysql_query(m_conn, u.GetString()) == 0) {
+    QString error;
+    if(m_conn->query(QStringLiteral("USE `%1`").arg(db), nullptr, &error)) {
         m_params.database = db;
         m_messages->setPlainText(QStringLiteral("Database changed to %1").arg(db));
         m_resultTabs->setCurrentWidget(m_messages);
         updateCompletions();
     } else {
-        m_messages->setPlainText(QString::fromUtf8(mysql_error(m_conn)));
+        m_messages->setPlainText(error);
     }
 }
