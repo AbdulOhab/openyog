@@ -7,6 +7,7 @@
 #include "ConnectionDialog.h"
 #include "ConnectionStore.h"
 #include "ConnectionTab.h"
+#include "FavoritesStore.h"
 #include "Icons.h"
 #include "Theme.h"
 
@@ -326,9 +327,37 @@ MainWindow::MainWindow(QWidget *parent)
 
     /* ================= Favorites ==================================== */
     QMenu *favorites = menuBar()->addMenu(QStringLiteral("Fa&vorites"));
-    addDisabled(favorites, QStringLiteral("&Add To Favorites…\tCtrl+Shift+F"));
-    addDisabled(favorites, QStringLiteral("&Organize Favorites…"));
-    addDisabled(favorites, QStringLiteral("&Refresh Favorites"));
+    QAction *addFav = favorites->addAction(
+        QStringLiteral("&Add To Favorites…\tCtrl+Shift+F"));
+    addFav->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_F));
+    connect(addFav, &QAction::triggered, this, [this] {
+        if(auto *t = currentTab()) t->addCurrentToFavorites();
+    });
+    QAction *organizeFav = favorites->addAction(QStringLiteral("&Organize Favorites…"));
+    connect(organizeFav, &QAction::triggered, this, [this] {
+        if(auto *t = currentTab()) t->organizeFavorites();
+    });
+    favorites->addSeparator();
+    /* rebuilt every time the menu opens, so Add/Rename/Delete are reflected
+     * immediately without a separate "Refresh" step */
+    connect(favorites, &QMenu::aboutToShow, this, [this, favorites] {
+        for(QAction *a : favorites->actions())
+            if(a->data().toBool())
+                favorites->removeAction(a);
+        const QStringList names = FavoritesStore::names();
+        if(names.isEmpty()) {
+            QAction *none = favorites->addAction(QStringLiteral("(no favorites saved)"));
+            none->setEnabled(false);
+            none->setData(true);
+            return;
+        }
+        for(const QString &name : names) {
+            QAction *a = favorites->addAction(name, this, [this, name] {
+                if(auto *t = currentTab()) t->insertFavorite(name);
+            });
+            a->setData(true);   /* marks it as dynamic, for removal above */
+        }
+    });
 
     /* ================= Database ===================================== */
     QMenu *database = menuBar()->addMenu(QStringLiteral("&Database"));
