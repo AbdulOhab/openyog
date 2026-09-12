@@ -7,7 +7,7 @@
 #include <QStringList>
 #include <QVector>
 
-#include <mysql/mysql.h>   /* typedef struct st_mysql MYSQL — do NOT forward-declare */
+#include "db/IDbConnection.h"
 
 class QueryModel : public QAbstractTableModel
 {
@@ -18,7 +18,7 @@ public:
     /* Executes one statement. Returns false and fills *message on failure.
      * For statements without a result set, returns true with a human
      * message (affected rows) and clears the grid. */
-    bool execute(MYSQL *conn, const QString &query, QString *message);
+    bool execute(IDbConnection *conn, const QString &query, QString *message);
 
     /* Loads a pre-collected result set (used by the threaded executor so
      * rows are marshalled to the GUI thread, not fetched there). */
