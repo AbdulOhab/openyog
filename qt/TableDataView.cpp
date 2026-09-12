@@ -2,7 +2,7 @@
 #include "ExportDialog.h"
 #include "Icons.h"
 #include "ResultExport.h"
-#include "wyString.h"
+#include "db/IDbConnection.h"
 
 #include <QAbstractButton>
 #include <QApplication>
@@ -44,10 +44,7 @@
 #include <QVBoxLayout>
 
 #include <algorithm>
-#include <cstring>
 #include <functional>
-
-#include <mysql/mysql.h>
 
 /* ---------------- editable model (staged edits + inserts + deletes) ------- */
 
@@ -786,7 +783,7 @@ TableDataView::TableDataView(QWidget *parent)
     });
 }
 
-void TableDataView::load(MYSQL *conn, const QString &db, const QString &table)
+void TableDataView::load(IDbConnection *conn, const QString &db, const QString &table)
 {
     m_conn = conn;
     m_db = db;
@@ -1085,40 +1082,29 @@ void TableDataView::reload()
 {
     /* columns + keys, upstream-style: SHOW COLUMNS + SHOW KEYS */
     QStringList pkeys;
-    wyString keys;
-    keys.Sprintf("SHOW KEYS FROM `%s`.`%s`", m_db.toUtf8().constData(),
-                 m_table.toUtf8().constData());
-    if(m_conn && mysql_query(m_conn, keys.GetString()) == 0) {
-        if(MYSQL_RES *res = mysql_store_result(m_conn)) {
-            while(MYSQL_ROW row = mysql_fetch_row(res)) {
-                /* row: Table, Non_unique(1), Key_name(2), Seq(3), Column(4)… */
-                if(row[1] && row[2] && row[4]
-                   && strcmp(row[1], "0") == 0
-                   && strcmp(row[2], "PRIMARY") == 0)
-                    pkeys << QString::fromUtf8(row[4]);
-            }
-            mysql_free_result(res);
+    DbResultSet keys;
+    if(m_conn && m_conn->query(QStringLiteral("SHOW KEYS FROM `%1`.`%2`")
+                                    .arg(m_db, m_table), &keys, nullptr)) {
+        for(const QStringList &row : keys.rows) {
+            /* row: Table, Non_unique(1), Key_name(2), Seq(3), Column(4)… */
+            if(row.value(1) == QStringLiteral("0")
+               && row.value(2) == QStringLiteral("PRIMARY"))
+                pkeys << row.value(4);
         }
     }
 
     m_columns.clear();
-    wyString cols;
-    cols.Sprintf("SHOW COLUMNS FROM `%s`.`%s`", m_db.toUtf8().constData(),
-                 m_table.toUtf8().constData());
+    DbResultSet cols;
     m_colInfo.clear();
-    if(m_conn && mysql_query(m_conn, cols.GetString()) == 0) {
-        if(MYSQL_RES *res = mysql_store_result(m_conn)) {
-            while(MYSQL_ROW row = mysql_fetch_row(res)) {
-                if(!row[0])
-                    continue;
-                m_columns << QString::fromUtf8(row[0]);
-                ColumnInfo ci;
-                ci.name = m_columns.last();
-                ci.nullable = row[3] && strcmp(row[3], "NO") != 0;
-                ci.autoInc  = row[5] && strstr(row[5], "auto_increment") != nullptr;
-                m_colInfo << ci;
-            }
-            mysql_free_result(res);
+    if(m_conn && m_conn->query(QStringLiteral("SHOW COLUMNS FROM `%1`.`%2`")
+                                    .arg(m_db, m_table), &cols, nullptr)) {
+        for(const QStringList &row : cols.rows) {
+            m_columns << row.value(0);
+            ColumnInfo ci;
+            ci.name = m_columns.last();
+            ci.nullable = row.value(3) != QStringLiteral("NO");
+            ci.autoInc  = row.value(5).contains(QStringLiteral("auto_increment"));
+            m_colInfo << ci;
         }
     }
     if(m_columns.isEmpty()) {
@@ -1140,18 +1126,17 @@ void TableDataView::reload()
 
     /* total matching rows, for the pager */
     m_totalRows = 0;
-    if(m_conn && mysql_query(m_conn,
-           (QStringLiteral("SELECT COUNT(*) FROM ") + qualified + whereSql)
-               .toUtf8().constData()) == 0) {
-        if(MYSQL_RES *res = mysql_store_result(m_conn)) {
-            if(MYSQL_ROW r = mysql_fetch_row(res))
-                m_totalRows = r[0] ? QString::fromUtf8(r[0]).toLongLong() : 0;
-            mysql_free_result(res);
+    {
+        DbResultSet cnt;
+        QString error;
+        if(m_conn && m_conn->query(QStringLiteral("SELECT COUNT(*) FROM ")
+                                        + qualified + whereSql, &cnt, &error)) {
+            if(!cnt.rows.isEmpty())
+                m_totalRows = cnt.rows.first().value(0).toLongLong();
+        } else if(!m_where.isEmpty()) {
+            emit statusMessage(QStringLiteral("filter rejected: %1").arg(error));
+            return;                                  /* keep the current grid */
         }
-    } else if(!m_where.isEmpty()) {
-        emit statusMessage(QStringLiteral("filter rejected: %1")
-                               .arg(QString::fromUtf8(mysql_error(m_conn))));
-        return;                                  /* keep the current grid */
     }
 
     const bool limited = !m_limitChk || m_limitChk->isChecked();
@@ -1176,25 +1161,15 @@ void TableDataView::reload()
 
     QStringList header;
     QVector<QStringList> rows;
-    if(m_conn && mysql_query(m_conn, sql.toUtf8().constData()) == 0) {
-        if(MYSQL_RES *res = mysql_store_result(m_conn)) {
-            for(unsigned int i = 0; i < mysql_num_fields(res); ++i) {
-                MYSQL_FIELD *f = mysql_fetch_field(res);
-                header << QString::fromUtf8(f->name);
-            }
-            while(MYSQL_ROW row = mysql_fetch_row(res)) {
-                QStringList r;
-                for(unsigned int i = 0; i < mysql_num_fields(res); ++i)
-                    r << (row[i] ? QString::fromUtf8(row[i])
-                                 : QStringLiteral("NULL"));
-                rows << r;
-            }
-            mysql_free_result(res);
+    {
+        DbResultSet rs;
+        QString error;
+        if(!m_conn || !m_conn->query(sql, &rs, &error)) {
+            emit statusMessage(QStringLiteral("query failed: %1").arg(error));
+            return;
         }
-    } else {
-        emit statusMessage(QStringLiteral("query failed: %1")
-                               .arg(QString::fromUtf8(mysql_error(m_conn))));
-        return;
+        header = rs.headers;
+        rows = rs.rows;
     }
     m_model->setGrid(header, rows);
     if(m_checkHeader) m_checkHeader->clearChecks();
@@ -1262,22 +1237,23 @@ void TableDataView::applyPendingEdits()
     if(edited.isEmpty() && inserted.isEmpty() && deleted.isEmpty())
         return;
 
+    QString lastError;
     const auto fail = [&](const QString &what) {
-        const QString err = QString::fromUtf8(mysql_error(m_conn));
-        mysql_query(m_conn, "ROLLBACK");
+        m_conn->query(QStringLiteral("ROLLBACK"), nullptr, nullptr);
         emit statusMessage(QStringLiteral("Apply failed on %1 (rolled back): %2")
-                               .arg(what, err));
+                               .arg(what, lastError));
     };
-    const QByteArray db = m_db.toUtf8(), tbl = m_table.toUtf8();
+    const auto exec = [&](const QString &sql) {
+        return m_conn->query(sql, nullptr, &lastError);
+    };
 
-    mysql_query(m_conn, "START TRANSACTION");
+    exec(QStringLiteral("START TRANSACTION"));
 
     /* 1. deletes (WHERE from the row's original values) */
     for(int r : deleted) {
-        wyString q;
-        q.Sprintf("DELETE FROM `%s`.`%s` WHERE %s LIMIT 1", db.constData(),
-                  tbl.constData(), whereFromOrigRow(r).toUtf8().constData());
-        if(mysql_query(m_conn, q.GetString()) != 0)
+        const QString q = QStringLiteral("DELETE FROM `%1`.`%2` WHERE %3 LIMIT 1")
+                               .arg(m_db, m_table, whereFromOrigRow(r));
+        if(!exec(q))
             return fail(QStringLiteral("DELETE"));
     }
 
@@ -1294,16 +1270,12 @@ void TableDataView::applyPendingEdits()
                     : v == QStringLiteral("NULL")  ? QStringLiteral("NULL")
                                                    : quoteValue(v));
         }
-        wyString q;
-        if(names.isEmpty())
-            q.Sprintf("INSERT INTO `%s`.`%s` () VALUES ()", db.constData(),
-                      tbl.constData());
-        else
-            q.Sprintf("INSERT INTO `%s`.`%s` (%s) VALUES (%s)", db.constData(),
-                      tbl.constData(),
-                      names.join(QStringLiteral(", ")).toUtf8().constData(),
-                      vals.join(QStringLiteral(", ")).toUtf8().constData());
-        if(mysql_query(m_conn, q.GetString()) != 0)
+        const QString q = names.isEmpty()
+            ? QStringLiteral("INSERT INTO `%1`.`%2` () VALUES ()").arg(m_db, m_table)
+            : QStringLiteral("INSERT INTO `%1`.`%2` (%3) VALUES (%4)")
+                  .arg(m_db, m_table, names.join(QStringLiteral(", ")),
+                       vals.join(QStringLiteral(", ")));
+        if(!exec(q))
             return fail(QStringLiteral("INSERT"));
     }
 
@@ -1324,16 +1296,14 @@ void TableDataView::applyPendingEdits()
         const QString where = whereFromOrigRow(r);
         if(setParts.isEmpty() || where.isEmpty())
             continue;
-        wyString q;
-        q.Sprintf("UPDATE `%s`.`%s` SET %s WHERE %s LIMIT 1", db.constData(),
-                  tbl.constData(),
-                  setParts.join(QStringLiteral(", ")).toUtf8().constData(),
-                  where.toUtf8().constData());
-        if(mysql_query(m_conn, q.GetString()) != 0)
+        const QString q = QStringLiteral("UPDATE `%1`.`%2` SET %3 WHERE %4 LIMIT 1")
+                               .arg(m_db, m_table, setParts.join(QStringLiteral(", ")),
+                                    where);
+        if(!exec(q))
             return fail(QStringLiteral("UPDATE"));
     }
 
-    mysql_query(m_conn, "COMMIT");
+    exec(QStringLiteral("COMMIT"));
     emit statusMessage(QStringLiteral(
         "Applied: %1 updated, %2 inserted, %3 deleted")
         .arg(edited.size()).arg(inserted.size()).arg(deleted.size()));
@@ -1412,20 +1382,16 @@ QByteArray TableDataView::fetchCellBytes(int row, int col) const
     const QString where = whereFromOrigRow(row);
     if(where.isEmpty())
         return out;
-    wyString q;
-    q.Sprintf("SELECT `%s` FROM `%s`.`%s` WHERE %s LIMIT 1",
-              m_columns[col].toUtf8().constData(), m_db.toUtf8().constData(),
-              m_table.toUtf8().constData(), where.toUtf8().constData());
-    if(mysql_query(m_conn, q.GetString()) != 0)
-        return out;
-    if(MYSQL_RES *res = mysql_store_result(m_conn)) {
-        if(MYSQL_ROW r = mysql_fetch_row(res)) {
-            unsigned long *len = mysql_fetch_lengths(res);
-            if(r[0] && len)
-                out = QByteArray(r[0], int(len[0]));
-        }
-        mysql_free_result(res);
-    }
+    const QString sql = QStringLiteral("SELECT `%1` FROM `%2`.`%3` WHERE %4 LIMIT 1")
+                             .arg(m_columns[col], m_db, m_table, where);
+    /* streamed (raw bytes), not query(), so binary/BLOB content survives
+     * unmodified — query()'s DbResultSet rows go through QString::fromUtf8 */
+    m_conn->streamQuery(sql, nullptr, nullptr,
+        [&](const QVector<QByteArray> &fields, const QVector<bool> &isNull) {
+            if(!isNull.value(0))
+                out = fields.value(0);
+            return false;   /* one row is enough */
+        });
     return out;
 }
 
@@ -1582,14 +1548,12 @@ void TableDataView::insertRowWithValues()
         return;
     }
 
-    wyString q;
-    q.Sprintf("INSERT INTO `%s`.`%s` (%s) VALUES (%s)",
-              m_db.toUtf8().constData(), m_table.toUtf8().constData(),
-              names.join(", ").toUtf8().constData(),
-              values.join(", ").toUtf8().constData());
-    if(mysql_query(m_conn, q.GetString()) != 0) {
-        emit statusMessage(QStringLiteral("INSERT failed: ")
-                           + mysql_error(m_conn));
+    const QString q = QStringLiteral("INSERT INTO `%1`.`%2` (%3) VALUES (%4)")
+                           .arg(m_db, m_table, names.join(QStringLiteral(", ")),
+                                values.join(QStringLiteral(", ")));
+    QString error;
+    if(!m_conn->query(q, nullptr, &error)) {
+        emit statusMessage(QStringLiteral("INSERT failed: ") + error);
         return;
     }
     reload();
