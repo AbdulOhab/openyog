@@ -9,7 +9,7 @@
 #include <QTreeWidget>
 #include <QWidget>
 
-#include <mysql/mysql.h>   /* typedef struct st_mysql MYSQL — no forward decl */
+class IDbConnection;
 
 class ObjectBrowser : public QWidget
 {
@@ -18,7 +18,7 @@ public:
     explicit ObjectBrowser(QWidget *parent = nullptr);
 
     void setConnectionLabel(const QString &label);
-    void loadDatabases(MYSQL *conn, const QString &currentDb);
+    void loadDatabases(IDbConnection *conn, const QString &currentDb);
 
     /* [db, table] of the currently selected table item, else empty */
     QStringList currentTableInfo() const;
@@ -65,8 +65,8 @@ private:
     enum ItemRole { RoleKind = Qt::UserRole + 1, RoleName };
     enum Kind { KindConnection, KindDatabase, KindFolder, KindTable };
 
-    QLabel       *m_filterLabel = nullptr;
-    QLineEdit    *m_filter = nullptr;
-    QTreeWidget  *m_tree   = nullptr;
-    MYSQL        *m_conn   = nullptr;
+    QLabel        *m_filterLabel = nullptr;
+    QLineEdit     *m_filter = nullptr;
+    QTreeWidget   *m_tree   = nullptr;
+    IDbConnection *m_conn   = nullptr;
 };

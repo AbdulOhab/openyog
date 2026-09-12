@@ -442,6 +442,7 @@ ConnectionTab::ConnectionTab(const ConnectionParams &params, QWidget *parent)
         m_conn = nullptr;
         return;
     }
+    m_dbConn = new MySqlConnection(m_conn, /*owns=*/false);
 
     connect(m_browser, &ObjectBrowser::tableActivated, this,
             [this](const QString &db, const QString &table) {
@@ -506,7 +507,7 @@ ConnectionTab::ConnectionTab(const ConnectionParams &params, QWidget *parent)
 
     m_browser->setConnectionLabel(
         QStringLiteral("%1@%2").arg(m_params.user, m_params.host));
-    m_browser->loadDatabases(m_conn, m_params.database);
+    m_browser->loadDatabases(m_dbConn, m_params.database);
     updateCompletions();
     m_messages->setPlainText(QStringLiteral(
         "Connected to %1:%2 as %3\nServer version: %4")
@@ -528,6 +529,7 @@ ConnectionTab::ConnectionTab(const ConnectionParams &params, QWidget *parent)
 
 ConnectionTab::~ConnectionTab()
 {
+    delete m_dbConn;
     if(m_conn)
         mysql_close(m_conn);
 }
@@ -1156,7 +1158,7 @@ void ConnectionTab::exportResult()
 void ConnectionTab::refreshBrowser()
 {
     if(m_conn) {
-        m_browser->loadDatabases(m_conn, m_params.database);
+        m_browser->loadDatabases(m_dbConn, m_params.database);
         updateCompletions();
     }
 }
@@ -2036,10 +2038,8 @@ bool ConnectionTab::copyDatabaseTo(const QString &srcDb, const QString &tgtDb,
 
 void ConnectionTab::promptUserManager()
 {
-    if(m_conn) {
-        MySqlConnection conn(m_conn, /*owns=*/false);
-        UserManagerDialog(&conn, this).exec();
-    }
+    if(m_conn)
+        UserManagerDialog(m_dbConn, this).exec();
 }
 
 void ConnectionTab::exportCurrent()

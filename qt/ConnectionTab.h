@@ -153,6 +153,12 @@ private:
 
     ConnectionParams   m_params;
     MYSQL            * m_conn       = nullptr;   /* browsing (GUI thread) */
+    /* non-owning IDbConnection wrapper around m_conn, same lifetime — lets
+     * already-migrated files (ObjectBrowser, ...) take an IDbConnection*
+     * while ConnectionTab itself still owns a raw MYSQL* until the seam
+     * migration reaches it last (plan.md). Built once, right after m_conn
+     * connects; never rebound (m_conn itself is never reassigned either). */
+    class IDbConnection * m_dbConn  = nullptr;
 
     ObjectBrowser    * m_browser    = nullptr;
     TableDataView    * m_tableData  = nullptr;
