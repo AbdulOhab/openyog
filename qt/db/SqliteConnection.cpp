@@ -15,6 +15,14 @@ SqliteConnection::~SqliteConnection()
         sqlite3_close(m_db);
 }
 
+void SqliteConnection::cancel()
+{
+    /* documented safe to call from a different thread than the one running
+     * the query; the next sqlite3_step() call returns SQLITE_INTERRUPT */
+    if(m_db)
+        sqlite3_interrupt(m_db);
+}
+
 bool SqliteConnection::runBuffered(const QString &sql, DbResultSet *out, QString *error)
 {
     sqlite3_stmt *stmt = nullptr;

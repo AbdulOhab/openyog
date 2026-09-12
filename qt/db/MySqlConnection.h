@@ -15,9 +15,15 @@ public:
      * e.g. ConnectionTab's still-unmigrated MYSQL* m_conn, borrowed for one
      * call into an already-migrated file during the incremental seam
      * rollout (plan.md). */
-    explicit MySqlConnection(MYSQL *conn, bool owns = true);
+    /* host/port/user/password are kept only for cancel() — it needs a
+     * throwaway auxiliary connection to send KILL QUERY, since the busy
+     * connection can't process any command while a query runs on it. */
+    MySqlConnection(MYSQL *conn, const QString &host, int port,
+                    const QString &user, const QString &password,
+                    bool owns = true);
     ~MySqlConnection() override;
 
+    void cancel() override;
     bool query(const QString &sql, DbResultSet *result, QString *message) override;
 
     bool streamQuery(
@@ -57,4 +63,6 @@ private:
 
     MYSQL *m_conn;
     bool   m_owns;
+    QString m_host, m_user, m_password;
+    int     m_port;
 };

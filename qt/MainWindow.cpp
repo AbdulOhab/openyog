@@ -693,8 +693,11 @@ MainWindow::MainWindow(QWidget *parent)
         QStringLiteral("Execute Query & Edit Resultset\tF8"));
     execEditTool->setEnabled(false);
     QAction *stopTool = toolbar->addAction(
-        Icons::get(QStringLiteral("Stop_16.ico")), QStringLiteral("Stop"));
-    stopTool->setEnabled(false);
+        Icons::get(QStringLiteral("Stop_16.ico")),
+        QStringLiteral("Cancel the running query"));
+    connect(stopTool, &QAction::triggered, this, [this] {
+        if(auto *t = currentTab()) t->cancelQuery();
+    });
     toolbar->addSeparator();
 
     QAction *refreshTool = toolbar->addAction(
