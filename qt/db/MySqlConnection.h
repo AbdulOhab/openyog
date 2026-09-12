@@ -31,6 +31,7 @@ public:
     QString    lastError() override;
     qint64     affectedRows() override;
     QString    serverInfo() override;
+    QString    info() override;
 
     QStringList listDatabases() override;
     QStringList listTables(const QString &db, const QString &typeFilter) override;

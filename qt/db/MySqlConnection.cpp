@@ -115,6 +115,11 @@ QString MySqlConnection::quoteIdent(const QString &ident)
 QString MySqlConnection::lastError() { return QString::fromUtf8(mysql_error(m_conn)); }
 qint64  MySqlConnection::affectedRows() { return (qint64)mysql_affected_rows(m_conn); }
 QString MySqlConnection::serverInfo() { return QString::fromUtf8(mysql_get_server_info(m_conn)); }
+QString MySqlConnection::info()
+{
+    const char *i = mysql_info(m_conn);
+    return i ? QString::fromUtf8(i) : QString();
+}
 
 QStringList MySqlConnection::listDatabases()
 {

@@ -51,6 +51,9 @@ public:
     virtual QString lastError() = 0;
     virtual qint64  affectedRows() = 0;
     virtual QString serverInfo() = 0;
+    /* extra status text after DML (e.g. LOAD DATA's "Records: N  Deleted: N
+     * Skipped: N  Warnings: N"); empty when the server has nothing to add. */
+    virtual QString info() = 0;
 
     /* ---- metadata / DDL introspection -------------------------------- */
     virtual QStringList listDatabases() = 0;
