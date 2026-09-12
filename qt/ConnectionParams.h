@@ -33,4 +33,10 @@ struct ConnectionParams
     QString    password;
     QString    database;   // optional
     QString    filePath;   // SQLite only: path to the .sqlite file
+
+    // MySQL only: client-cert TLS (mysql_ssl_set before mysql_real_connect)
+    bool       useSsl  = false;
+    QString    sslCa;     // CA cert
+    QString    sslCert;   // client cert
+    QString    sslKey;    // client key
 };
