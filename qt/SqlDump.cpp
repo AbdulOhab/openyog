@@ -9,14 +9,13 @@ namespace {
 
 QStringList baseTables(IDbConnection *c, const QString &db, QString *error)
 {
-    DbResultSet rs;
-    if(!c->query(QStringLiteral(
-           "SHOW FULL TABLES FROM `%1` WHERE Table_type = 'BASE TABLE'")
-               .arg(QString(db).replace('`', QStringLiteral("``"))), &rs, error))
-        return {};
-    QStringList out;
-    for(const QStringList &row : rs.rows)
-        out << row.value(0);
+    const QStringList out = c->listTables(db, QStringLiteral("BASE TABLE"));
+    /* an empty table list is normal for an empty db — but a db we cannot see
+     * at all is a hard error (upstream BUG-1: never report success and leave
+     * a bogus empty target behind) */
+    if(out.isEmpty() && !c->listDatabases().contains(db) && error)
+        *error = QStringLiteral("database '%1' does not exist on this connection")
+                     .arg(db);
     return out;
 }
 
@@ -58,7 +57,6 @@ bool SqlDump::write(IDbConnection *conn, const QString &db, const QStringList &t
             return false;
     }
 
-    const QByteArray qdb = QByteArray(db.toUtf8()).replace('`', "``");
     auto put = [&](const QString &line) {
         out->write(line.toUtf8());
         out->write("\n");
@@ -68,19 +66,23 @@ bool SqlDump::write(IDbConnection *conn, const QString &db, const QStringList &t
     put(QStringLiteral("-- Database: %1").arg(db));
     put(QStringLiteral("-- Generated: %1")
             .arg(QDateTime::currentDateTime().toString(Qt::ISODate)));
-    put(QStringLiteral("SET FOREIGN_KEY_CHECKS=0;"));
-    put(QStringLiteral("SET NAMES utf8mb4;"));
+    const QString fkOff = conn->sqlFkChecks(false);
+    if(!fkOff.isEmpty())
+        put(fkOff + QLatin1Char(';'));
+    const QString names = conn->sqlSetNames(QStringLiteral("utf8mb4"));
+    if(!names.isEmpty())
+        put(names + QLatin1Char(';'));
     put(QString());
 
     for(const QString &t : std::as_const(list)) {
-        const QByteArray qt = QByteArray(t.toUtf8()).replace('`', "``");
         put(QStringLiteral("-- ----------------------------"));
-        put(QStringLiteral("-- Table: `%1`").arg(t));
+        put(QStringLiteral("-- Table: %1").arg(conn->quoteIdent(t)));
         put(QStringLiteral("-- ----------------------------"));
 
         if(opt.structure) {
             if(opt.addDropTable)
-                put(QStringLiteral("DROP TABLE IF EXISTS `%1`;").arg(t));
+                put(QStringLiteral("DROP TABLE IF EXISTS %1;")
+                        .arg(conn->quoteIdent(t)));
             const QString ddl = conn->showCreate(QStringLiteral("TABLE"), db, t, error);
             if(ddl.isEmpty())
                 return false;
@@ -91,14 +93,16 @@ bool SqlDump::write(IDbConnection *conn, const QString &db, const QStringList &t
         if(!opt.data)
             continue;
 
+        const QString select = QStringLiteral("SELECT * FROM %1.%2")
+                                   .arg(conn->quoteIdent(db), conn->quoteIdent(t));
         int inBatch = 0;
         bool streamOk = conn->streamQuery(
-            QStringLiteral("SELECT * FROM `") + QString::fromUtf8(qdb) + "`.`"
-                + QString::fromUtf8(qt) + "`",
+            select,
             error, nullptr,
             [&](const QVector<QByteArray> &fields, const QVector<bool> &isNull) {
                 if(inBatch == 0)
-                    out->write(QStringLiteral("INSERT INTO `%1` VALUES\n").arg(t).toUtf8());
+                    out->write(QStringLiteral("INSERT INTO %1 VALUES\n")
+                                   .arg(conn->quoteIdent(t)).toUtf8());
                 else
                     out->write(",\n");
                 out->write(tuple(conn, fields, isNull).toUtf8());
@@ -115,7 +119,9 @@ bool SqlDump::write(IDbConnection *conn, const QString &db, const QStringList &t
         put(QString());
     }
 
-    put(QStringLiteral("SET FOREIGN_KEY_CHECKS=1;"));
+    const QString fkOn = conn->sqlFkChecks(true);
+    if(!fkOn.isEmpty())
+        put(fkOn + QLatin1Char(';'));
     return true;
 }
 
@@ -134,16 +140,15 @@ bool SqlDump::forEachStatement(
         if(list.isEmpty() && error && !error->isEmpty())
             return false;
     }
-    const QByteArray qdb = QByteArray(db.toUtf8()).replace('`', "``");
 
-    if(!exec(QStringLiteral("SET FOREIGN_KEY_CHECKS=0")))
+    if(!exec(conn->sqlFkChecks(false)))
         return false;
 
     for(const QString &t : std::as_const(list)) {
-        const QByteArray qt = QByteArray(t.toUtf8()).replace('`', "``");
         if(opt.structure) {
             if(opt.addDropTable
-               && !exec(QStringLiteral("DROP TABLE IF EXISTS `%1`").arg(t)))
+               && !exec(QStringLiteral("DROP TABLE IF EXISTS %1")
+                            .arg(conn->quoteIdent(t))))
                 return false;
             const QString ddl = conn->showCreate(QStringLiteral("TABLE"), db, t, error);
             if(ddl.isEmpty() || !exec(ddl))
@@ -163,13 +168,15 @@ bool SqlDump::forEachStatement(
             inBatch = 0;
             return ok;
         };
+        const QString select = QStringLiteral("SELECT * FROM %1.%2")
+                                   .arg(conn->quoteIdent(db), conn->quoteIdent(t));
         bool streamOk = conn->streamQuery(
-            QStringLiteral("SELECT * FROM `") + QString::fromUtf8(qdb) + "`.`"
-                + QString::fromUtf8(qt) + "`",
+            select,
             error, nullptr,
             [&](const QVector<QByteArray> &fields, const QVector<bool> &isNull) {
                 if(inBatch == 0)
-                    batch = QStringLiteral("INSERT INTO `%1` VALUES\n").arg(t);
+                    batch = QStringLiteral("INSERT INTO %1 VALUES\n")
+                                .arg(conn->quoteIdent(t));
                 else
                     batch += QStringLiteral(",\n");
                 batch += tuple(conn, fields, isNull);
@@ -186,74 +193,46 @@ bool SqlDump::forEachStatement(
     }
 
     if(opt.routines) {
+        /* strip DEFINER=`u`@`h` (MySQL) and the source-db qualifier — the
+         * caller has USEd the target db, so unqualified names land there */
         static const QRegularExpression kDefiner(
             QStringLiteral("DEFINER=`[^`]*`@`[^`]*` "));
-        /* strip DEFINER and the source-db qualifier — the caller has USE'd
-         * the target db, so unqualified names land there */
         const auto clean = [&](QString s) {
             return s.remove(kDefiner)
                     .replace(QStringLiteral("`%1`.").arg(db), QString());
         };
-        const auto names = [&](const QString &sql, int col) {
-            QStringList out;
-            DbResultSet rs;
-            if(conn->query(sql, &rs, error))
-                for(const QStringList &row : rs.rows)
-                    out << row.value(col);
-            return out;
+        /* showCreate failure on an unsupported kind yields an empty DDL —
+         * skipped (e.g. SQLite: routines/events don't exist, and its
+         * triggers already replay as complete CREATE TRIGGER statements) */
+        const auto ddlFor = [&](const QString &kind, const QString &name) {
+            QString err;
+            return clean(conn->showCreate(kind, db, name, &err));
         };
-        const auto one = [&](const QString &sql, int col) {
-            DbResultSet rs;
-            if(conn->query(sql, &rs, error) && !rs.rows.isEmpty())
-                return rs.rows.first().value(col);
-            return QString();
-        };
-        const QString dq = QString(db).replace('`', QStringLiteral("``"));
 
-        for(const QString &v : names(
-                QStringLiteral("SHOW FULL TABLES FROM `%1` WHERE Table_type='VIEW'").arg(dq), 0)) {
-            const QString ddl = clean(one(
-                QStringLiteral("SHOW CREATE VIEW `%1`.`%2`").arg(dq, v), 1));
+        for(const QString &v : conn->listTables(db, QStringLiteral("VIEW"))) {
+            const QString ddl = ddlFor(QStringLiteral("VIEW"), v);
             if(!ddl.isEmpty() && !exec(ddl))
                 return false;
         }
-        {
-            DbResultSet rs;
-            if(conn->query(QStringLiteral("SELECT ROUTINE_NAME, ROUTINE_TYPE FROM "
-                         "information_schema.ROUTINES WHERE ROUTINE_SCHEMA='%1'")
-                         .arg(dq), &rs, error)) {
-                for(const QStringList &row : rs.rows) {
-                    const QString kw = row.value(1) == QStringLiteral("PROCEDURE")
-                        ? QStringLiteral("PROCEDURE") : QStringLiteral("FUNCTION");
-                    const QString ddl = clean(one(
-                        QStringLiteral("SHOW CREATE %1 `%2`.`%3`").arg(kw, dq, row.value(0)), 2));
-                    if(!ddl.isEmpty() && !exec(ddl))
-                        return false;
-                }
-            }
+        for(const QStringList &row : conn->listRoutines(db).rows) {
+            const QString kw = row.value(1) == QStringLiteral("PROCEDURE")
+                ? QStringLiteral("PROCEDURE") : QStringLiteral("FUNCTION");
+            const QString ddl = ddlFor(kw, row.value(0));
+            if(!ddl.isEmpty() && !exec(ddl))
+                return false;
         }
-        {
-            DbResultSet rs;
-            if(conn->query(QStringLiteral("SHOW TRIGGERS FROM `%1`").arg(dq), &rs, error)) {
-                QStringList trg;
-                for(const QStringList &row : rs.rows)
-                    trg << QStringLiteral("CREATE TRIGGER `%1` %2 %3 ON `%4` "
-                                          "FOR EACH ROW %5")
-                        .arg(row.value(0), row.value(4), row.value(1),
-                             row.value(2), row.value(3));
-                for(const QString &s : std::as_const(trg))
-                    if(!exec(s))
-                        return false;
-            }
+        for(const QString &t : conn->listTriggers(db)) {
+            const QString ddl = ddlFor(QStringLiteral("TRIGGER"), t);
+            if(!ddl.isEmpty() && !exec(ddl))
+                return false;
         }
-        for(const QString &e : names(
-                QStringLiteral("SHOW EVENTS FROM `%1`").arg(dq), 1)) {
-            const QString ddl = clean(one(
-                QStringLiteral("SHOW CREATE EVENT `%1`.`%2`").arg(dq, e), 3));
+        for(const QString &e : conn->listEvents(db)) {
+            const QString ddl = ddlFor(QStringLiteral("EVENT"), e);
             if(!ddl.isEmpty() && !exec(ddl))
                 return false;
         }
     }
 
-    return exec(QStringLiteral("SET FOREIGN_KEY_CHECKS=1"));
+    const QString fkOn = conn->sqlFkChecks(true);
+    return fkOn.isEmpty() || exec(fkOn);
 }
