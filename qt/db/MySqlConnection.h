@@ -39,9 +39,17 @@ public:
     DbResultSet listIndexes(const QString &db, const QString &table) override;
     DbResultSet listForeignKeys(const QString &db, const QString &table) override;
     QStringList listTriggers(const QString &db) override;
+    DbResultSet listTableTriggers(const QString &db, const QString &table) override;
     DbResultSet listRoutines(const QString &db) override;
+    QStringList listEvents(const QString &db) override;
     QString     showCreate(const QString &kind, const QString &db,
                            const QString &name, QString *error) override;
+
+    QString sqlFkChecks(bool enable) override;
+    QString sqlSetNames(const QString &charset) override;
+    QString sqlInsertDefaults(const QString &db, const QString &table) override;
+    QString sqlTruncateTable(const QString &db, const QString &table) override;
+    bool    supportsLimitOnUpdateDelete() override;
 
 private:
     /* runs `sql`, buffers the result (if any) into a DbResultSet */

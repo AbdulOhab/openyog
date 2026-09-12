@@ -164,11 +164,15 @@ DbResultSet MySqlConnection::listForeignKeys(const QString &db, const QString &t
 {
     DbResultSet rs;
     runBuffered(QStringLiteral(
-        "SELECT CONSTRAINT_NAME, COLUMN_NAME, REFERENCED_TABLE_NAME, "
-        "REFERENCED_COLUMN_NAME FROM information_schema.KEY_COLUMN_USAGE "
-        "WHERE TABLE_SCHEMA='%1' AND TABLE_NAME='%2' "
-        "AND REFERENCED_TABLE_NAME IS NOT NULL "
-        "ORDER BY CONSTRAINT_NAME, ORDINAL_POSITION")
+        "SELECT k.CONSTRAINT_NAME, k.COLUMN_NAME, k.REFERENCED_TABLE_NAME, "
+        "k.REFERENCED_COLUMN_NAME, r.UPDATE_RULE, r.DELETE_RULE "
+        "FROM information_schema.KEY_COLUMN_USAGE k "
+        "JOIN information_schema.REFERENTIAL_CONSTRAINTS r "
+        "  ON r.CONSTRAINT_SCHEMA=k.CONSTRAINT_SCHEMA "
+        " AND r.CONSTRAINT_NAME=k.CONSTRAINT_NAME "
+        "WHERE k.TABLE_SCHEMA='%1' AND k.TABLE_NAME='%2' "
+        "  AND k.REFERENCED_TABLE_NAME IS NOT NULL "
+        "ORDER BY k.CONSTRAINT_NAME, k.ORDINAL_POSITION")
             .arg(QString(db).replace('\'', QStringLiteral("''")),
                  QString(table).replace('\'', QStringLiteral("''"))), &rs, nullptr);
     return rs;
@@ -184,6 +188,23 @@ QStringList MySqlConnection::listTriggers(const QString &db)
     return out;
 }
 
+DbResultSet MySqlConnection::listTableTriggers(const QString &db, const QString &table)
+{
+    DbResultSet rs;
+    /* canonical shape: Trigger(0) Timing(1) Event(2) — SHOW TRIGGERS keeps
+     * Timing in col 4 and Event in col 1 */
+    runBuffered(QStringLiteral("SHOW TRIGGERS FROM %1 WHERE `Table`='%2'")
+                    .arg(quoteIdent(db),
+                         QString(table).replace('\'', QStringLiteral("''"))),
+                &rs, nullptr);
+    DbResultSet out;
+    out.headers << QStringLiteral("Trigger") << QStringLiteral("Timing")
+                << QStringLiteral("Event");
+    for(const QStringList &row : rs.rows)
+        out.rows << QStringList{ row.value(0), row.value(4), row.value(1) };
+    return out;
+}
+
 DbResultSet MySqlConnection::listRoutines(const QString &db)
 {
     DbResultSet rs;
@@ -192,6 +213,16 @@ DbResultSet MySqlConnection::listRoutines(const QString &db)
         "WHERE ROUTINE_SCHEMA='%1'")
             .arg(QString(db).replace('\'', QStringLiteral("''"))), &rs, nullptr);
     return rs;
+}
+
+QStringList MySqlConnection::listEvents(const QString &db)
+{
+    DbResultSet rs;
+    QStringList out;
+    if(runBuffered(QStringLiteral("SHOW EVENTS FROM %1").arg(quoteIdent(db)), &rs, nullptr))
+        for(const QStringList &row : rs.rows)
+            out << row.value(1);   /* col 1 = Name */
+    return out;
 }
 
 QString MySqlConnection::showCreate(const QString &kind, const QString &db,
@@ -211,4 +242,33 @@ QString MySqlConnection::showCreate(const QString &kind, const QString &db,
     else if(kind == QStringLiteral("EVENT"))
         col = 3;
     return rs.rows.first().value(col);
+}
+
+QString MySqlConnection::sqlFkChecks(bool enable)
+{
+    return QStringLiteral("SET FOREIGN_KEY_CHECKS=%1").arg(enable ? 1 : 0);
+}
+
+QString MySqlConnection::sqlSetNames(const QString &charset)
+{
+    return QStringLiteral("SET NAMES %1").arg(charset);
+}
+
+QString MySqlConnection::sqlInsertDefaults(const QString &db, const QString &table)
+{
+    return QStringLiteral("INSERT INTO %1 () VALUES ()")
+        .arg(db.isEmpty() ? quoteIdent(table)
+                          : quoteIdent(db) + QLatin1Char('.') + quoteIdent(table));
+}
+
+QString MySqlConnection::sqlTruncateTable(const QString &db, const QString &table)
+{
+    return QStringLiteral("TRUNCATE TABLE %1")
+        .arg(db.isEmpty() ? quoteIdent(table)
+                          : quoteIdent(db) + QLatin1Char('.') + quoteIdent(table));
+}
+
+bool MySqlConnection::supportsLimitOnUpdateDelete()
+{
+    return true;
 }

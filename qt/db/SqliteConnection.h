@@ -1,11 +1,7 @@
-/* OpenYog — SQLite IDbConnection implementation. Connectivity PoC: the
- * generic query/streamQuery/escape/metadata surface is implemented for
- * real, but the UI layer (ObjectBrowser/TableDataView/SqlDump/ConnectionTab
- * DDL helpers) still emits MySQL-dialect SQL text through query() and is
- * NOT yet rewired to call the metadata methods below — that's follow-up
- * work. What already works end-to-end: the query editor (F9/Ctrl+F9), which
- * runs through IDbConnection::query() generically via ConnectionTab's
- * runOnConnection(). */
+/* OpenYog — SQLite IDbConnection implementation. Everything above the driver
+ * seam (object browser, table-data editing, SQL dump) goes through the
+ * canonical metadata shapes, which this class synthesizes from the PRAGMA
+ * introspection + sqlite_master (the UI never sees SQLite dialect SQL). */
 #pragma once
 
 #include "IDbConnection.h"
@@ -40,9 +36,17 @@ public:
     DbResultSet listIndexes(const QString &db, const QString &table) override;
     DbResultSet listForeignKeys(const QString &db, const QString &table) override;
     QStringList listTriggers(const QString &db) override;
+    DbResultSet listTableTriggers(const QString &db, const QString &table) override;
     DbResultSet listRoutines(const QString &db) override;
+    QStringList listEvents(const QString &db) override;
     QString     showCreate(const QString &kind, const QString &db,
                            const QString &name, QString *error) override;
+
+    QString sqlFkChecks(bool enable) override;
+    QString sqlSetNames(const QString &charset) override;
+    QString sqlInsertDefaults(const QString &db, const QString &table) override;
+    QString sqlTruncateTable(const QString &db, const QString &table) override;
+    bool    supportsLimitOnUpdateDelete() override;
 
 private:
     /* prepares `sql`, runs it to completion, buffering rows into `out` if

@@ -55,17 +55,57 @@ public:
      * Skipped: N  Warnings: N"); empty when the server has nothing to add. */
     virtual QString info() = 0;
 
-    /* ---- metadata / DDL introspection -------------------------------- */
+    /* ---- metadata / DDL introspection --------------------------------
+     * Every backend normalizes to these canonical shapes, so UI code never
+     * sees dialect SQL or backend-native column orders:
+     *   listColumns     — SHOW COLUMNS shape: Field(0) Type(1)
+     *                     Null(2 "YES"/"NO") Key(3 "PRI"/"UNI"/"MUL"/"")
+     *                     Default(4, the literal "NULL" when NULL)
+     *                     Extra(5, may contain "auto_increment")
+     *   listIndexes     — SHOW INDEX shape: Non_unique(1 "0"/"1")
+     *                     Key_name(2) Seq_in_index(3, 1-based) Column_name(4);
+     *                     PRIMARY rows are always present (synthesized where
+     *                     the backend has no explicit PRIMARY index, e.g. a
+     *                     SQLite rowid-alias key)
+     *   listForeignKeys — one row per (constraint, column) pair, ordered by
+     *                     constraint then position: Name(0) Column(1)
+     *                     Ref_table(2) Ref_column(3) On_update(4)
+     *                     On_delete(5); unnamed constraints (SQLite) get a
+     *                     stable synthesized name
+     *   listTableTriggers — Trigger(0) Timing(1) Event(2), e.g.
+     *                     "BEFORE" / "INSERT"
+     * A backend that has no such objects returns an empty result (SQLite:
+     * routines, events). `typeFilter`: "BASE TABLE" / "VIEW" / "" (= base). */
     virtual QStringList listDatabases() = 0;
     virtual QStringList listTables(const QString &db, const QString &typeFilter = {}) = 0;
     virtual DbResultSet listColumns(const QString &db, const QString &table) = 0;
     virtual DbResultSet listIndexes(const QString &db, const QString &table) = 0;
     virtual DbResultSet listForeignKeys(const QString &db, const QString &table) = 0;
     virtual QStringList listTriggers(const QString &db) = 0;
+    virtual DbResultSet listTableTriggers(const QString &db, const QString &table) = 0;
     virtual DbResultSet listRoutines(const QString &db) = 0;
+    virtual QStringList listEvents(const QString &db) = 0;
 
     /* SHOW CREATE <kind> equivalent. `kind`: TABLE / VIEW / PROCEDURE /
-     * FUNCTION / TRIGGER / EVENT. Returns the DDL text, or empty + *error set. */
+     * FUNCTION / TRIGGER / EVENT. Returns the DDL text, or empty + *error set
+     * (an unsupported kind on this backend is an error, not an empty DDL). */
     virtual QString showCreate(const QString &kind, const QString &db,
                                const QString &name, QString *error) = 0;
+
+    /* ---- dialect fragments -------------------------------------------
+     * The handful of statement shapes that differ between backends, so the
+     * dump/edit/replay code in qt/ stays dialect-free. All return complete
+     * statements (no trailing ';'; an empty string means "nothing to run"). */
+    /* turn foreign-key enforcement off/on for this session */
+    virtual QString sqlFkChecks(bool enable) = 0;
+    /* set the connection character set ("SET NAMES …"); empty when the
+     * backend has no such concept */
+    virtual QString sqlSetNames(const QString &charset) = 0;
+    /* insert one row taking every column default */
+    virtual QString sqlInsertDefaults(const QString &db, const QString &table) = 0;
+    /* "empty this table" (MySQL TRUNCATE; SQLite DELETE FROM) */
+    virtual QString sqlTruncateTable(const QString &db, const QString &table) = 0;
+    /* does the backend accept `UPDATE/DELETE … LIMIT n`? (SQLite only with
+     * SQLITE_ENABLE_UPDATE_DELETE_LIMIT — assume no) */
+    virtual bool supportsLimitOnUpdateDelete() = 0;
 };
