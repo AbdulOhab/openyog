@@ -840,8 +840,8 @@ void TableDataView::sortByColumn(int section)
         return;
     m_sortDesc = (section == m_sortColumn) ? !m_sortDesc : false;
     m_sortColumn = section;
-    m_orderBy = QStringLiteral("`%1` %2")
-        .arg(m_columns[section],
+    m_orderBy = QStringLiteral("%1 %2")
+        .arg(m_conn ? m_conn->quoteIdent(m_columns[section]) : m_columns[section],
              m_sortDesc ? QStringLiteral("DESC") : QStringLiteral("ASC"));
     m_grid->horizontalHeader()->setSortIndicator(
         section, m_sortDesc ? Qt::DescendingOrder : Qt::AscendingOrder);
@@ -1080,13 +1080,12 @@ void TableDataView::exportRows()
 
 void TableDataView::reload()
 {
-    /* columns + keys, upstream-style: SHOW COLUMNS + SHOW KEYS */
+    /* columns + keys through the driver seam (canonical SHOW COLUMNS /
+     * SHOW INDEX shapes — see qt/db/IDbConnection.h) */
     QStringList pkeys;
-    DbResultSet keys;
-    if(m_conn && m_conn->query(QStringLiteral("SHOW KEYS FROM `%1`.`%2`")
-                                    .arg(m_db, m_table), &keys, nullptr)) {
+    if(m_conn) {
+        const DbResultSet keys = m_conn->listIndexes(m_db, m_table);
         for(const QStringList &row : keys.rows) {
-            /* row: Table, Non_unique(1), Key_name(2), Seq(3), Column(4)… */
             if(row.value(1) == QStringLiteral("0")
                && row.value(2) == QStringLiteral("PRIMARY"))
                 pkeys << row.value(4);
@@ -1094,18 +1093,15 @@ void TableDataView::reload()
     }
 
     m_columns.clear();
-    DbResultSet cols;
     m_colInfo.clear();
-    if(m_conn && m_conn->query(QStringLiteral("SHOW COLUMNS FROM `%1`.`%2`")
-                                    .arg(m_db, m_table), &cols, nullptr)) {
-        for(const QStringList &row : cols.rows) {
-            m_columns << row.value(0);
-            ColumnInfo ci;
-            ci.name = m_columns.last();
-            ci.nullable = row.value(3) != QStringLiteral("NO");
-            ci.autoInc  = row.value(5).contains(QStringLiteral("auto_increment"));
-            m_colInfo << ci;
-        }
+    const DbResultSet cols = m_conn ? m_conn->listColumns(m_db, m_table) : DbResultSet();
+    for(const QStringList &row : cols.rows) {
+        m_columns << row.value(0);
+        ColumnInfo ci;
+        ci.name = m_columns.last();
+        ci.nullable = row.value(2) != QStringLiteral("NO");
+        ci.autoInc  = row.value(5).contains(QStringLiteral("auto_increment"));
+        m_colInfo << ci;
     }
     if(m_columns.isEmpty()) {
         clear();
@@ -1120,7 +1116,9 @@ void TableDataView::reload()
             m_pkColumns << i;
     m_hasPrimary = !m_pkColumns.isEmpty();   /* upstream: PK only, else all-cols */
 
-    const QString qualified = QStringLiteral("`%1`.`%2`").arg(m_db, m_table);
+    const QString qualified = m_conn
+        ? m_conn->quoteIdent(m_db) + QLatin1Char('.') + m_conn->quoteIdent(m_table)
+        : QStringLiteral("`%1`.`%2`").arg(m_db, m_table);
     const QString whereSql = m_where.isEmpty()
         ? QString() : QStringLiteral(" WHERE ") + m_where;
 
@@ -1198,25 +1196,29 @@ void TableDataView::reload()
     refreshTextViewIfShown();
 }
 
-QString TableDataView::quoteValue(const QString &v)
+QString TableDataView::quoteValue(const QString &v) const
 {
     if(v == QStringLiteral("NULL"))
         return QStringLiteral("NULL");
-    QString s = v;
-    s.replace('\\', QStringLiteral("\\\\"));
-    s.replace('\'', QStringLiteral("\\'"));
-    return '\'' + s + '\'';
+    if(!m_conn)
+        return QLatin1Char('\'') + v + QLatin1Char('\'');
+    return QLatin1Char('\'')
+         + QString::fromUtf8(m_conn->escape(v.toUtf8()))
+         + QLatin1Char('\'');
 }
 
 QString TableDataView::whereFromOrigRow(int row) const
 {
+    const auto qi = [&](const QString &ident) {
+        return m_conn ? m_conn->quoteIdent(ident) : QStringLiteral("`%1`").arg(ident);
+    };
     QStringList conds;
     const auto addCol = [&](int col) {
         const QString v = m_model->orig(row, col);
         if(v == QStringLiteral("NULL"))
-            conds << QStringLiteral("`%1` IS NULL").arg(m_columns[col]);
+            conds << QStringLiteral("%1 IS NULL").arg(qi(m_columns[col]));
         else
-            conds << QStringLiteral("`%1` = %2").arg(m_columns[col], quoteValue(v));
+            conds << QStringLiteral("%1 = %2").arg(qi(m_columns[col]), quoteValue(v));
     };
     if(m_hasPrimary)
         for(int col : m_pkColumns)
@@ -1246,13 +1248,20 @@ void TableDataView::applyPendingEdits()
     const auto exec = [&](const QString &sql) {
         return m_conn->query(sql, nullptr, &lastError);
     };
+    const auto qi = [&](const QString &ident) {
+        return m_conn->quoteIdent(ident);
+    };
+    const QString qualified = qi(m_db) + QLatin1Char('.') + qi(m_table);
+    const bool dmlLimit = m_conn->supportsLimitOnUpdateDelete();
 
-    exec(QStringLiteral("START TRANSACTION"));
+    exec(QStringLiteral("BEGIN"));
 
     /* 1. deletes (WHERE from the row's original values) */
     for(int r : deleted) {
-        const QString q = QStringLiteral("DELETE FROM `%1`.`%2` WHERE %3 LIMIT 1")
-                               .arg(m_db, m_table, whereFromOrigRow(r));
+        const QString q = QStringLiteral("DELETE FROM %1 WHERE %2%3")
+                               .arg(qualified, whereFromOrigRow(r),
+                                    dmlLimit ? QStringLiteral(" LIMIT 1")
+                                             : QString());
         if(!exec(q))
             return fail(QStringLiteral("DELETE"));
     }
@@ -1265,15 +1274,15 @@ void TableDataView::applyPendingEdits()
             const QString ex = m_model->exprAt(r, c);
             if(v.isEmpty() && ex.isEmpty())
                 continue;
-            names << QStringLiteral("`%1`").arg(m_columns[c]);
+            names << qi(m_columns[c]);
             vals  << (!ex.isEmpty()                ? ex
                     : v == QStringLiteral("NULL")  ? QStringLiteral("NULL")
                                                    : quoteValue(v));
         }
         const QString q = names.isEmpty()
-            ? QStringLiteral("INSERT INTO `%1`.`%2` () VALUES ()").arg(m_db, m_table)
-            : QStringLiteral("INSERT INTO `%1`.`%2` (%3) VALUES (%4)")
-                  .arg(m_db, m_table, names.join(QStringLiteral(", ")),
+            ? m_conn->sqlInsertDefaults(m_db, m_table)
+            : QStringLiteral("INSERT INTO %1 (%2) VALUES (%3)")
+                  .arg(qualified, names.join(QStringLiteral(", ")),
                        vals.join(QStringLiteral(", ")));
         if(!exec(q))
             return fail(QStringLiteral("INSERT"));
@@ -1287,8 +1296,8 @@ void TableDataView::applyPendingEdits()
                 continue;
             const QString v = m_model->cur(r, c);
             const QString ex = m_model->exprAt(r, c);
-            setParts << QStringLiteral("`%1` = %2")
-                            .arg(m_columns[c],
+            setParts << QStringLiteral("%1 = %2")
+                            .arg(qi(m_columns[c]),
                                  !ex.isEmpty()                ? ex
                                : v == QStringLiteral("NULL")  ? QStringLiteral("NULL")
                                                               : quoteValue(v));
@@ -1296,9 +1305,11 @@ void TableDataView::applyPendingEdits()
         const QString where = whereFromOrigRow(r);
         if(setParts.isEmpty() || where.isEmpty())
             continue;
-        const QString q = QStringLiteral("UPDATE `%1`.`%2` SET %3 WHERE %4 LIMIT 1")
-                               .arg(m_db, m_table, setParts.join(QStringLiteral(", ")),
-                                    where);
+        const QString q = QStringLiteral("UPDATE %1 SET %2 WHERE %3%4")
+                               .arg(qualified, setParts.join(QStringLiteral(", ")),
+                                    where,
+                                    dmlLimit ? QStringLiteral(" LIMIT 1")
+                                             : QString());
         if(!exec(q))
             return fail(QStringLiteral("UPDATE"));
     }
@@ -1382,8 +1393,11 @@ QByteArray TableDataView::fetchCellBytes(int row, int col) const
     const QString where = whereFromOrigRow(row);
     if(where.isEmpty())
         return out;
-    const QString sql = QStringLiteral("SELECT `%1` FROM `%2`.`%3` WHERE %4 LIMIT 1")
-                             .arg(m_columns[col], m_db, m_table, where);
+    const QString sql = QStringLiteral("SELECT %1 FROM %2 WHERE %3 LIMIT 1")
+                             .arg(m_conn->quoteIdent(m_columns[col]),
+                                  m_conn->quoteIdent(m_db) + QLatin1Char('.')
+                                      + m_conn->quoteIdent(m_table),
+                                  where);
     /* streamed (raw bytes), not query(), so binary/BLOB content survives
      * unmodified — query()'s DbResultSet rows go through QString::fromUtf8 */
     m_conn->streamQuery(sql, nullptr, nullptr,
@@ -1540,7 +1554,7 @@ void TableDataView::insertRowWithValues()
         const QString v = f.edit->text();
         if(v.isEmpty())
             continue;                       /* not provided */
-        names << '`' + f.col->name + '`';
+        names << m_conn->quoteIdent(f.col->name);
         values << quoteValue(v);
     }
     if(names.isEmpty()) {
@@ -1548,8 +1562,10 @@ void TableDataView::insertRowWithValues()
         return;
     }
 
-    const QString q = QStringLiteral("INSERT INTO `%1`.`%2` (%3) VALUES (%4)")
-                           .arg(m_db, m_table, names.join(QStringLiteral(", ")),
+    const QString q = QStringLiteral("INSERT INTO %1 (%2) VALUES (%3)")
+                           .arg(m_conn->quoteIdent(m_db) + QLatin1Char('.')
+                                    + m_conn->quoteIdent(m_table),
+                                names.join(QStringLiteral(", ")),
                                 values.join(QStringLiteral(", ")));
     QString error;
     if(!m_conn->query(q, nullptr, &error)) {
