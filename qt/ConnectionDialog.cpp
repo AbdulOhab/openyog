@@ -19,7 +19,8 @@
 #include <QTabWidget>
 #include <QVBoxLayout>
 
-#include <mysql/mysql.h>
+#include "db/IDbDriver.h"
+#include "db/IDbConnection.h"
 
 namespace {
 QWidget *placeholderTab(const QString &what)
@@ -287,18 +288,14 @@ void ConnectionDialog::deleteConnection()
 void ConnectionDialog::testConnection()
 {
     const ConnectionParams p = params();
-    MYSQL *c = mysql_init(nullptr);
-    mysql_options(c, MYSQL_SET_CHARSET_NAME, "utf8mb4");
-    const bool ok = mysql_real_connect(
-        c, p.host.toUtf8(), p.user.toUtf8(), p.password.toUtf8(),
-        p.database.isEmpty() ? nullptr : p.database.toUtf8(), p.port, nullptr, 0);
+    QString error;
+    IDbConnection *c = dbDriverFor(p.driverType)->connect(p, &error);
+    const bool ok = c != nullptr;
     const QString msg = ok
         ? QStringLiteral("Connected to %1:%2\nServer: %3")
-              .arg(p.host).arg(p.port)
-              .arg(QString::fromUtf8(mysql_get_server_info(c)))
-        : QStringLiteral("Connection failed:\n%1")
-              .arg(QString::fromUtf8(mysql_error(c)));
-    mysql_close(c);
+              .arg(p.host).arg(p.port).arg(c->serverInfo())
+        : QStringLiteral("Connection failed:\n%1").arg(error);
+    delete c;
     if(ok)
         QMessageBox::information(this, QStringLiteral("Test Connection"), msg);
     else
