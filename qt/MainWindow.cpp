@@ -595,6 +595,18 @@ MainWindow::MainWindow(QWidget *parent)
     addDisabled(connDetails, QStringLiteral("&Export Connection Details…"));
     addDisabled(connDetails, QStringLiteral("&Import Connection Details…"));
     addDisabled(tools, QStringLiteral("&Preferences…"));
+    QAction *queryTimeout = tools->addAction(QStringLiteral("Query &Timeout…"));
+    connect(queryTimeout, &QAction::triggered, this, [this] {
+        bool ok = false;
+        const int cur = ConnectionTab::queryTimeoutSecs();
+        const int secs = QInputDialog::getInt(
+            this, QStringLiteral("Query Timeout"),
+            QStringLiteral("Cancel a running query after this many seconds\n"
+                            "(0 = never):"),
+            cur, 0, 24 * 3600, 1, &ok);
+        if(ok)
+            ConnectionTab::setQueryTimeoutSecs(secs);
+    });
     QMenu *themeMenu = tools->addMenu(QStringLiteral("&Theme"));
     auto *themeGroup = new QActionGroup(this);
     themeGroup->setExclusive(true);

@@ -63,6 +63,11 @@ public:
     /* [db, table] of the browser's selected table, or empty */
     QStringList selectedTableInfo() const;
 
+    /* Query timeout, persisted in OpenYog.ini [Query] (0 = disabled, the
+     * default). Global, not per-tab — mirrors Theme::load()/save(). */
+    static int  queryTimeoutSecs();
+    static void setQueryTimeoutSecs(int secs);
+
 public slots:
     void runQuery();                 /* F9 — selection or current statement */
     void runAll();                   /* Ctrl+F9 — the whole editor */
@@ -192,6 +197,7 @@ private:
      * closing this tab mid-query can't leave it pointing at freed memory —
      * see cancelQuery() and runOnConnection() in the .cpp. */
     std::shared_ptr<LiveConnection> m_cancelState;
+    int                 m_batchGen  = 0;   /* invalidates a stale timeout timer */
 
     QStringList         m_databases;
     QString             m_lastFind;       /* for Find Next / F3 */

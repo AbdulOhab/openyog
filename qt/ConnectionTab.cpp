@@ -15,6 +15,7 @@
 #include "SqlDump.h"
 #include "FavoritesStore.h"
 #include "Icons.h"
+#include "wyIni.h"
 #include "db/IDbDriver.h"
 #include "db/IDbConnection.h"
 
@@ -65,6 +66,7 @@
 #include <QShortcut>
 #include <QSortFilterProxyModel>
 #include <QMutex>
+#include <QTimer>
 
 #include <algorithm>
 #include <thread>
@@ -91,6 +93,27 @@ namespace {
  * semantics instead (e.g. an optional column default fed into generated DDL)
  * must convert back — this undoes that sentinel where it matters. */
 QString orEmpty(const QString &v) { return v == QStringLiteral("NULL") ? QString() : v; }
+
+/* query timeout: same OpenYog.ini Theme::load()/save() already use, a new
+ * [Query] section. 0 = disabled (the default — no upstream equivalent to
+ * default to, and silently killing a long-running statement would surprise
+ * a user who never asked for a limit). */
+QString settingsIniPath()
+{
+    QDir dir(QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation));
+    dir.mkpath(".");
+    return dir.filePath("OpenYog.ini");
+}
+
+int loadQueryTimeoutSecs()
+{
+    return wyIni::IniGetInt("Query", "timeout_secs", 0, settingsIniPath().toUtf8());
+}
+
+void saveQueryTimeoutSecs(int secs)
+{
+    wyIni::IniWriteInt("Query", "timeout_secs", secs, settingsIniPath().toUtf8());
+}
 
 /* charset picker for the import dialogs — MySQL/MariaDB charset names */
 QComboBox *importCharsetCombo(QWidget *p)
@@ -980,6 +1003,7 @@ void ConnectionTab::runStatements(const QStringList &statements,
         logHistory(s);
 
     m_running = true;
+    const int gen = ++m_batchGen;
     m_messages->setPlainText(QStringLiteral("Executing %1 statement(s)…")
                                  .arg(statements.size()));
     m_resultTabs->setCurrentWidget(m_messages);
@@ -998,7 +1022,22 @@ void ConnectionTab::runStatements(const QStringList &statements,
                 guard->applyResults(results, tabPrefix);
         }, Qt::QueuedConnection);
     }).detach();
+
+    /* the timeout re-checks m_batchGen before cancelling: without it, a
+     * timer armed for a slow batch that finishes early (or is cancelled by
+     * hand) would fire late and cancel whatever *next* batch happens to be
+     * running at that moment. */
+    const int timeoutSecs = loadQueryTimeoutSecs();
+    if(timeoutSecs > 0) {
+        QTimer::singleShot(timeoutSecs * 1000, guard, [guard, gen] {
+            if(guard && guard->m_running && guard->m_batchGen == gen)
+                guard->cancelQuery();
+        });
+    }
 }
+
+int ConnectionTab::queryTimeoutSecs() { return loadQueryTimeoutSecs(); }
+void ConnectionTab::setQueryTimeoutSecs(int secs) { saveQueryTimeoutSecs(secs); }
 
 void ConnectionTab::cancelQuery()
 {
