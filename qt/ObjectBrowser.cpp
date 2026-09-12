@@ -1,5 +1,6 @@
 #include "ObjectBrowser.h"
 #include "Icons.h"
+#include "db/IDbConnection.h"
 
 #include <QApplication>
 #include <QClipboard>
@@ -7,8 +8,6 @@
 #include <QVBoxLayout>
 
 #include <functional>
-
-#include <mysql/mysql.h>
 
 namespace {
 constexpr int KConnection = 1001;
@@ -43,22 +42,19 @@ QTreeWidgetItem *makeItem(int kind, const QString &name, const QString &extra = 
 }
 
 /* run a single-column query and append each value as a KLeaf child */
-void fillLeaves(MYSQL *conn, QTreeWidgetItem *parent, const QString &sql,
+void fillLeaves(IDbConnection *conn, QTreeWidgetItem *parent, const QString &sql,
                 int col, const QString &icon)
 {
-    if(!conn || mysql_query(conn, sql.toUtf8().constData()) != 0)
+    if(!conn)
         return;
-    MYSQL_RES *res = mysql_store_result(conn);
-    if(!res)
+    DbResultSet rs;
+    if(!conn->query(sql, &rs, nullptr))
         return;
-    while(MYSQL_ROW row = mysql_fetch_row(res)) {
-        if(!row[col])
-            continue;
-        auto *leaf = makeItem(KLeaf, QString::fromUtf8(row[col]));
+    for(const QStringList &row : rs.rows) {
+        auto *leaf = makeItem(KLeaf, row.value(col));
         leaf->setIcon(0, Icons::get(icon));
         parent->addChild(leaf);
     }
-    mysql_free_result(res);
 }
 } // namespace
 
@@ -215,7 +211,7 @@ void ObjectBrowser::setConnectionLabel(const QString &label)
     m_tree->expandItem(root);
 }
 
-void ObjectBrowser::loadDatabases(MYSQL *conn, const QString &currentDb)
+void ObjectBrowser::loadDatabases(IDbConnection *conn, const QString &currentDb)
 {
     m_conn = conn;
     m_filterLabel->setText(QStringLiteral("Filter tables in %1")
@@ -226,28 +222,24 @@ void ObjectBrowser::loadDatabases(MYSQL *conn, const QString &currentDb)
         return;
 
     root->takeChildren();
-    if(mysql_query(m_conn, "SHOW DATABASES") == 0) {
-        if(MYSQL_RES *res = mysql_store_result(m_conn)) {
-            while(MYSQL_ROW row = mysql_fetch_row(res)) {
-                if(!row[0])
-                    continue;
-                const QString dbName = QString::fromUtf8(row[0]);
-                auto *db = makeItem(KDatabase, dbName, dbName);  /* carry db name */
-                db->setIcon(0, Icons::get(QStringLiteral("database.ico")));
-                root->addChild(db);
-                if(currentDb == row[0]) {
-                    db->setSelected(true);
-                    db->setExpanded(true);
-                    onItemExpanded(db);
-                    /* open the Tables folder straight away, like SQLyog */
-                    if(db->childCount() > 0) {
-                        QTreeWidgetItem *tablesFolder = db->child(0);
-                        tablesFolder->setExpanded(true);
-                        onItemExpanded(tablesFolder);
-                    }
+    DbResultSet rs;
+    if(m_conn->query(QStringLiteral("SHOW DATABASES"), &rs, nullptr)) {
+        for(const QStringList &row : rs.rows) {
+            const QString dbName = row.value(0);
+            auto *db = makeItem(KDatabase, dbName, dbName);  /* carry db name */
+            db->setIcon(0, Icons::get(QStringLiteral("database.ico")));
+            root->addChild(db);
+            if(currentDb == dbName) {
+                db->setSelected(true);
+                db->setExpanded(true);
+                onItemExpanded(db);
+                /* open the Tables folder straight away, like SQLyog */
+                if(db->childCount() > 0) {
+                    QTreeWidgetItem *tablesFolder = db->child(0);
+                    tablesFolder->setExpanded(true);
+                    onItemExpanded(tablesFolder);
                 }
             }
-            mysql_free_result(res);
         }
     }
     m_tree->expandItem(root);
@@ -286,19 +278,13 @@ void ObjectBrowser::onItemExpanded(QTreeWidgetItem *item)
         /* columns of the table */
         const QString sql = QStringLiteral("SHOW COLUMNS FROM `%1`.`%2`")
                                 .arg(db, item->text(0));
-        if(mysql_query(m_conn, sql.toUtf8().constData()) == 0) {
-            if(MYSQL_RES *res = mysql_store_result(m_conn)) {
-                while(MYSQL_ROW row = mysql_fetch_row(res)) {
-                    if(!row[0])
-                        continue;
-                    auto *c = makeItem(KLeaf,
-                        QStringLiteral("%1  :  %2")
-                            .arg(QString::fromUtf8(row[0]),
-                                 QString::fromUtf8(row[1] ? row[1] : "")));
-                    c->setIcon(0, Icons::get(QStringLiteral("column.ico")));
-                    item->addChild(c);
-                }
-                mysql_free_result(res);
+        DbResultSet rs;
+        if(m_conn->query(sql, &rs, nullptr)) {
+            for(const QStringList &row : rs.rows) {
+                auto *c = makeItem(KLeaf,
+                    QStringLiteral("%1  :  %2").arg(row.value(0), row.value(1)));
+                c->setIcon(0, Icons::get(QStringLiteral("column.ico")));
+                item->addChild(c);
             }
         }
         /* Indexes / Foreign Keys / Triggers sub-folders (table name on +2) */
@@ -329,62 +315,51 @@ void ObjectBrowser::onItemExpanded(QTreeWidgetItem *item)
             item->addChild(l);
         };
         if(folder == QStringLiteral("Indexes")) {
-            if(mysql_query(m_conn, QStringLiteral("SHOW INDEX FROM `%1`.`%2`")
-                    .arg(bq, QString(tbl).replace('`', QStringLiteral("``")))
-                    .toUtf8().constData()) == 0) {
-                if(MYSQL_RES *res = mysql_store_result(m_conn)) {
-                    QString curName;
-                    QStringList curCols;
-                    bool curUnique = false;
-                    const auto flush = [&] {
-                        if(curName.isEmpty()) return;
-                        add(QStringLiteral("%1  %2(%3)").arg(curName,
-                                curUnique ? QStringLiteral("UNIQUE ") : QString(),
-                                curCols.join(QStringLiteral(", "))),
-                            QStringLiteral("altertable.ico"));
-                    };
-                    while(MYSQL_ROW row = mysql_fetch_row(res)) {
-                        const QString name = QString::fromUtf8(row[2] ? row[2] : "");
-                        if(name != curName) { flush(); curName = name; curCols.clear();
-                            curUnique = row[1] && QString::fromUtf8(row[1]) == QStringLiteral("0"); }
-                        if(row[4]) curCols << QString::fromUtf8(row[4]);
-                    }
-                    flush();
-                    mysql_free_result(res);
+            DbResultSet rs;
+            if(m_conn->query(QStringLiteral("SHOW INDEX FROM `%1`.`%2`")
+                    .arg(bq, QString(tbl).replace('`', QStringLiteral("``"))),
+                    &rs, nullptr)) {
+                QString curName;
+                QStringList curCols;
+                bool curUnique = false;
+                const auto flush = [&] {
+                    if(curName.isEmpty()) return;
+                    add(QStringLiteral("%1  %2(%3)").arg(curName,
+                            curUnique ? QStringLiteral("UNIQUE ") : QString(),
+                            curCols.join(QStringLiteral(", "))),
+                        QStringLiteral("altertable.ico"));
+                };
+                for(const QStringList &row : rs.rows) {
+                    const QString name = row.value(2);
+                    if(name != curName) { flush(); curName = name; curCols.clear();
+                        curUnique = row.value(1) == QStringLiteral("0"); }
+                    if(!row.value(4).isEmpty()) curCols << row.value(4);
                 }
+                flush();
             }
         } else if(folder == QStringLiteral("Foreign Keys")) {
-            if(mysql_query(m_conn, QStringLiteral(
+            DbResultSet rs;
+            if(m_conn->query(QStringLiteral(
                     "SELECT CONSTRAINT_NAME, COLUMN_NAME, REFERENCED_TABLE_NAME, "
                     "REFERENCED_COLUMN_NAME FROM information_schema.KEY_COLUMN_USAGE "
                     "WHERE TABLE_SCHEMA='%1' AND TABLE_NAME='%2' "
                     "AND REFERENCED_TABLE_NAME IS NOT NULL "
                     "ORDER BY CONSTRAINT_NAME, ORDINAL_POSITION")
-                    .arg(QString(db).replace('\'', QStringLiteral("''")), q)
-                    .toUtf8().constData()) == 0) {
-                if(MYSQL_RES *res = mysql_store_result(m_conn)) {
-                    while(MYSQL_ROW row = mysql_fetch_row(res))
-                        add(QStringLiteral("%1:  %2 → %3(%4)").arg(
-                                QString::fromUtf8(row[0] ? row[0] : ""),
-                                QString::fromUtf8(row[1] ? row[1] : ""),
-                                QString::fromUtf8(row[2] ? row[2] : ""),
-                                QString::fromUtf8(row[3] ? row[3] : "")),
-                            QStringLiteral("altertable.ico"));
-                    mysql_free_result(res);
-                }
+                    .arg(QString(db).replace('\'', QStringLiteral("''")), q),
+                    &rs, nullptr)) {
+                for(const QStringList &row : rs.rows)
+                    add(QStringLiteral("%1:  %2 → %3(%4)").arg(
+                            row.value(0), row.value(1), row.value(2), row.value(3)),
+                        QStringLiteral("altertable.ico"));
             }
         } else if(folder == QStringLiteral("Triggers")) {
-            if(mysql_query(m_conn, QStringLiteral("SHOW TRIGGERS FROM `%1` WHERE "
-                    "`Table` = '%2'").arg(bq, q).toUtf8().constData()) == 0) {
-                if(MYSQL_RES *res = mysql_store_result(m_conn)) {
-                    while(MYSQL_ROW row = mysql_fetch_row(res))
-                        add(QStringLiteral("%1  (%2 %3)").arg(
-                                QString::fromUtf8(row[0] ? row[0] : ""),
-                                QString::fromUtf8(row[4] ? row[4] : ""),
-                                QString::fromUtf8(row[1] ? row[1] : "")),
-                            QStringLiteral("altertrigger.ico"));
-                    mysql_free_result(res);
-                }
+            DbResultSet rs;
+            if(m_conn->query(QStringLiteral("SHOW TRIGGERS FROM `%1` WHERE "
+                    "`Table` = '%2'").arg(bq, q), &rs, nullptr)) {
+                for(const QStringList &row : rs.rows)
+                    add(QStringLiteral("%1  (%2 %3)").arg(
+                            row.value(0), row.value(4), row.value(1)),
+                        QStringLiteral("altertrigger.ico"));
             }
         }
         if(item->childCount() == 0) {
@@ -395,18 +370,14 @@ void ObjectBrowser::onItemExpanded(QTreeWidgetItem *item)
         return;
     }
     if(folder == QStringLiteral("Tables")) {
-        if(mysql_query(m_conn,
+        DbResultSet rs;
+        if(m_conn->query(
                QStringLiteral("SHOW FULL TABLES FROM `%1` WHERE Table_type='BASE TABLE'")
-                   .arg(bq).toUtf8().constData()) == 0) {
-            if(MYSQL_RES *res = mysql_store_result(m_conn)) {
-                while(MYSQL_ROW row = mysql_fetch_row(res)) {
-                    if(!row[0])
-                        continue;
-                    auto *t = makeItem(KTable, QString::fromUtf8(row[0]), db);
-                    t->setIcon(0, Icons::get(QStringLiteral("table.ico")));
-                    item->addChild(t);
-                }
-                mysql_free_result(res);
+                   .arg(bq), &rs, nullptr)) {
+            for(const QStringList &row : rs.rows) {
+                auto *t = makeItem(KTable, row.value(0), db);
+                t->setIcon(0, Icons::get(QStringLiteral("table.ico")));
+                item->addChild(t);
             }
         }
     } else if(folder == QStringLiteral("Views")) {
@@ -450,16 +421,14 @@ void ObjectBrowser::copyCreateTable(const QString &db, const QString &table)
     const QString sql = QStringLiteral("SHOW CREATE TABLE `%1`.`%2`")
                             .arg(QString(db).replace('`', QStringLiteral("``")),
                                  QString(table).replace('`', QStringLiteral("``")));
-    if(mysql_query(m_conn, sql.toUtf8().constData()) != 0)
+    DbResultSet rs;
+    if(!m_conn->query(sql, &rs, nullptr) || rs.rows.isEmpty())
         return;
-    if(MYSQL_RES *res = mysql_store_result(m_conn)) {
-        if(MYSQL_ROW row = mysql_fetch_row(res); row && row[1]) {
-            QApplication::clipboard()->setText(QString::fromUtf8(row[1])
-                                               + QLatin1Char(';'));
-            emit statusMessage(QStringLiteral("CREATE statement for `%1` copied")
-                                   .arg(table));
-        }
-        mysql_free_result(res);
+    const QString ddl = rs.rows.first().value(1);
+    if(!ddl.isEmpty()) {
+        QApplication::clipboard()->setText(ddl + QLatin1Char(';'));
+        emit statusMessage(QStringLiteral("CREATE statement for `%1` copied")
+                               .arg(table));
     }
 }
 
