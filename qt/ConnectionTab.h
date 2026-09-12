@@ -23,6 +23,8 @@
 #include <QStringList>
 #include <QVector>
 
+#include <mysql/mysql.h>   /* m_conn; migrates to IDbConnection last (plan.md seam) */
+
 class ObjectBrowser;
 class TableDataView;
 class FindBar;
