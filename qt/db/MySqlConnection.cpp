@@ -1,13 +1,13 @@
 #include "MySqlConnection.h"
 
-MySqlConnection::MySqlConnection(MYSQL *conn)
-    : m_conn(conn)
+MySqlConnection::MySqlConnection(MYSQL *conn, bool owns)
+    : m_conn(conn), m_owns(owns)
 {
 }
 
 MySqlConnection::~MySqlConnection()
 {
-    if(m_conn)
+    if(m_conn && m_owns)
         mysql_close(m_conn);
 }
 
