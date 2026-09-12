@@ -1,5 +1,7 @@
 #include "UserManagerDialog.h"
 
+#include "db/IDbConnection.h"
+
 #include <QDialogButtonBox>
 #include <QHBoxLayout>
 #include <QFormLayout>
@@ -18,7 +20,7 @@ namespace {
 QString q(const QString &s) { return QString(s).replace('\'', QStringLiteral("''")); }
 }
 
-UserManagerDialog::UserManagerDialog(MYSQL *conn, QWidget *parent)
+UserManagerDialog::UserManagerDialog(IDbConnection *conn, QWidget *parent)
     : QDialog(parent), m_conn(conn)
 {
     setWindowTitle(QStringLiteral("User Manager"));
@@ -77,9 +79,9 @@ UserManagerDialog::UserManagerDialog(MYSQL *conn, QWidget *parent)
 
 bool UserManagerDialog::run(const QString &sql)
 {
-    if(mysql_query(m_conn, sql.toUtf8().constData()) != 0) {
-        QMessageBox::warning(this, QStringLiteral("User Manager"),
-                             QString::fromUtf8(mysql_error(m_conn)));
+    QString error;
+    if(!m_conn->query(sql, nullptr, &error)) {
+        QMessageBox::warning(this, QStringLiteral("User Manager"), error);
         return false;
     }
     return true;
@@ -88,21 +90,19 @@ bool UserManagerDialog::run(const QString &sql)
 void UserManagerDialog::reloadUsers()
 {
     m_users->setRowCount(0);
-    if(mysql_query(m_conn,
-           "SELECT User, Host, plugin FROM mysql.user ORDER BY User, Host") != 0) {
-        QMessageBox::warning(this, QStringLiteral("User Manager"),
-                             QString::fromUtf8(mysql_error(m_conn)));
+    DbResultSet rs;
+    QString error;
+    if(!m_conn->query(QStringLiteral(
+           "SELECT User, Host, plugin FROM mysql.user ORDER BY User, Host"),
+           &rs, &error)) {
+        QMessageBox::warning(this, QStringLiteral("User Manager"), error);
         return;
     }
-    if(MYSQL_RES *res = mysql_store_result(m_conn)) {
-        while(MYSQL_ROW row = mysql_fetch_row(res)) {
-            const int r = m_users->rowCount();
-            m_users->insertRow(r);
-            for(int c = 0; c < 3; ++c)
-                m_users->setItem(r, c, new QTableWidgetItem(
-                    QString::fromUtf8(row[c] ? row[c] : "")));
-        }
-        mysql_free_result(res);
+    for(const QStringList &row : rs.rows) {
+        const int r = m_users->rowCount();
+        m_users->insertRow(r);
+        for(int c = 0; c < 3; ++c)
+            m_users->setItem(r, c, new QTableWidgetItem(row.value(c)));
     }
     m_grants->clear();
 }
@@ -120,18 +120,16 @@ void UserManagerDialog::showGrantsForSelection()
     const QStringList uh = selectedUserHost();
     if(uh.size() < 2)
         return;
-    if(mysql_query(m_conn,
-           QStringLiteral("SHOW GRANTS FOR '%1'@'%2'")
-               .arg(q(uh[0]), q(uh[1])).toUtf8().constData()) != 0) {
-        m_grants->setPlainText(QString::fromUtf8(mysql_error(m_conn)));
+    DbResultSet rs;
+    QString error;
+    if(!m_conn->query(QStringLiteral("SHOW GRANTS FOR '%1'@'%2'")
+                          .arg(q(uh[0]), q(uh[1])), &rs, &error)) {
+        m_grants->setPlainText(error);
         return;
     }
     QString out;
-    if(MYSQL_RES *res = mysql_store_result(m_conn)) {
-        while(MYSQL_ROW row = mysql_fetch_row(res))
-            out += QString::fromUtf8(row[0] ? row[0] : "") + QStringLiteral(";\n");
-        mysql_free_result(res);
-    }
+    for(const QStringList &row : rs.rows)
+        out += row.value(0) + QStringLiteral(";\n");
     m_grants->setPlainText(out);
 }
 

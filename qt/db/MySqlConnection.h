@@ -10,8 +10,12 @@
 class MySqlConnection : public IDbConnection
 {
 public:
-    /* Takes ownership of an already-connected handle; closes it on destruction. */
-    explicit MySqlConnection(MYSQL *conn);
+    /* By default takes ownership of an already-connected handle and closes
+     * it on destruction. Pass owns=false to wrap a handle owned elsewhere —
+     * e.g. ConnectionTab's still-unmigrated MYSQL* m_conn, borrowed for one
+     * call into an already-migrated file during the incremental seam
+     * rollout (plan.md). */
+    explicit MySqlConnection(MYSQL *conn, bool owns = true);
     ~MySqlConnection() override;
 
     bool query(const QString &sql, DbResultSet *result, QString *message) override;
@@ -43,4 +47,5 @@ private:
     bool runBuffered(const QString &sql, DbResultSet *out, QString *error);
 
     MYSQL *m_conn;
+    bool   m_owns;
 };

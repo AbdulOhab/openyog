@@ -14,6 +14,7 @@
 #include "ForeignKeyDialog.h"
 #include "SqlDump.h"
 #include "Icons.h"
+#include "db/MySqlConnection.h"   /* bridges m_conn to already-migrated files during rollout */
 #include "wyString.h"
 
 #include <QApplication>
@@ -2035,8 +2036,10 @@ bool ConnectionTab::copyDatabaseTo(const QString &srcDb, const QString &tgtDb,
 
 void ConnectionTab::promptUserManager()
 {
-    if(m_conn)
-        UserManagerDialog(m_conn, this).exec();
+    if(m_conn) {
+        MySqlConnection conn(m_conn, /*owns=*/false);
+        UserManagerDialog(&conn, this).exec();
+    }
 }
 
 void ConnectionTab::exportCurrent()
