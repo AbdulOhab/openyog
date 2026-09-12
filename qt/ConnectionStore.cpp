@@ -29,6 +29,10 @@ bool ConnectionStore::load(const QString &name, ConnectionParams *out)
     out->name  = name;
     out->host  = value.GetString();
 
+    /* "driver" is new — old files without it default to MySQL */
+    wyIni::IniGetString(n, "driver", "mysql", &value, iniPath().toUtf8());
+    out->driverType = DriverType::Mysql;   /* only value that exists today */
+
     wyIni::IniGetString(n, "user", "", &value, iniPath().toUtf8());
     out->user  = value.GetString();
     wyIni::IniGetString(n, "database", "", &value, iniPath().toUtf8());
@@ -53,6 +57,7 @@ void ConnectionStore::save(const ConnectionParams &params)
     const QByteArray n = toUtf8(params.name);
     const QByteArray p = iniPath().toUtf8();
 
+    wyIni::IniWriteString(n, "driver",   "mysql",                 p);
     wyIni::IniWriteString(n, "host",     toUtf8(params.host),     p);
     wyIni::IniWriteString(n, "user",     toUtf8(params.user),     p);
     wyIni::IniWriteString(n, "database", toUtf8(params.database), p);

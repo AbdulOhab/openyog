@@ -52,6 +52,11 @@ set(CMAKE_AUTORCC ON)
 add_executable(openyog
     qt/main.cpp
     qt/openyog.qrc
+    qt/db/IDbDriver.h
+    qt/db/IDbConnection.h
+    qt/db/DbDriverRegistry.h   qt/db/DbDriverRegistry.cpp
+    qt/db/MySqlDriver.h        qt/db/MySqlDriver.cpp
+    qt/db/MySqlConnection.h    qt/db/MySqlConnection.cpp
     qt/MainWindow.h        qt/MainWindow.cpp
     qt/ConnectionDialog.h  qt/ConnectionDialog.cpp
     qt/ConnectionTab.h     qt/ConnectionTab.cpp
