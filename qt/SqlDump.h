@@ -11,8 +11,7 @@
 
 #include <functional>
 
-#include <mysql/mysql.h>
-
+class IDbConnection;
 class QIODevice;
 
 namespace SqlDump {
@@ -29,7 +28,7 @@ struct Options
 
 /* Dump `tables` (or every base table in `db` when empty) into `out`.
  * Returns true on success; on failure returns false and sets *error. */
-bool write(MYSQL *conn, const QString &db, const QStringList &tables,
+bool write(IDbConnection *conn, const QString &db, const QStringList &tables,
            const Options &opt, QIODevice *out, QString *error);
 
 /* The database as one statement at a time (no trailing ';', no comments):
@@ -39,7 +38,7 @@ bool write(MYSQL *conn, const QString &db, const QStringList &tables,
  * must have USE'd the target). Handed to `exec` to replay onto another conn.
  * Stops and returns false if `exec` returns false (then *error is whatever
  * exec left, or unset). */
-bool forEachStatement(MYSQL *conn, const QString &db, const QStringList &tables,
+bool forEachStatement(IDbConnection *conn, const QString &db, const QStringList &tables,
                       const Options &opt,
                       const std::function<bool(const QString &stmt)> &exec,
                       QString *error);
