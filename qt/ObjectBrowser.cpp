@@ -273,15 +273,16 @@ void ObjectBrowser::onItemExpanded(QTreeWidgetItem *item)
             c->setIcon(0, Icons::get(QStringLiteral("column.ico")));
             item->addChild(c);
         }
-        /* Indexes / Foreign Keys / Triggers sub-folders (table name on +2) */
-        for(const QString &sub : { QStringLiteral("Indexes"),
-                                   QStringLiteral("Foreign Keys"),
-                                   QStringLiteral("Triggers") }) {
-            auto *f = makeItem(KFolder, sub, db);
-            f->setData(0, Qt::UserRole + 2, item->text(0));
-            f->setIcon(0, Icons::get(QStringLiteral("closed_folder.ico")));
-            item->addChild(f);
-        }
+        /* Indexes sub-folder (table name on +2) — matches upstream
+         * ObjectBrowser.cpp (TXT_INDEXES is the only per-table tree node it
+         * has; Foreign Keys has no upstream tree node at all, and Triggers
+         * is a database-level folder only there). Managing a table's FKs/
+         * triggers stays a dialog (F7/F10) or the database-level Triggers
+         * folder, not a redundant per-table tree copy. */
+        auto *f = makeItem(KFolder, QStringLiteral("Indexes"), db);
+        f->setData(0, Qt::UserRole + 2, item->text(0));
+        f->setIcon(0, Icons::get(QStringLiteral("closed_folder.ico")));
+        item->addChild(f);
         return;
     }
 
@@ -290,7 +291,7 @@ void ObjectBrowser::onItemExpanded(QTreeWidgetItem *item)
 
     const QString folder = item->text(0);
 
-    /* table-scoped folder (Indexes / Foreign Keys / Triggers) */
+    /* table-scoped Indexes folder */
     if(const QString tbl = item->data(0, Qt::UserRole + 2).toString();
        !tbl.isEmpty()) {
         const auto add = [&](const QString &text, const QString &icon) {
@@ -298,38 +299,24 @@ void ObjectBrowser::onItemExpanded(QTreeWidgetItem *item)
             l->setIcon(0, Icons::get(icon));
             item->addChild(l);
         };
-        if(folder == QStringLiteral("Indexes")) {
-            const DbResultSet rs = m_conn->listIndexes(db, tbl);
-            QString curName;
-            QStringList curCols;
-            bool curUnique = false;
-            const auto flush = [&] {
-                if(curName.isEmpty()) return;
-                add(QStringLiteral("%1  %2(%3)").arg(curName,
-                        curUnique ? QStringLiteral("UNIQUE ") : QString(),
-                        curCols.join(QStringLiteral(", "))),
-                    QStringLiteral("altertable.ico"));
-            };
-            for(const QStringList &row : rs.rows) {
-                const QString name = row.value(2);
-                if(name != curName) { flush(); curName = name; curCols.clear();
-                    curUnique = row.value(1) == QStringLiteral("0"); }
-                if(!row.value(4).isEmpty()) curCols << row.value(4);
-            }
-            flush();
-        } else if(folder == QStringLiteral("Foreign Keys")) {
-            const DbResultSet rs = m_conn->listForeignKeys(db, tbl);
-            for(const QStringList &row : rs.rows)
-                add(QStringLiteral("%1:  %2 → %3(%4)").arg(
-                        row.value(0), row.value(1), row.value(2), row.value(3)),
-                    QStringLiteral("altertable.ico"));
-        } else if(folder == QStringLiteral("Triggers")) {
-            const DbResultSet rs = m_conn->listTableTriggers(db, tbl);
-            for(const QStringList &row : rs.rows)
-                add(QStringLiteral("%1  (%2 %3)").arg(
-                        row.value(0), row.value(1), row.value(2)),
-                    QStringLiteral("altertrigger.ico"));
+        const DbResultSet rs = m_conn->listIndexes(db, tbl);
+        QString curName;
+        QStringList curCols;
+        bool curUnique = false;
+        const auto flush = [&] {
+            if(curName.isEmpty()) return;
+            add(QStringLiteral("%1  %2(%3)").arg(curName,
+                    curUnique ? QStringLiteral("UNIQUE ") : QString(),
+                    curCols.join(QStringLiteral(", "))),
+                QStringLiteral("altertable.ico"));
+        };
+        for(const QStringList &row : rs.rows) {
+            const QString name = row.value(2);
+            if(name != curName) { flush(); curName = name; curCols.clear();
+                curUnique = row.value(1) == QStringLiteral("0"); }
+            if(!row.value(4).isEmpty()) curCols << row.value(4);
         }
+        flush();
         if(item->childCount() == 0) {
             auto *l = makeItem(KLeaf, QStringLiteral("(none)"));
             l->setDisabled(true);
