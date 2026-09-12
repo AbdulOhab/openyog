@@ -258,8 +258,9 @@ ConnectionTab::ConnectionTab(const ConnectionParams &params, QWidget *parent)
 
     /* ---- right-top: editor tabs (Query 1 / History) --------------- */
     m_editor = new CodeEditor(this);
-    m_editor->setPlainText(QStringLiteral(
-        "SELECT VERSION(), CURRENT_USER();\nSHOW DATABASES;"));
+    m_editor->setPlainText(m_params.driverType == DriverType::Sqlite
+        ? QStringLiteral("SELECT sqlite_version();\nSELECT name FROM sqlite_master;")
+        : QStringLiteral("SELECT VERSION(), CURRENT_USER();\nSHOW DATABASES;"));
     attachEditor(m_editor, QStringLiteral("Query 1"));
 
     m_history = new QTextBrowser(this);
@@ -498,12 +499,8 @@ ConnectionTab::ConnectionTab(const ConnectionParams &params, QWidget *parent)
               .arg(m_params.user, m_conn->serverInfo()));
 
     QStringList dbs;
-    {
-        DbResultSet rs;
-        if(m_conn->query(QStringLiteral("SHOW DATABASES"), &rs, nullptr))
-            for(const QStringList &row : rs.rows)
-                dbs << row.value(0);
-    }
+    if(m_conn)
+        dbs = m_conn->listDatabases();
     m_databases = dbs;
     emit databasesChanged(dbs, m_params.database);
 }
@@ -546,23 +543,20 @@ void ConnectionTab::updateCompletions()
     m_tableNames.clear();
     m_columnNames.clear();
     if(m_conn && !m_params.database.isEmpty()) {
-        DbResultSet rs;
-        if(m_conn->query(QStringLiteral(
-               "SELECT TABLE_NAME, COLUMN_NAME FROM information_schema.COLUMNS "
-               "WHERE TABLE_SCHEMA = '%1'")
-                   .arg(QString(m_params.database).replace('\'', QStringLiteral("''"))),
-               &rs, nullptr)) {
-            QSet<QString> tables, columns;
-            for(const QStringList &row : rs.rows) {
-                if(!row.value(0).isEmpty()) tables.insert(row.value(0));
-                if(!row.value(1).isEmpty()) columns.insert(row.value(1));
-            }
-            m_tableNames  = QStringList(tables.cbegin(), tables.cend());
-            m_columnNames = QStringList(columns.cbegin(), columns.cend());
-            QSet<QString> all = tables;
-            all.unite(columns);
-            m_completions = QStringList(all.cbegin(), all.cend());
+        QSet<QString> tables, columns;
+        QStringList tbls = m_conn->listTables(m_params.database,
+                                              QStringLiteral("BASE TABLE"));
+        tbls += m_conn->listTables(m_params.database, QStringLiteral("VIEW"));
+        for(const QString &t : tbls) {
+            if(!t.isEmpty()) tables.insert(t);
+            for(const QStringList &row : m_conn->listColumns(m_params.database, t).rows)
+                if(!row.value(0).isEmpty()) columns.insert(row.value(0));
         }
+        m_tableNames  = QStringList(tables.cbegin(), tables.cend());
+        m_columnNames = QStringList(columns.cbegin(), columns.cend());
+        QSet<QString> all = tables;
+        all.unite(columns);
+        m_completions = QStringList(all.cbegin(), all.cend());
     }
     for(int i = 0; i < m_editorTabs->count(); ++i)
         if(auto *ed = qobject_cast<CodeEditor *>(m_editorTabs->widget(i))) {
@@ -1317,7 +1311,7 @@ void ConnectionTab::truncateTable(const QString &database, const QString &table)
             QStringLiteral("Delete ALL rows of `%1`.`%2`?").arg(db, table))
             != QMessageBox::Yes)
         return;
-    execDdl(QStringLiteral("TRUNCATE TABLE `%1`.`%2`").arg(db, table));
+    execDdl(m_conn->sqlTruncateTable(db, table));
     if(m_tableData->loadedTable() == table)
         m_tableData->load(m_conn, db, table);   /* empty grid */
 }
@@ -1445,20 +1439,11 @@ void ConnectionTab::emptyDatabase(const QString &database)
             != QMessageBox::Yes)
         return;
 
-    QStringList tables;
-    {
-        DbResultSet rs;
-        if(m_conn->query(QStringLiteral(
-               "SELECT TABLE_NAME FROM information_schema.TABLES "
-               "WHERE TABLE_SCHEMA='%1' AND TABLE_TYPE='BASE TABLE'")
-                   .arg(QString(db).replace('\'', QStringLiteral("''"))), &rs, nullptr))
-            for(const QStringList &row : rs.rows)
-                tables << row.value(0);
-    }
-    execDdl(QStringLiteral("SET FOREIGN_KEY_CHECKS = 0"));
+    const QStringList tables = m_conn->listTables(db, QStringLiteral("BASE TABLE"));
+    execDdl(m_conn->sqlFkChecks(false));
     for(const QString &t : tables)
-        execDdl(QStringLiteral("TRUNCATE TABLE `%1`.`%2`").arg(db, t));
-    execDdl(QStringLiteral("SET FOREIGN_KEY_CHECKS = 1"));
+        execDdl(m_conn->sqlTruncateTable(db, t));
+    execDdl(m_conn->sqlFkChecks(true));
     if(!m_tableData->loadedTable().isEmpty()
        && tables.contains(m_tableData->loadedTable()))
         m_tableData->load(m_conn, db, m_tableData->loadedTable());
@@ -1590,15 +1575,8 @@ void ConnectionTab::promptManageIndexes(const QString &database,
                 return &ix;
         return nullptr;
     };
-    QString error;
-    DbResultSet indexRs;
-    if(!m_conn->query(QStringLiteral("SHOW INDEX FROM `%1`.`%2`").arg(db, table),
-                      &indexRs, &error)) {
-        QMessageBox::warning(this, QStringLiteral("Manage Indexes"), error);
-        return;
-    }
-    for(const QStringList &row : indexRs.rows) {
-        /* 1=Non_unique 2=Key_name 4=Column_name */
+    /* canonical SHOW INDEX shape: Non_unique(1) Key_name(2) Column_name(4) */
+    for(const QStringList &row : m_conn->listIndexes(db, table).rows) {
         const QString name = row.value(2);
         const QString col  = row.value(4);
         IndexDialog::IndexDef *ix = findIx(name);
@@ -1614,11 +1592,8 @@ void ConnectionTab::promptManageIndexes(const QString &database,
     }
 
     QStringList cols;
-    DbResultSet colRs;
-    if(m_conn->query(QStringLiteral("SHOW COLUMNS FROM `%1`.`%2`").arg(db, table),
-                     &colRs, nullptr))
-        for(const QStringList &row : colRs.rows)
-            cols << row.value(0);
+    for(const QStringList &row : m_conn->listColumns(db, table).rows)
+        cols << row.value(0);
 
     IndexDialog dlg(db, table, indexes, cols, this);
     if(dlg.exec() != QDialog::Accepted)
@@ -2032,15 +2007,7 @@ void ConnectionTab::promptImportXml(const QString &database, const QString &tabl
     if(file.isEmpty())
         return;
 
-    QStringList tbls;
-    {
-        DbResultSet rs;
-        if(m_conn->query(QStringLiteral("SHOW TABLES FROM `%1`")
-                             .arg(QString(db).replace('`', QStringLiteral("``"))),
-                         &rs, nullptr))
-            for(const QStringList &row : rs.rows)
-                tbls << row.value(0);
-    }
+    QStringList tbls = m_conn->listTables(db, QStringLiteral("BASE TABLE"));
 
     QDialog dlg(this);
     dlg.setWindowTitle(QStringLiteral("Import XML into `%1`").arg(db));
@@ -2082,7 +2049,7 @@ void ConnectionTab::promptImportXml(const QString &database, const QString &tabl
     const QString tag = rowTag->text().trimmed().isEmpty()
         ? QStringLiteral("row") : rowTag->text().trimmed();
     if(truncate->isChecked())
-        execDdl(QStringLiteral("TRUNCATE TABLE `%1`.`%2`").arg(db, target));
+        execDdl(m_conn->sqlTruncateTable(db, target));
 
     const QString sql = QStringLiteral(
         "LOAD XML LOCAL INFILE '%1' %2 INTO TABLE `%3`.`%4` "
@@ -2118,15 +2085,7 @@ void ConnectionTab::promptImportCsv(const QString &database, const QString &tabl
         return;
 
     /* target table + parse options */
-    QStringList tbls;
-    {
-        DbResultSet rs;
-        if(m_conn->query(QStringLiteral("SHOW TABLES FROM `%1`")
-                             .arg(QString(db).replace('`', QStringLiteral("``"))),
-                         &rs, nullptr))
-            for(const QStringList &row : rs.rows)
-                tbls << row.value(0);
-    }
+    QStringList tbls = m_conn->listTables(db, QStringLiteral("BASE TABLE"));
 
     QDialog dlg(this);
     dlg.setWindowTitle(QStringLiteral("Import CSV into `%1`").arg(db));
@@ -2210,7 +2169,7 @@ void ConnectionTab::promptImportCsv(const QString &database, const QString &tabl
     }
 
     if(truncate->isChecked())
-        execDdl(QStringLiteral("TRUNCATE TABLE `%1`.`%2`").arg(db, target));
+        execDdl(m_conn->sqlTruncateTable(db, target));
 
     const QString enclosedClause = quote.isEmpty()
         ? QString()
@@ -2265,31 +2224,19 @@ void ConnectionTab::promptManageForeignKeys(const QString &database,
                 return &f;
         return nullptr;
     };
-    QString error;
-    DbResultSet fkRs;
-    if(!m_conn->query(QStringLiteral(
-           "SELECT k.CONSTRAINT_NAME, k.COLUMN_NAME, k.REFERENCED_TABLE_NAME, "
-           "k.REFERENCED_COLUMN_NAME, r.DELETE_RULE, r.UPDATE_RULE "
-           "FROM information_schema.KEY_COLUMN_USAGE k "
-           "JOIN information_schema.REFERENTIAL_CONSTRAINTS r "
-           "  ON r.CONSTRAINT_SCHEMA=k.CONSTRAINT_SCHEMA "
-           "  AND r.CONSTRAINT_NAME=k.CONSTRAINT_NAME "
-           "WHERE k.TABLE_SCHEMA='%1' AND k.TABLE_NAME='%2' "
-           "  AND k.REFERENCED_TABLE_NAME IS NOT NULL "
-           "ORDER BY k.CONSTRAINT_NAME, k.ORDINAL_POSITION").arg(db, table),
-           &fkRs, &error)) {
-        QMessageBox::warning(this, QStringLiteral("Foreign Keys"), error);
-        return;
-    }
-    for(const QStringList &row : fkRs.rows) {
+    /* canonical shape (qt/db/IDbConnection.h): Name(0) Column(1) Ref_table(2)
+     * Ref_column(3) On_update(4) On_delete(5), one row per column */
+    for(const QStringList &row : m_conn->listForeignKeys(db, table).rows) {
         const QString name = row.value(0);
         ForeignKeyDialog::FkDef *f = find(name);
         if(!f) {
             ForeignKeyDialog::FkDef nf;
             nf.name = name;
             nf.refTable = row.value(2);
-            nf.onDelete = row.value(4) == QStringLiteral("NULL") ? QStringLiteral("RESTRICT") : row.value(4);
-            nf.onUpdate = row.value(5) == QStringLiteral("NULL") ? QStringLiteral("RESTRICT") : row.value(5);
+            nf.onDelete = row.value(5) == QStringLiteral("NULL")
+                ? QStringLiteral("RESTRICT") : row.value(5);
+            nf.onUpdate = row.value(4) == QStringLiteral("NULL")
+                ? QStringLiteral("RESTRICT") : row.value(4);
             fks << nf;
             f = &fks.last();
         }
@@ -2298,19 +2245,9 @@ void ConnectionTab::promptManageForeignKeys(const QString &database,
     }
 
     QStringList cols, tables;
-    {
-        DbResultSet rs;
-        if(m_conn->query(QStringLiteral("SHOW COLUMNS FROM `%1`.`%2`").arg(db, table),
-                         &rs, nullptr))
-            for(const QStringList &row : rs.rows)
-                cols << row.value(0);
-    }
-    {
-        DbResultSet rs;
-        if(m_conn->query(QStringLiteral("SHOW TABLES FROM `%1`").arg(db), &rs, nullptr))
-            for(const QStringList &row : rs.rows)
-                tables << row.value(0);
-    }
+    for(const QStringList &row : m_conn->listColumns(db, table).rows)
+        cols << row.value(0);
+    tables = m_conn->listTables(db, QStringLiteral("BASE TABLE"));
 
     ForeignKeyDialog dlg(db, table, fks, cols, tables, this);
     if(dlg.exec() != QDialog::Accepted)
@@ -2405,15 +2342,7 @@ void ConnectionTab::promptDumpDatabase(const QString &database)
         return;
     }
     /* table list for the "which tables" selector */
-    QStringList allTables;
-    {
-        DbResultSet rs;
-        if(m_conn->query(QStringLiteral(
-               "SHOW FULL TABLES FROM `%1` WHERE Table_type='BASE TABLE'")
-                   .arg(QString(db).replace('`', QStringLiteral("``"))), &rs, nullptr))
-            for(const QStringList &row : rs.rows)
-                allTables << row.value(0);
-    }
+    const QStringList allTables = m_conn->listTables(db, QStringLiteral("BASE TABLE"));
 
     QDialog dlg(this);
     dlg.setWindowTitle(QStringLiteral("Backup `%1` as SQL dump").arg(db));
@@ -2548,44 +2477,45 @@ void ConnectionTab::pasteSqlTemplate(int kind)
     if(info.size() < 2)
         return;
     const QString db = info[0], table = info[1];
+    const auto qi = [&](const QString &ident) {
+        return m_conn ? m_conn->quoteIdent(ident) : QStringLiteral("`%1`").arg(ident);
+    };
 
     QStringList cols;
-    if(m_conn) {
-        DbResultSet rs;
-        if(m_conn->query(QStringLiteral("SHOW COLUMNS FROM `%1`.`%2`").arg(db, table),
-                         &rs, nullptr))
-            for(const QStringList &row : rs.rows)
-                cols << row.value(0);
-    }
+    if(m_conn)
+        for(const QStringList &row : m_conn->listColumns(db, table).rows)
+            cols << row.value(0);
     if(cols.isEmpty())
         return;
 
-    const QString colsB = '`' + cols.join("`, `") + '`';
+    QStringList qCols;
+    for(const QString &c : cols)
+        qCols << qi(c);
+    const QString colsB = qCols.join(QStringLiteral(", "));
+    const QString tbl = qi(db) + QLatin1Char('.') + qi(table);
     QString stmt;
     switch(kind) {
     case 0: {
         QStringList marks;
         for(int i = 0; i < cols.size(); ++i)
             marks << QStringLiteral("?");
-        stmt = QStringLiteral("INSERT INTO `%1`.`%2` (%3)\nVALUES (%4);")
-                   .arg(db, table, colsB, marks.join(", "));
+        stmt = QStringLiteral("INSERT INTO %1 (%2)\nVALUES (%3);")
+                   .arg(tbl, colsB, marks.join(", "));
         break;
     }
     case 1: {
         QStringList sets;
-        for(const QString &c : cols)
-            sets << QStringLiteral("`%1` = '?'").arg(c);
-        stmt = QStringLiteral("UPDATE `%1`.`%2` SET %3\nWHERE <condition>;")
-                   .arg(db, table, sets.join(", "));
+        for(const QString &c : qCols)
+            sets << QStringLiteral("%1 = '?'").arg(c);
+        stmt = QStringLiteral("UPDATE %1 SET %2\nWHERE <condition>;")
+                   .arg(tbl, sets.join(", "));
         break;
     }
     case 2:
-        stmt = QStringLiteral("DELETE FROM `%1`.`%2`\nWHERE <condition>;")
-                   .arg(db, table);
+        stmt = QStringLiteral("DELETE FROM %1\nWHERE <condition>;").arg(tbl);
         break;
     default:
-        stmt = QStringLiteral("SELECT %1\nFROM `%2`.`%3`;")
-                   .arg(colsB, db, table);
+        stmt = QStringLiteral("SELECT %1\nFROM %2;").arg(colsB, tbl);
     }
     if(auto *ed = currentEditor())
         ed->setPlainText(stmt);
