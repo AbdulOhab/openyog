@@ -164,7 +164,8 @@ ObjectBrowser::ObjectBrowser(QWidget *parent)
                 item->setExpanded(true);
             });
         } else if(kind == KLeaf && item->parent()
-                  && item->parent()->data(0, Qt::UserRole).toInt() == KTable) {
+                  && item->parent()->data(0, Qt::UserRole).toInt() == KFolder
+                  && item->parent()->text(0) == QStringLiteral("Columns")) {
             const QString col = item->text(0).section(QStringLiteral("  :  "), 0, 0);
             menu.addAction(QStringLiteral("&Copy Column Name"), this, [col] {
                 QApplication::clipboard()->setText(col);
@@ -265,24 +266,19 @@ void ObjectBrowser::onItemExpanded(QTreeWidgetItem *item)
     }
 
     if(kind == KTable) {
-        /* columns of the table */
-        const DbResultSet rs = m_conn->listColumns(db, item->text(0));
-        for(const QStringList &row : rs.rows) {
-            auto *c = makeItem(KLeaf,
-                QStringLiteral("%1  :  %2").arg(row.value(0), row.value(1)));
-            c->setIcon(0, Icons::get(QStringLiteral("column.ico")));
-            item->addChild(c);
+        /* Columns + Indexes sub-folders (table name on +2) — matches
+         * upstream ObjectBrowser.cpp, where TXT_COLUMNS and TXT_INDEXES are
+         * both lazy-loaded folder nodes under a table, not columns printed
+         * inline. Foreign Keys has no upstream tree node at all, and
+         * Triggers is a database-level folder only there — managing a
+         * table's FKs/triggers stays a dialog (F7/F10) or the
+         * database-level Triggers folder, not a redundant per-table copy. */
+        for(const QString &sub : { QStringLiteral("Columns"), QStringLiteral("Indexes") }) {
+            auto *f = makeItem(KFolder, sub, db);
+            f->setData(0, Qt::UserRole + 2, item->text(0));
+            f->setIcon(0, Icons::get(QStringLiteral("closed_folder.ico")));
+            item->addChild(f);
         }
-        /* Indexes sub-folder (table name on +2) — matches upstream
-         * ObjectBrowser.cpp (TXT_INDEXES is the only per-table tree node it
-         * has; Foreign Keys has no upstream tree node at all, and Triggers
-         * is a database-level folder only there). Managing a table's FKs/
-         * triggers stays a dialog (F7/F10) or the database-level Triggers
-         * folder, not a redundant per-table tree copy. */
-        auto *f = makeItem(KFolder, QStringLiteral("Indexes"), db);
-        f->setData(0, Qt::UserRole + 2, item->text(0));
-        f->setIcon(0, Icons::get(QStringLiteral("closed_folder.ico")));
-        item->addChild(f);
         return;
     }
 
@@ -291,7 +287,7 @@ void ObjectBrowser::onItemExpanded(QTreeWidgetItem *item)
 
     const QString folder = item->text(0);
 
-    /* table-scoped Indexes folder */
+    /* table-scoped Columns / Indexes folder */
     if(const QString tbl = item->data(0, Qt::UserRole + 2).toString();
        !tbl.isEmpty()) {
         const auto add = [&](const QString &text, const QString &icon) {
@@ -299,24 +295,30 @@ void ObjectBrowser::onItemExpanded(QTreeWidgetItem *item)
             l->setIcon(0, Icons::get(icon));
             item->addChild(l);
         };
-        const DbResultSet rs = m_conn->listIndexes(db, tbl);
-        QString curName;
-        QStringList curCols;
-        bool curUnique = false;
-        const auto flush = [&] {
-            if(curName.isEmpty()) return;
-            add(QStringLiteral("%1  %2(%3)").arg(curName,
-                    curUnique ? QStringLiteral("UNIQUE ") : QString(),
-                    curCols.join(QStringLiteral(", "))),
-                QStringLiteral("altertable.ico"));
-        };
-        for(const QStringList &row : rs.rows) {
-            const QString name = row.value(2);
-            if(name != curName) { flush(); curName = name; curCols.clear();
-                curUnique = row.value(1) == QStringLiteral("0"); }
-            if(!row.value(4).isEmpty()) curCols << row.value(4);
+        if(folder == QStringLiteral("Columns")) {
+            for(const QStringList &row : m_conn->listColumns(db, tbl).rows)
+                add(QStringLiteral("%1  :  %2").arg(row.value(0), row.value(1)),
+                    QStringLiteral("column.ico"));
+        } else if(folder == QStringLiteral("Indexes")) {
+            const DbResultSet rs = m_conn->listIndexes(db, tbl);
+            QString curName;
+            QStringList curCols;
+            bool curUnique = false;
+            const auto flush = [&] {
+                if(curName.isEmpty()) return;
+                add(QStringLiteral("%1  %2(%3)").arg(curName,
+                        curUnique ? QStringLiteral("UNIQUE ") : QString(),
+                        curCols.join(QStringLiteral(", "))),
+                    QStringLiteral("altertable.ico"));
+            };
+            for(const QStringList &row : rs.rows) {
+                const QString name = row.value(2);
+                if(name != curName) { flush(); curName = name; curCols.clear();
+                    curUnique = row.value(1) == QStringLiteral("0"); }
+                if(!row.value(4).isEmpty()) curCols << row.value(4);
+            }
+            flush();
         }
-        flush();
         if(item->childCount() == 0) {
             auto *l = makeItem(KLeaf, QStringLiteral("(none)"));
             l->setDisabled(true);
@@ -383,11 +385,25 @@ void ObjectBrowser::copyColumnNames(QTreeWidgetItem *tableItem)
         return;
     if(tableItem->childCount() == 0)
         onItemExpanded(tableItem);
-    QStringList names;
+    /* columns live one level deeper now: table -> "Columns" folder -> leaves */
+    QTreeWidgetItem *columnsFolder = nullptr;
     for(int i = 0; i < tableItem->childCount(); ++i) {
         QTreeWidgetItem *c = tableItem->child(i);
+        if(c->data(0, Qt::UserRole).toInt() == KFolder
+           && c->text(0) == QStringLiteral("Columns")) {
+            columnsFolder = c;
+            break;
+        }
+    }
+    if(!columnsFolder)
+        return;
+    if(columnsFolder->childCount() == 0)
+        onItemExpanded(columnsFolder);
+    QStringList names;
+    for(int i = 0; i < columnsFolder->childCount(); ++i) {
+        QTreeWidgetItem *c = columnsFolder->child(i);
         if(c->data(0, Qt::UserRole).toInt() != KLeaf)
-            continue;               /* skip the Indexes/FK/Triggers sub-folders */
+            continue;
         names << c->text(0).section(QStringLiteral("  :  "), 0, 0).trimmed();
     }
     if(!names.isEmpty()) {
