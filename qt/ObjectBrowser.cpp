@@ -253,13 +253,19 @@ void ObjectBrowser::onItemExpanded(QTreeWidgetItem *item)
     const QString db = item->data(0, Qt::UserRole + 1).toString();
 
     if(kind == KDatabase) {
-        /* SQLyog shows these six folders under every database */
-        for(const QString &f : { QStringLiteral("Tables"), QStringLiteral("Views"),
-                                 QStringLiteral("Stored Procs"),
-                                 QStringLiteral("Functions"),
-                                 QStringLiteral("Triggers"), QStringLiteral("Events") }) {
+        /* SQLyog shows these six folders under every database, each with
+         * its own icon (not a generic folder glyph) */
+        static const QList<QPair<QString, QString>> kFolders = {
+            { QStringLiteral("Tables"),       QStringLiteral("table.ico") },
+            { QStringLiteral("Views"),        QStringLiteral("view.ico") },
+            { QStringLiteral("Stored Procs"), QStringLiteral("process.ico") },
+            { QStringLiteral("Functions"),    QStringLiteral("function.ico") },
+            { QStringLiteral("Triggers"),     QStringLiteral("trigger.ico") },
+            { QStringLiteral("Events"),       QStringLiteral("event.ico") },
+        };
+        for(const auto &[f, icon] : kFolders) {
             auto *folder = makeItem(KFolder, f, db);
-            folder->setIcon(0, Icons::get(QStringLiteral("closed_folder.ico")));
+            folder->setIcon(0, Icons::get(icon));
             item->addChild(folder);
         }
         return;
@@ -273,10 +279,14 @@ void ObjectBrowser::onItemExpanded(QTreeWidgetItem *item)
          * Triggers is a database-level folder only there — managing a
          * table's FKs/triggers stays a dialog (F7/F10) or the
          * database-level Triggers folder, not a redundant per-table copy. */
-        for(const QString &sub : { QStringLiteral("Columns"), QStringLiteral("Indexes") }) {
+        static const QList<QPair<QString, QString>> kSubFolders = {
+            { QStringLiteral("Columns"), QStringLiteral("column.ico") },
+            { QStringLiteral("Indexes"), QStringLiteral("index.ico") },
+        };
+        for(const auto &[sub, icon] : kSubFolders) {
             auto *f = makeItem(KFolder, sub, db);
             f->setData(0, Qt::UserRole + 2, item->text(0));
-            f->setIcon(0, Icons::get(QStringLiteral("closed_folder.ico")));
+            f->setIcon(0, Icons::get(icon));
             item->addChild(f);
         }
         return;
