@@ -39,6 +39,7 @@ private slots:
     void testConnection();
     void driverChanged(int index);
     void browseSqliteFile();
+    void browseSslFile(QLineEdit *target, const QString &title);
 
 private:
     void updateButtonState();
@@ -70,4 +71,9 @@ private:
     QRadioButton *m_idleDefault = nullptr;
     QSpinBox     *m_idleSecs = nullptr;
     QSpinBox     *m_keepAlive = nullptr;
+
+    QCheckBox    *m_useSsl  = nullptr;
+    QLineEdit    *m_sslCa   = nullptr;
+    QLineEdit    *m_sslCert = nullptr;
+    QLineEdit    *m_sslKey  = nullptr;
 };

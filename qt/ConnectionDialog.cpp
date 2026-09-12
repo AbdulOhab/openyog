@@ -252,12 +252,49 @@ ConnectionDialog::ConnectionDialog(QWidget *parent)
     sqliteLayout->addLayout(sqliteForm);
     sqliteLayout->addStretch(1);
 
+    /* ---- SSL tab: client-cert TLS, wired to mysql_ssl_set() ---------- */
+    auto *sslTab = new QWidget(this);
+    m_useSsl = new QCheckBox(QStringLiteral("Use SS&L"), sslTab);
+    m_sslCa   = new QLineEdit(sslTab);
+    m_sslCert = new QLineEdit(sslTab);
+    m_sslKey  = new QLineEdit(sslTab);
+    auto *sslCaBrowse   = new QPushButton(QStringLiteral("Browse…"), sslTab);
+    auto *sslCertBrowse = new QPushButton(QStringLiteral("Browse…"), sslTab);
+    auto *sslKeyBrowse  = new QPushButton(QStringLiteral("Browse…"), sslTab);
+    connect(sslCaBrowse, &QPushButton::clicked, this, [this] {
+        browseSslFile(m_sslCa, QStringLiteral("CA Certificate")); });
+    connect(sslCertBrowse, &QPushButton::clicked, this, [this] {
+        browseSslFile(m_sslCert, QStringLiteral("Client Certificate")); });
+    connect(sslKeyBrowse, &QPushButton::clicked, this, [this] {
+        browseSslFile(m_sslKey, QStringLiteral("Client Key")); });
+    auto sslRow = [](QLineEdit *edit, QPushButton *browse) {
+        auto *l = new QHBoxLayout;
+        l->addWidget(edit, 1);
+        l->addWidget(browse);
+        return l;
+    };
+    auto *sslForm = new QFormLayout;
+    sslForm->addRow(QString(), m_useSsl);
+    sslForm->addRow(QStringLiteral("CA &Certificate"), sslRow(m_sslCa, sslCaBrowse));
+    sslForm->addRow(QStringLiteral("Client Cert&ificate"), sslRow(m_sslCert, sslCertBrowse));
+    sslForm->addRow(QStringLiteral("Client &Key"), sslRow(m_sslKey, sslKeyBrowse));
+    const auto setSslFieldsEnabled = [this](bool on) {
+        m_sslCa->setEnabled(on);
+        m_sslCert->setEnabled(on);
+        m_sslKey->setEnabled(on);
+    };
+    setSslFieldsEnabled(false);
+    connect(m_useSsl, &QCheckBox::toggled, this, setSslFieldsEnabled);
+    auto *sslLayout = new QVBoxLayout(sslTab);
+    sslLayout->addLayout(sslForm);
+    sslLayout->addStretch(1);
+
     m_tabs = new QTabWidget(this);
     m_tabs->addTab(m_mysqlTab, QStringLiteral("MySQL"));
     m_tabs->addTab(m_sqliteTab, QStringLiteral("SQLite"));
     m_tabs->addTab(placeholderTab(QStringLiteral("HTTP tunnel")), QStringLiteral("HTTP"));
     m_tabs->addTab(placeholderTab(QStringLiteral("SSH tunnel")), QStringLiteral("SSH"));
-    m_tabs->addTab(placeholderTab(QStringLiteral("SSL")), QStringLiteral("SSL"));
+    m_tabs->addTab(sslTab, QStringLiteral("SSL"));
     m_tabs->addTab(placeholderTab(QStringLiteral("Advanced")), QStringLiteral("Advanced"));
     connect(m_tabs, &QTabWidget::currentChanged, this, [this](int) {
         /* keep the driver combo in sync when the user clicks the SQLite tab
@@ -441,6 +478,15 @@ void ConnectionDialog::browseSqliteFile()
         m_sqlitePath->setText(path);
 }
 
+void ConnectionDialog::browseSslFile(QLineEdit *target, const QString &title)
+{
+    const QString path = QFileDialog::getOpenFileName(
+        this, title, target->text(),
+        QStringLiteral("PEM files (*.pem *.crt *.key);;All files (*)"));
+    if(!path.isEmpty())
+        target->setText(path);
+}
+
 void ConnectionDialog::setParams(const ConnectionParams &p)
 {
     m_host->setText(p.host);
@@ -450,6 +496,10 @@ void ConnectionDialog::setParams(const ConnectionParams &p)
     m_database->setText(p.database);
     m_sqlitePath->setText(p.filePath);
     m_driverCombo->setCurrentIndex(p.driverType == DriverType::Sqlite ? 1 : 0);
+    m_useSsl->setChecked(p.useSsl);
+    m_sslCa->setText(p.sslCa);
+    m_sslCert->setText(p.sslCert);
+    m_sslKey->setText(p.sslKey);
 }
 
 ConnectionParams ConnectionDialog::params() const
@@ -473,6 +523,10 @@ ConnectionParams ConnectionDialog::params() const
     p.user     = m_user->text().trimmed();
     p.password = m_password->text();
     p.database = m_database->text().trimmed();
+    p.useSsl   = m_useSsl->isChecked();
+    p.sslCa    = m_sslCa->text().trimmed();
+    p.sslCert  = m_sslCert->text().trimmed();
+    p.sslKey   = m_sslKey->text().trimmed();
     p.name = hasSavedName ? sel
                           : QStringLiteral("%1@%2:%3").arg(p.user, p.host).arg(p.port);
     return p;

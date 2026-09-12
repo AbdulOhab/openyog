@@ -62,6 +62,14 @@ bool ConnectionStore::load(const QString &name, ConnectionParams *out)
         decoded.resize((int)rawlen);
         out->password = QString::fromUtf8(decoded);
     }
+
+    out->useSsl = wyIni::IniGetInt(n, "use_ssl", 0, iniPath().toUtf8()) != 0;
+    wyIni::IniGetString(n, "ssl_ca", "", &value, iniPath().toUtf8());
+    out->sslCa = value.GetString();
+    wyIni::IniGetString(n, "ssl_cert", "", &value, iniPath().toUtf8());
+    out->sslCert = value.GetString();
+    wyIni::IniGetString(n, "ssl_key", "", &value, iniPath().toUtf8());
+    out->sslKey = value.GetString();
     return true;
 }
 
@@ -87,6 +95,11 @@ void ConnectionStore::save(const ConnectionParams &params)
     EncodeBase64(pw.constData(), pw.size(), &b64);
     wyIni::IniWriteString(n, "password", b64 ? b64 : "", p);
     free(b64);
+
+    wyIni::IniWriteInt   (n, "use_ssl",  params.useSsl ? 1 : 0, p);
+    wyIni::IniWriteString(n, "ssl_ca",   toUtf8(params.sslCa),   p);
+    wyIni::IniWriteString(n, "ssl_cert", toUtf8(params.sslCert), p);
+    wyIni::IniWriteString(n, "ssl_key",  toUtf8(params.sslKey),  p);
 }
 
 void ConnectionStore::remove(const QString &name)
