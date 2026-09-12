@@ -2268,16 +2268,19 @@ void ConnectionTab::promptAlterTable(const QString &database,
         return;
     const QString db = database.isEmpty() ? m_params.database : database;
 
-    /* columns via SHOW FULL COLUMNS: Field Type Collation Null Key Default
-     * Extra Privileges Comment */
-    QList<CreateTableDialog::ColumnDef> cols;
-    QString error;
-    DbResultSet colRs;
-    if(!m_conn->query(QStringLiteral("SHOW FULL COLUMNS FROM `%1`.`%2`").arg(db, table),
-                      &colRs, &error)) {
-        QMessageBox::warning(this, QStringLiteral("Alter Table"), error);
+    /* canonical shape via listColumns(): Field(0) Type(1) Null(2) Key(3)
+     * Default(4) Extra(5) Comment(6) — portable across backends, unlike the
+     * raw "SHOW FULL COLUMNS" this used to send (MySQL-only syntax, and it
+     * additionally broke on every SQLite connection via the same empty-db
+     * qualification bug already fixed elsewhere: db is always "" there). */
+    const DbResultSet colRs = m_conn->listColumns(db, table);
+    if(colRs.rows.isEmpty()) {
+        QMessageBox::warning(this, QStringLiteral("Alter Table"),
+                             QStringLiteral("Could not read columns of `%1`.`%2`.")
+                                 .arg(db, table));
         return;
     }
+    QList<CreateTableDialog::ColumnDef> cols;
     for(const QStringList &row : colRs.rows) {
         CreateTableDialog::ColumnDef c;
         c.name = row.value(0);
@@ -2293,12 +2296,12 @@ void ConnectionTab::promptAlterTable(const QString &database,
         } else {
             c.type = type.toUpper();
         }
-        c.notNull = row.value(3) == QStringLiteral("NO");
-        c.pk = row.value(4) == QStringLiteral("PRI");
-        c.def = orEmpty(row.value(5));
-        c.autoInc = row.value(6).contains(QStringLiteral("auto_increment"),
+        c.notNull = row.value(2) == QStringLiteral("NO");
+        c.pk = row.value(3) == QStringLiteral("PRI");
+        c.def = orEmpty(row.value(4));
+        c.autoInc = row.value(5).contains(QStringLiteral("auto_increment"),
                                           Qt::CaseInsensitive);
-        c.comment = orEmpty(row.value(8));
+        c.comment = orEmpty(row.value(6));
         cols << c;
     }
     if(cols.isEmpty())

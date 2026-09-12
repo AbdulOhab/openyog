@@ -75,6 +75,10 @@ public:
      *                     Null(2 "YES"/"NO") Key(3 "PRI"/"UNI"/"MUL"/"")
      *                     Default(4, the literal "NULL" when NULL)
      *                     Extra(5, may contain "auto_increment")
+     *                     Comment(6, empty on backends with no column
+     *                     comments, e.g. SQLite) — appended past the real
+     *                     SHOW COLUMNS's 6 fields so existing callers that
+     *                     only index up to Extra(5) are unaffected
      *   listIndexes     — SHOW INDEX shape: Non_unique(1 "0"/"1")
      *                     Key_name(2) Seq_in_index(3, 1-based) Column_name(4);
      *                     PRIMARY rows are always present (synthesized where
