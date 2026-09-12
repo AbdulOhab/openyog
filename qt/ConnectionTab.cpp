@@ -447,7 +447,7 @@ ConnectionTab::ConnectionTab(const ConnectionParams &params, QWidget *parent)
     connect(m_browser, &ObjectBrowser::tableActivated, this,
             [this](const QString &db, const QString &table) {
         if(m_conn) {
-            m_tableData->load(m_conn, db, table);
+            m_tableData->load(m_dbConn, db, table);
             m_resultTabs->setCurrentWidget(m_tableData);
         }
     });
@@ -1283,7 +1283,7 @@ void ConnectionTab::openTableData(const QString &db, const QString &table)
 {
     if(!m_conn)
         return;
-    m_tableData->load(m_conn, db, table);
+    m_tableData->load(m_dbConn, db, table);
     m_resultTabs->setCurrentWidget(m_tableData);
 }
 
@@ -1343,7 +1343,7 @@ void ConnectionTab::truncateTable(const QString &database, const QString &table)
         return;
     execDdl(QStringLiteral("TRUNCATE TABLE `%1`.`%2`").arg(db, table));
     if(m_tableData->loadedTable() == table)
-        m_tableData->load(m_conn, db, table);   /* empty grid */
+        m_tableData->load(m_dbConn, db, table);   /* empty grid */
 }
 
 /* ---- schema objects: View / Procedure / Function / Trigger / Event ------- */
@@ -1499,7 +1499,7 @@ void ConnectionTab::emptyDatabase(const QString &database)
     execDdl(QStringLiteral("SET FOREIGN_KEY_CHECKS = 1"));
     if(!m_tableData->loadedTable().isEmpty()
        && tables.contains(m_tableData->loadedTable()))
-        m_tableData->load(m_conn, db, m_tableData->loadedTable());
+        m_tableData->load(m_dbConn, db, m_tableData->loadedTable());
 }
 
 void ConnectionTab::promptAlterDatabase(const QString &database)
@@ -1565,7 +1565,7 @@ void ConnectionTab::promptRenameTable(const QString &database,
     execDdl(QStringLiteral("RENAME TABLE `%1`.`%2` TO `%1`.`%3`")
                 .arg(db, table, name.trimmed()));
     if(m_tableData->loadedTable() == table)
-        m_tableData->load(m_conn, db, name.trimmed());
+        m_tableData->load(m_dbConn, db, name.trimmed());
 }
 
 void ConnectionTab::promptCopyTable(const QString &database, const QString &table)
@@ -2202,7 +2202,7 @@ void ConnectionTab::promptImportXml(const QString &database, const QString &tabl
                       : QStringLiteral("%1 row(s)")
                             .arg((long long)mysql_affected_rows(m_conn))));
         if(m_tableData->loadedTable() == target)
-            m_tableData->load(m_conn, db, target);
+            m_tableData->load(m_dbConn, db, target);
     }
     m_resultTabs->setCurrentWidget(m_messages);
     refreshBrowser();
@@ -2353,7 +2353,7 @@ void ConnectionTab::promptImportCsv(const QString &database, const QString &tabl
                       : QStringLiteral("%1 row(s)")
                             .arg((long long)mysql_affected_rows(m_conn))));
         if(m_tableData->loadedTable() == target)
-            m_tableData->load(m_conn, db, target);
+            m_tableData->load(m_dbConn, db, target);
     }
     m_resultTabs->setCurrentWidget(m_messages);
     refreshBrowser();
@@ -2514,7 +2514,7 @@ void ConnectionTab::promptAlterTable(const QString &database,
     }
     execDdl(sql);
     if(m_tableData->loadedTable() == table)
-        m_tableData->load(m_conn, db, table);
+        m_tableData->load(m_dbConn, db, table);
 }
 
 void ConnectionTab::promptDumpDatabase(const QString &database)

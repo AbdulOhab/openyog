@@ -16,7 +16,7 @@
 #include <QTableView>
 #include <QWidget>
 
-#include <mysql/mysql.h>   /* typedef struct st_mysql MYSQL — no forward decl */
+class IDbConnection;
 
 class QCheckBox;
 class QComboBox;
@@ -34,7 +34,7 @@ public:
     explicit TableDataView(QWidget *parent = nullptr);
 
 public slots:
-    void load(MYSQL *conn, const QString &db, const QString &table);
+    void load(IDbConnection *conn, const QString &db, const QString &table);
     void clear();
     void editCell(int row, int col, const QString &value);   /* selftest: stage+apply */
     void stageCellOnly(int row, int col, const QString &value); /* selftest: stage, no apply */
@@ -85,7 +85,7 @@ private:
 
     struct ColumnInfo { QString name; bool nullable = true; bool autoInc = false; };
 
-    MYSQL     * m_conn = nullptr;
+    IDbConnection * m_conn = nullptr;
     QString     m_db, m_table;
     QStringList m_columns;
     QList<ColumnInfo> m_colInfo;
