@@ -11,6 +11,7 @@
  *   openyog --screenshot=FILE.png --indexdlg           render the Manage Indexes dialog
  *   openyog --fmtsql="SELECT …"                        print the formatted SQL, exit
  *   openyog --comptest                                 autocomplete self-check
+ *   openyog --sqlitetest=FILE.sqlite                   SQLite driver shape self-check
  */
 #include "MainWindow.h"
 #include "ConnectionDialog.h"
@@ -95,6 +96,165 @@ int main(int argc, char *argv[])
         if(a.startsWith(QStringLiteral("--fmtsql="))) {
             QTextStream(stdout) << SqlFormat::pretty(a.mid(9)) << '\n';
             return 0;
+        }
+        /* --sqlitetest=FILE — exercise the SQLite driver's canonical metadata
+         * shapes (qt/db/IDbConnection.h) headlessly against a prepared SQLite
+         * file; expects the xnote/sample.sqlite layout (employees: INTEGER
+         * PRIMARY KEY id, a city index, an inline FK to emp_dept, a BEFORE
+         * INSERT trigger; plus a view; no routines/events). */
+        if(a.startsWith(QStringLiteral("--sqlitetest="))) {
+            qputenv("QT_QPA_PLATFORM", "offscreen");
+            QApplication app2(argc, argv);
+            ConnectionParams cp;
+            cp.driverType = DriverType::Sqlite;
+            cp.filePath = a.mid(QStringLiteral("--sqlitetest=").size());
+            QString connectError;
+            IDbConnection *c = dbDriverFor(cp.driverType)->connect(cp, &connectError);
+            if(!c) {
+                QTextStream(stdout) << "sqlitetest: connect failed: "
+                                    << connectError << '\n';
+                return 1;
+            }
+            int fails = 0;
+            const auto check = [&](bool ok, const QString &what) {
+                if(!ok) ++fails;
+                QTextStream(stdout) << "sqlitetest " << what
+                                    << (ok ? "  PASS\n" : "  FAIL\n");
+            };
+            const auto findRow = [](const DbResultSet &rs, int col,
+                                    const QString &val) {
+                for(const QStringList &row : rs.rows)
+                    if(row.value(col) == val)
+                        return row;
+                return QStringList{};
+            };
+
+            check(c->listDatabases().contains(QStringLiteral("main")),
+                  "databases contain main");
+
+            const QStringList tbls = c->listTables(QStringLiteral("main"));
+            check(tbls.contains(QStringLiteral("employees"))
+                  && tbls.contains(QStringLiteral("emp_dept"))
+                  && !tbls.contains(QStringLiteral("v_employee_dept")),
+                  "listTables base tables");
+            const QStringList views = c->listTables(QStringLiteral("main"),
+                                                    QStringLiteral("VIEW"));
+            check(views.contains(QStringLiteral("v_employee_dept"))
+                  && views.size() == 1, "listTables views");
+
+            const DbResultSet cols = c->listColumns(QStringLiteral("main"),
+                                                    QStringLiteral("employees"));
+            const QStringList idCol = findRow(cols, 0, QStringLiteral("id"));
+            check(idCol.value(1) == QStringLiteral("INTEGER")
+                  && idCol.value(2) == QStringLiteral("NO")
+                  && idCol.value(3) == QStringLiteral("PRI")
+                  && idCol.value(5).contains(QStringLiteral("auto_increment")),
+                  "listColumns id shape");
+            check(findRow(cols, 0, QStringLiteral("name")).value(2)
+                      == QStringLiteral("NO")
+                  && findRow(cols, 0, QStringLiteral("salary")).value(2)
+                         == QStringLiteral("YES"),
+                  "listColumns nullability");
+
+            const DbResultSet ixs = c->listIndexes(QStringLiteral("main"),
+                                                   QStringLiteral("employees"));
+            const QStringList pk = findRow(ixs, 2, QStringLiteral("PRIMARY"));
+            check(pk.value(1) == QStringLiteral("0")
+                  && pk.value(4) == QStringLiteral("id"),
+                  "listIndexes PRIMARY (rowid alias)");
+            const QStringList cityIx = findRow(ixs, 2,
+                                               QStringLiteral("idx_employees_city"));
+            check(cityIx.value(1) == QStringLiteral("1")
+                  && cityIx.value(4) == QStringLiteral("city"),
+                  "listIndexes secondary index");
+
+            const DbResultSet fks = c->listForeignKeys(QStringLiteral("main"),
+                                                       QStringLiteral("employees"));
+            check(!fks.rows.isEmpty()
+                  && fks.rows.first().value(1) == QStringLiteral("dept_id")
+                  && fks.rows.first().value(2) == QStringLiteral("emp_dept")
+                  && fks.rows.first().value(3) == QStringLiteral("id"),
+                  "listForeignKeys shape");
+
+            const DbResultSet trgs = c->listTableTriggers(
+                QStringLiteral("main"), QStringLiteral("employees"));
+            check(trgs.rows.size() == 1
+                  && trgs.rows.first().value(0)
+                         == QStringLiteral("trg_employees_no_negative_salary")
+                  && trgs.rows.first().value(1) == QStringLiteral("BEFORE")
+                  && trgs.rows.first().value(2) == QStringLiteral("INSERT"),
+                  "listTableTriggers shape");
+            check(c->listTriggers(QStringLiteral("main"))
+                      .contains(QStringLiteral("trg_employees_no_negative_salary")),
+                  "listTriggers");
+
+            check(c->listRoutines(QStringLiteral("main")).rows.isEmpty(),
+                  "listRoutines empty on SQLite");
+            check(c->listEvents(QStringLiteral("main")).isEmpty(),
+                  "listEvents empty on SQLite");
+
+            QString ddlErr;
+            check(c->showCreate(QStringLiteral("TABLE"), QStringLiteral("main"),
+                                QStringLiteral("employees"), &ddlErr)
+                      .startsWith(QStringLiteral("CREATE TABLE")),
+                  "showCreate TABLE");
+            check(!c->showCreate(QStringLiteral("VIEW"), QStringLiteral("main"),
+                                 QStringLiteral("v_employee_dept"), &ddlErr).isEmpty(),
+                  "showCreate VIEW");
+            const QString procDdl = c->showCreate(
+                QStringLiteral("PROCEDURE"), QStringLiteral("main"),
+                QStringLiteral("nope"), &ddlErr);
+            check(procDdl.isEmpty() && !ddlErr.isEmpty(),
+                  "showCreate PROCEDURE rejected");
+
+            check(c->sqlInsertDefaults(QStringLiteral("main"),
+                                       QStringLiteral("t"))
+                      .contains(QStringLiteral("DEFAULT VALUES")),
+                  "sqlInsertDefaults shape");
+            check(c->sqlFkChecks(false).startsWith(QStringLiteral("PRAGMA")),
+                  "sqlFkChecks shape");
+            check(!c->supportsLimitOnUpdateDelete(),
+                  "supportsLimitOnUpdateDelete false");
+
+            /* DML round-trip on a throwaway copy, using exactly the statement
+             * shapes the table-data pane builds (quoteIdent'd, no LIMIT on
+             * UPDATE/DELETE, DEFAULT VALUES insert) */
+            {
+                const QString tmp = cp.filePath + QStringLiteral(".dmltmp");
+                QFile::remove(tmp);
+                check(QFile::copy(cp.filePath, tmp), "dml: temp copy");
+                ConnectionParams cp2 = cp;
+                cp2.filePath = tmp;
+                IDbConnection *c2 = dbDriverFor(cp2.driverType)->connect(cp2, &connectError);
+                check(c2 != nullptr, "dml: reopen copy");
+                if(c2) {
+                    QString e;
+                    bool ok = c2->query(QStringLiteral(
+                        "CREATE TABLE \"main\".\"dml_t\" "
+                        "(id INTEGER PRIMARY KEY, name TEXT)"), nullptr, &e);
+                    ok = c2->query(c2->sqlInsertDefaults(QStringLiteral("main"),
+                                                         QStringLiteral("dml_t")),
+                                   nullptr, &e) && ok;
+                    ok = c2->query(QStringLiteral(
+                        "UPDATE \"main\".\"dml_t\" SET \"name\" = 'x' "
+                        "WHERE \"id\" = 1"), nullptr, &e) && ok;
+                    ok = c2->query(QStringLiteral(
+                        "DELETE FROM \"main\".\"dml_t\" WHERE \"name\" = 'x'"),
+                        nullptr, &e) && ok;
+                    DbResultSet rs;
+                    ok = c2->query(QStringLiteral("SELECT COUNT(*) FROM \"main\".\"dml_t\""),
+                                   &rs, &e) && ok
+                         && rs.rows.first().value(0) == QStringLiteral("0");
+                    check(ok, "dml: defaults/UPDATE/DELETE round-trip");
+                    if(!ok)
+                        QTextStream(stdout) << "  last error: " << e << '\n';
+                    delete c2;
+                }
+                QFile::remove(tmp);
+            }
+
+            delete c;
+            return fails == 0 ? 0 : 1;
         }
         /* --schematest=host:port:user:pw:db — exercise the schema-object DDL
          * helpers (createTemplate / stripDefiner / alterStatements) against a
