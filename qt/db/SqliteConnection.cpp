@@ -199,7 +199,8 @@ DbResultSet SqliteConnection::listColumns(const QString &db, const QString &tabl
     DbResultSet out;
     out.headers << QStringLiteral("Field") << QStringLiteral("Type")
                 << QStringLiteral("Null") << QStringLiteral("Key")
-                << QStringLiteral("Default") << QStringLiteral("Extra");
+                << QStringLiteral("Default") << QStringLiteral("Extra")
+                << QStringLiteral("Comment");
     for(const QStringList &row : ti.rows) {
         const bool isPk = row.value(5).toInt() > 0;
         QStringList r;
@@ -210,7 +211,8 @@ DbResultSet SqliteConnection::listColumns(const QString &db, const QString &tabl
           << (isPk ? QStringLiteral("PRI") : QString())       /* Key */
           << row.value(4)                                     /* Default */
           << (isPk && pkCols == 1 && pkIsInteger
-                  ? QStringLiteral("auto_increment") : QString());
+                  ? QStringLiteral("auto_increment") : QString())
+          << QString();   /* Comment — SQLite has no column comments */
         out.rows << r;
     }
     return out;

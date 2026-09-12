@@ -146,9 +146,22 @@ QStringList MySqlConnection::listTables(const QString &db, const QString &typeFi
 
 DbResultSet MySqlConnection::listColumns(const QString &db, const QString &table)
 {
+    /* SHOW FULL COLUMNS: Field(0) Type(1) Collation(2) Null(3) Key(4)
+     * Default(5) Extra(6) Privileges(7) Comment(8) — reshaped to the
+     * canonical Field/Type/Null/Key/Default/Extra/Comment order (drops
+     * Collation/Privileges, moves Comment to the end at index 6). */
+    DbResultSet full;
+    runBuffered(QStringLiteral("SHOW FULL COLUMNS FROM %1.%2")
+                    .arg(quoteIdent(db), quoteIdent(table)), &full, nullptr);
     DbResultSet rs;
-    runBuffered(QStringLiteral("SHOW COLUMNS FROM %1.%2")
-                    .arg(quoteIdent(db), quoteIdent(table)), &rs, nullptr);
+    rs.headers << QStringLiteral("Field") << QStringLiteral("Type")
+               << QStringLiteral("Null") << QStringLiteral("Key")
+               << QStringLiteral("Default") << QStringLiteral("Extra")
+               << QStringLiteral("Comment");
+    for(const QStringList &row : full.rows)
+        rs.rows << (QStringList()
+            << row.value(0) << row.value(1) << row.value(3) << row.value(4)
+            << row.value(5) << row.value(6) << row.value(8));
     return rs;
 }
 
