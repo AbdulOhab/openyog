@@ -1117,7 +1117,7 @@ void TableDataView::reload()
     m_hasPrimary = !m_pkColumns.isEmpty();   /* upstream: PK only, else all-cols */
 
     const QString qualified = m_conn
-        ? m_conn->quoteIdent(m_db) + QLatin1Char('.') + m_conn->quoteIdent(m_table)
+        ? m_conn->qualify(m_db, m_table)
         : QStringLiteral("`%1`.`%2`").arg(m_db, m_table);
     const QString whereSql = m_where.isEmpty()
         ? QString() : QStringLiteral(" WHERE ") + m_where;
@@ -1251,7 +1251,7 @@ void TableDataView::applyPendingEdits()
     const auto qi = [&](const QString &ident) {
         return m_conn->quoteIdent(ident);
     };
-    const QString qualified = qi(m_db) + QLatin1Char('.') + qi(m_table);
+    const QString qualified = m_conn->qualify(m_db, m_table);
     const bool dmlLimit = m_conn->supportsLimitOnUpdateDelete();
 
     exec(QStringLiteral("BEGIN"));
@@ -1395,8 +1395,7 @@ QByteArray TableDataView::fetchCellBytes(int row, int col) const
         return out;
     const QString sql = QStringLiteral("SELECT %1 FROM %2 WHERE %3 LIMIT 1")
                              .arg(m_conn->quoteIdent(m_columns[col]),
-                                  m_conn->quoteIdent(m_db) + QLatin1Char('.')
-                                      + m_conn->quoteIdent(m_table),
+                                  m_conn->qualify(m_db, m_table),
                                   where);
     /* streamed (raw bytes), not query(), so binary/BLOB content survives
      * unmodified — query()'s DbResultSet rows go through QString::fromUtf8 */
@@ -1563,8 +1562,7 @@ void TableDataView::insertRowWithValues()
     }
 
     const QString q = QStringLiteral("INSERT INTO %1 (%2) VALUES (%3)")
-                           .arg(m_conn->quoteIdent(m_db) + QLatin1Char('.')
-                                    + m_conn->quoteIdent(m_table),
+                           .arg(m_conn->qualify(m_db, m_table),
                                 names.join(QStringLiteral(", ")),
                                 values.join(QStringLiteral(", ")));
     QString error;

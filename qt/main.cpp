@@ -12,6 +12,8 @@
  *   openyog --fmtsql="SELECT …"                        print the formatted SQL, exit
  *   openyog --comptest                                 autocomplete self-check
  *   openyog --sqlitetest=FILE.sqlite                   SQLite driver shape self-check
+ *   openyog --autoconnectfile=FILE.sqlite [--opentable=db:t] [--editcell=r:c:v]
+ *           --screenshot=FILE.png       same data-grid selftests, SQLite driver
  */
 #include "MainWindow.h"
 #include "ConnectionDialog.h"
@@ -36,6 +38,7 @@
 #include <QComboBox>
 #include <QKeySequence>
 #include <QFile>
+#include <QFileInfo>
 #include <QIcon>
 #include <QTextStream>
 #include <QTimer>
@@ -533,6 +536,15 @@ int main(int argc, char *argv[])
                                                    autoConnect.host).arg(autoConnect.port);
                 doAutoConnect = true;
             }
+        }
+        /* --autoconnectfile=PATH.sqlite — same downstream selftest machinery
+         * (--opentable=/--editcell=/--dataview=/--checkrows=/--screenshot=/
+         * --dumpdb=/--copydb=) as --autoconnect=, but for the SQLite driver */
+        if(a.startsWith(QStringLiteral("--autoconnectfile="))) {
+            autoConnect.driverType = DriverType::Sqlite;
+            autoConnect.filePath = a.mid(QStringLiteral("--autoconnectfile=").size());
+            autoConnect.name = QFileInfo(autoConnect.filePath).fileName();
+            doAutoConnect = true;
         }
     }
 

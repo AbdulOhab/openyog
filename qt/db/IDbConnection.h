@@ -48,6 +48,19 @@ public:
     /* Quotes one identifier (db/table/column name) for safe embedding in SQL. */
     virtual QString quoteIdent(const QString &ident) = 0;
 
+    /* db-qualified identifier, e.g. `db`.`table` — omits the schema entirely
+     * when `db` is empty, rather than quoting it into an empty qualifier
+     * (e.g. `` .`table` `` / "".table, both invalid SQL). `db` is legitimately
+     * always empty for a SQLite file connection — it has no ConnectionParams::
+     * database, only a filePath — so every db-qualified reference built from
+     * `database.isEmpty() ? m_params.database : database`-style call sites
+     * must go through this, not raw string formatting, to stay SQLite-safe. */
+    QString qualify(const QString &db, const QString &name)
+    {
+        return db.isEmpty() ? quoteIdent(name)
+                            : quoteIdent(db) + QLatin1Char('.') + quoteIdent(name);
+    }
+
     virtual QString lastError() = 0;
     virtual qint64  affectedRows() = 0;
     virtual QString serverInfo() = 0;
