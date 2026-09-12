@@ -22,7 +22,7 @@ IDbConnection *MySqlDriver::connect(const ConnectionParams &params, QString *err
         mysql_close(c);
         return nullptr;
     }
-    return new MySqlConnection(c);
+    return new MySqlConnection(c, params.host, params.port, params.user, params.password);
 }
 
 void MySqlDriver::libraryInit() { mysql_library_init(0, nullptr, nullptr); }

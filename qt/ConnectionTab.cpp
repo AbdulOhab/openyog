@@ -64,9 +64,25 @@
 #include <QKeySequence>
 #include <QShortcut>
 #include <QSortFilterProxyModel>
+#include <QMutex>
 
 #include <algorithm>
 #include <thread>
+
+/* guards {live, mutex} below: the worker thread sets/clears `live` while
+ * holding `mutex`, and ConnectionTab::cancelQuery() (GUI thread) reads it
+ * and calls cancel() while holding the SAME lock — so a cancel() call is
+ * either fully serialized before the clear (connection still valid,
+ * cancel() runs normally) or fully after it (sees null, no-ops); the
+ * connection can never be deleted while a concurrent cancel() call is in
+ * progress. Declared at file scope (matching the forward declaration in
+ * ConnectionTab.h) rather than in the anonymous namespace below, since an
+ * anonymous-namespace type can't be named from the header. */
+struct LiveConnection
+{
+    QMutex mutex;
+    IDbConnection *live = nullptr;
+};
 
 namespace {
 
@@ -211,7 +227,8 @@ void installGridCopy(QTableView *grid)
 /* runs in a worker thread: dedicated connection per batch, results
  * collected as plain data (no driver objects cross threads) */
 QVector<QueryResult> runOnConnection(const ConnectionParams &p,
-                                     const QStringList &statements)
+                                     const QStringList &statements,
+                                     LiveConnection *liveConn = nullptr)
 {
     QVector<QueryResult> results;
     QString error;
@@ -222,6 +239,10 @@ QVector<QueryResult> runOnConnection(const ConnectionParams &p,
         r.message = error;
         results.append(r);
         return results;
+    }
+    if(liveConn) {
+        QMutexLocker lock(&liveConn->mutex);
+        liveConn->live = c;
     }
 
     for(const QString &stmt : statements) {
@@ -245,6 +266,10 @@ QVector<QueryResult> runOnConnection(const ConnectionParams &p,
         results.append(r);
     }
 
+    if(liveConn) {
+        QMutexLocker lock(&liveConn->mutex);
+        liveConn->live = nullptr;
+    }
     delete c;
     return results;
 }
@@ -252,7 +277,8 @@ QVector<QueryResult> runOnConnection(const ConnectionParams &p,
 } // namespace
 
 ConnectionTab::ConnectionTab(const ConnectionParams &params, QWidget *parent)
-    : QWidget(parent), m_params(params)
+    : QWidget(parent), m_params(params),
+      m_cancelState(std::make_shared<LiveConnection>())
 {
     /* ---- left: object browser ------------------------------------ */
     m_browser = new ObjectBrowser(this);
@@ -958,16 +984,29 @@ void ConnectionTab::runStatements(const QStringList &statements,
                                  .arg(statements.size()));
     m_resultTabs->setCurrentWidget(m_messages);
 
-    /* worker thread: fresh connection, plain-data results */
+    /* worker thread: fresh connection, plain-data results. Holds its own
+     * shared_ptr to the cancel-state, so closing this tab mid-query (guard
+     * turning null) can't leave the thread holding a dangling pointer. */
     QPointer<ConnectionTab> guard(this);
     const ConnectionParams p = m_params;
-    std::thread([guard, p, statements, tabPrefix] {
-        const QVector<QueryResult> results = runOnConnection(p, statements);
+    std::shared_ptr<LiveConnection> cancelState = m_cancelState;
+    std::thread([guard, p, statements, tabPrefix, cancelState] {
+        const QVector<QueryResult> results =
+            runOnConnection(p, statements, cancelState.get());
         QMetaObject::invokeMethod(guard, [guard, results, tabPrefix] {
             if(guard)
                 guard->applyResults(results, tabPrefix);
         }, Qt::QueuedConnection);
     }).detach();
+}
+
+void ConnectionTab::cancelQuery()
+{
+    QMutexLocker lock(&m_cancelState->mutex);
+    if(m_cancelState->live)
+        m_cancelState->live->cancel();
+    else
+        m_messages->appendPlainText(QStringLiteral("nothing is running"));
 }
 
 void ConnectionTab::openTable(const QString &db, const QString &table)

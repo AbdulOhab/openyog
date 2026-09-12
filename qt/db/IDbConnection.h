@@ -24,6 +24,13 @@ class IDbConnection
 public:
     virtual ~IDbConnection() = default;
 
+    /* Best-effort: ask a query currently running on this connection, from
+     * ANOTHER thread, to stop. This is the one concurrent use this class
+     * supports — never call query()/streamQuery() on the same IDbConnection
+     * from two threads at once, only this alongside one of them. Safe to
+     * call even if nothing is running (a harmless no-op then). */
+    virtual void cancel() = 0;
+
     /* Buffered execute. `result` may be null when the caller only wants the
      * status message (DDL/DML). `message` always gets a human status line
      * ("N row(s) in result set" / "OK, N row(s) affected"). Returns false

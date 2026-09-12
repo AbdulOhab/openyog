@@ -15,6 +15,7 @@ public:
     explicit SqliteConnection(sqlite3 *db);
     ~SqliteConnection() override;
 
+    void cancel() override;
     bool query(const QString &sql, DbResultSet *result, QString *message) override;
 
     bool streamQuery(

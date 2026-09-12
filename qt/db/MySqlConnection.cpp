@@ -1,7 +1,10 @@
 #include "MySqlConnection.h"
 
-MySqlConnection::MySqlConnection(MYSQL *conn, bool owns)
-    : m_conn(conn), m_owns(owns)
+MySqlConnection::MySqlConnection(MYSQL *conn, const QString &host, int port,
+                                 const QString &user, const QString &password,
+                                 bool owns)
+    : m_conn(conn), m_owns(owns), m_host(host), m_user(user),
+      m_password(password), m_port(port)
 {
 }
 
@@ -9,6 +12,25 @@ MySqlConnection::~MySqlConnection()
 {
     if(m_conn && m_owns)
         mysql_close(m_conn);
+}
+
+void MySqlConnection::cancel()
+{
+    if(!m_conn)
+        return;
+    const unsigned long id = mysql_thread_id(m_conn);   /* safe to read concurrently */
+    /* the busy connection can't process KILL QUERY itself — open a
+     * throwaway one just to send it, matching mysql's own "mysqladmin
+     * kill"/Ctrl+C behavior */
+    MYSQL *aux = mysql_init(nullptr);
+    if(!aux)
+        return;
+    if(mysql_real_connect(aux, m_host.toUtf8().constData(), m_user.toUtf8().constData(),
+                          m_password.toUtf8().constData(), nullptr, m_port, nullptr, 0)) {
+        const QByteArray sql = QStringLiteral("KILL QUERY %1").arg(id).toUtf8();
+        mysql_query(aux, sql.constData());
+    }
+    mysql_close(aux);
 }
 
 bool MySqlConnection::runBuffered(const QString &sql, DbResultSet *out, QString *error)

@@ -23,7 +23,10 @@
 #include <QStringList>
 #include <QVector>
 
+#include <memory>
+
 class IDbConnection;
+class LiveConnection;
 class ObjectBrowser;
 class TableDataView;
 class FindBar;
@@ -71,6 +74,7 @@ public slots:
     void editorInsertFromFile();
     void collapseBrowser();
     void runStatements(const QStringList &statements, const QString &tabPrefix);
+    void cancelQuery();   /* best-effort: ask the in-flight batch to stop */
     void openTable(const QString &db, const QString &table);
     void useDatabase(const QString &db);
     void refreshBrowser();
@@ -183,6 +187,11 @@ private:
     QVector<QWidget*>   m_dynamicResultTabs;     /* cleared on each batch */
     double              m_totalSecs = 0.0;
     bool                m_running   = false;
+    /* shared (not owned outright): a detached worker thread launched by
+     * runStatements() keeps its own reference for the query's duration, so
+     * closing this tab mid-query can't leave it pointing at freed memory —
+     * see cancelQuery() and runOnConnection() in the .cpp. */
+    std::shared_ptr<LiveConnection> m_cancelState;
 
     QStringList         m_databases;
     QString             m_lastFind;       /* for Find Next / F3 */
