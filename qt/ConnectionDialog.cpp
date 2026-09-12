@@ -14,6 +14,8 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QMessageBox>
+#include <QFont>
+#include <QPainter>
 #include <QPixmap>
 #include <QPushButton>
 #include <QRadioButton>
@@ -36,6 +38,35 @@ QWidget *placeholderTab(const QString &what)
     l->addStretch(1);
     return w;
 }
+
+/* The left strip's only MySQL-specific bitmap is its bottom "WORKS WITH
+ * MySQL" logo band (upstream include/bitmaps/connection.png); the blue
+ * background + plug icon above it are generic. For SQLite, reuse that
+ * generic part and relabel the band in plain text instead — no SQLite
+ * trademark reproduced, just its name, so the panel never claims a backend
+ * it isn't connecting to. */
+QPixmap sqliteBrandPixmap()
+{
+    const QPixmap source(Icons::dir() + QStringLiteral("connection.png"));
+    const QSize size = source.isNull() ? QSize(150, 358) : source.size();
+    constexpr int kIconBandHeight = 270;   /* below this = the MySQL logo band */
+
+    QPixmap out(size);
+    const QColor bg(0, 97, 138);
+    out.fill(bg);
+    QPainter p(&out);
+    if(!source.isNull())
+        p.drawPixmap(0, 0, source, 0, 0, size.width(), kIconBandHeight);
+    p.setPen(Qt::white);
+    QFont f = p.font();
+    f.setBold(true);
+    f.setPointSize(13);
+    p.setFont(f);
+    p.drawText(QRect(0, kIconBandHeight, size.width(), size.height() - kIconBandHeight),
+               Qt::AlignHCenter | Qt::AlignVCenter, QStringLiteral("SQLite"));
+    p.end();
+    return out;
+}
 } // namespace
 
 ConnectionDialog::ConnectionDialog(QWidget *parent)
@@ -46,11 +77,14 @@ ConnectionDialog::ConnectionDialog(QWidget *parent)
     /* keep port / seconds fields as plain ASCII digits, like SQLyog */
     setLocale(QLocale::c());
 
-    /* ---- left image strip (GPL bitmap from include/bitmaps) ---------- */
-    auto *image = new QLabel(this);
-    image->setPixmap(QPixmap(Icons::dir() + QStringLiteral("connection.png")));
-    image->setAlignment(Qt::AlignTop | Qt::AlignHCenter);
-    image->setFixedWidth(150);
+    /* ---- left image strip (GPL bitmap from include/bitmaps; swaps to a
+     * plain-text SQLite relabel — see sqliteBrandPixmap() — when that
+     * driver is selected, so this panel never claims to be MySQL when it
+     * isn't) ---------------------------------------------------------- */
+    m_brandImage = new QLabel(this);
+    m_brandImage->setPixmap(QPixmap(Icons::dir() + QStringLiteral("connection.png")));
+    m_brandImage->setAlignment(Qt::AlignTop | Qt::AlignHCenter);
+    m_brandImage->setFixedWidth(150);
 
     /* ---- New / Clone / Save / Rename / Delete ----------------------- */
     auto *newBtn  = new QPushButton(QStringLiteral("&New…"), this);
@@ -70,6 +104,7 @@ ConnectionDialog::ConnectionDialog(QWidget *parent)
 
     /* ---- driver picker --------------------------------------------- */
     m_driverCombo = new QComboBox(this);
+    m_driverCombo->setObjectName(QStringLiteral("driverCombo"));   /* --dialogdriver= selftest */
     m_driverCombo->addItem(QStringLiteral("MySQL"), QVariant::fromValue(int(DriverType::Mysql)));
     m_driverCombo->addItem(QStringLiteral("SQLite"), QVariant::fromValue(int(DriverType::Sqlite)));
     connect(m_driverCombo, &QComboBox::currentIndexChanged, this,
@@ -213,7 +248,7 @@ ConnectionDialog::ConnectionDialog(QWidget *parent)
     right->addWidget(buttons);
 
     auto *top = new QHBoxLayout;
-    top->addWidget(image);
+    top->addWidget(m_brandImage);
     top->addLayout(right, 1);
 
     auto *root = new QVBoxLayout(this);
@@ -349,6 +384,9 @@ void ConnectionDialog::driverChanged(int index)
     m_tabs->setCurrentWidget(sqlite ? m_sqliteTab : m_mysqlTab);
     setWindowTitle(sqlite ? QStringLiteral("Connect to SQLite Database")
                           : QStringLiteral("Connect to MySQL Host"));
+    m_brandImage->setPixmap(sqlite
+        ? sqliteBrandPixmap()
+        : QPixmap(Icons::dir() + QStringLiteral("connection.png")));
 }
 
 void ConnectionDialog::browseSqliteFile()

@@ -3,6 +3,7 @@
  * Selftest mode for CI/headless verification:
  *   openyog --screenshot=FILE.png              render main window to FILE, exit
  *   openyog --screenshot=FILE.png --dialog     render the connection dialog
+ *   openyog --screenshot=FILE.png --dialog --dialogdriver=sqlite   … with SQLite preselected
  *   openyog --screenshot=FILE.png --createtable render the Create Table dialog
  *   openyog --autoconnect=h:p:u:pw:db [--opentable=db:t] [--editcell=r:c:v |
  *           --stagecell=r:c:v] --screenshot=FILE.png   drive the data grid
@@ -49,6 +50,7 @@ int main(int argc, char *argv[])
 {
     QString screenshot;
     bool shotDialog = false;
+    QString dialogDriver;   /* --dialogdriver=sqlite : preselect a driver, --dialog selftest */
     bool shotCreateTable = false;
     bool shotIndexDlg = false;
     bool shotExportDlg = false;
@@ -71,6 +73,8 @@ int main(int argc, char *argv[])
             screenshot = a.mid(QStringLiteral("--screenshot=").size());
         if(a == QStringLiteral("--dialog"))
             shotDialog = true;
+        if(a.startsWith(QStringLiteral("--dialogdriver=")))
+            dialogDriver = a.mid(QStringLiteral("--dialogdriver=").size());
         if(a == QStringLiteral("--createtable"))
             shotCreateTable = true;
         if(a == QStringLiteral("--indexdlg"))
@@ -622,6 +626,13 @@ int main(int argc, char *argv[])
                 dlg = new CreateTableDialog(QStringLiteral("port_test"));
             } else {
                 dlg = new ConnectionDialog;
+                if(!dialogDriver.isEmpty()) {
+                    if(auto *combo = dlg->findChild<QComboBox *>(
+                           QStringLiteral("driverCombo")))
+                        combo->setCurrentIndex(
+                            dialogDriver.compare(QStringLiteral("sqlite"),
+                                                 Qt::CaseInsensitive) == 0 ? 1 : 0);
+                }
             }
             dlg->show();
             QTimer::singleShot(200, [dlg, screenshot] {

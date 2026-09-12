@@ -13,6 +13,7 @@
 
 class QCheckBox;
 class QComboBox;
+class QLabel;
 class QLineEdit;
 class QPushButton;
 class QRadioButton;
@@ -56,6 +57,8 @@ private:
     QWidget      *m_mysqlTab    = nullptr;
     QWidget      *m_sqliteTab   = nullptr;
     QLineEdit    *m_sqlitePath  = nullptr;
+
+    QLabel       *m_brandImage  = nullptr;   /* left strip, swaps with the driver */
 
     QLineEdit    *m_host     = nullptr;
     QLineEdit    *m_user     = nullptr;
