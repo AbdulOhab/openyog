@@ -41,17 +41,11 @@ QTreeWidgetItem *makeItem(int kind, const QString &name, const QString &extra = 
     return item;
 }
 
-/* run a single-column query and append each value as a KLeaf child */
-void fillLeaves(IDbConnection *conn, QTreeWidgetItem *parent, const QString &sql,
-                int col, const QString &icon)
+/* append each name as a KLeaf child */
+void fillLeaves(QTreeWidgetItem *parent, const QStringList &names, const QString &icon)
 {
-    if(!conn)
-        return;
-    DbResultSet rs;
-    if(!conn->query(sql, &rs, nullptr))
-        return;
-    for(const QStringList &row : rs.rows) {
-        auto *leaf = makeItem(KLeaf, row.value(col));
+    for(const QString &name : names) {
+        auto *leaf = makeItem(KLeaf, name);
         leaf->setIcon(0, Icons::get(icon));
         parent->addChild(leaf);
     }
@@ -222,23 +216,19 @@ void ObjectBrowser::loadDatabases(IDbConnection *conn, const QString &currentDb)
         return;
 
     root->takeChildren();
-    DbResultSet rs;
-    if(m_conn->query(QStringLiteral("SHOW DATABASES"), &rs, nullptr)) {
-        for(const QStringList &row : rs.rows) {
-            const QString dbName = row.value(0);
-            auto *db = makeItem(KDatabase, dbName, dbName);  /* carry db name */
-            db->setIcon(0, Icons::get(QStringLiteral("database.ico")));
-            root->addChild(db);
-            if(currentDb == dbName) {
-                db->setSelected(true);
-                db->setExpanded(true);
-                onItemExpanded(db);
-                /* open the Tables folder straight away, like SQLyog */
-                if(db->childCount() > 0) {
-                    QTreeWidgetItem *tablesFolder = db->child(0);
-                    tablesFolder->setExpanded(true);
-                    onItemExpanded(tablesFolder);
-                }
+    for(const QString &dbName : m_conn->listDatabases()) {
+        auto *db = makeItem(KDatabase, dbName, dbName);  /* carry db name */
+        db->setIcon(0, Icons::get(QStringLiteral("database.ico")));
+        root->addChild(db);
+        if(currentDb == dbName) {
+            db->setSelected(true);
+            db->setExpanded(true);
+            onItemExpanded(db);
+            /* open the Tables folder straight away, like SQLyog */
+            if(db->childCount() > 0) {
+                QTreeWidgetItem *tablesFolder = db->child(0);
+                tablesFolder->setExpanded(true);
+                onItemExpanded(tablesFolder);
             }
         }
     }
@@ -276,16 +266,12 @@ void ObjectBrowser::onItemExpanded(QTreeWidgetItem *item)
 
     if(kind == KTable) {
         /* columns of the table */
-        const QString sql = QStringLiteral("SHOW COLUMNS FROM `%1`.`%2`")
-                                .arg(db, item->text(0));
-        DbResultSet rs;
-        if(m_conn->query(sql, &rs, nullptr)) {
-            for(const QStringList &row : rs.rows) {
-                auto *c = makeItem(KLeaf,
-                    QStringLiteral("%1  :  %2").arg(row.value(0), row.value(1)));
-                c->setIcon(0, Icons::get(QStringLiteral("column.ico")));
-                item->addChild(c);
-            }
+        const DbResultSet rs = m_conn->listColumns(db, item->text(0));
+        for(const QStringList &row : rs.rows) {
+            auto *c = makeItem(KLeaf,
+                QStringLiteral("%1  :  %2").arg(row.value(0), row.value(1)));
+            c->setIcon(0, Icons::get(QStringLiteral("column.ico")));
+            item->addChild(c);
         }
         /* Indexes / Foreign Keys / Triggers sub-folders (table name on +2) */
         for(const QString &sub : { QStringLiteral("Indexes"),
@@ -302,65 +288,47 @@ void ObjectBrowser::onItemExpanded(QTreeWidgetItem *item)
     if(kind != KFolder)
         return;
 
-    const QString bq = QString(db).replace('`', QStringLiteral("``"));
     const QString folder = item->text(0);
 
     /* table-scoped folder (Indexes / Foreign Keys / Triggers) */
     if(const QString tbl = item->data(0, Qt::UserRole + 2).toString();
        !tbl.isEmpty()) {
-        const QString q = QString(tbl).replace('\'', QStringLiteral("''"));
         const auto add = [&](const QString &text, const QString &icon) {
             auto *l = makeItem(KLeaf, text);
             l->setIcon(0, Icons::get(icon));
             item->addChild(l);
         };
         if(folder == QStringLiteral("Indexes")) {
-            DbResultSet rs;
-            if(m_conn->query(QStringLiteral("SHOW INDEX FROM `%1`.`%2`")
-                    .arg(bq, QString(tbl).replace('`', QStringLiteral("``"))),
-                    &rs, nullptr)) {
-                QString curName;
-                QStringList curCols;
-                bool curUnique = false;
-                const auto flush = [&] {
-                    if(curName.isEmpty()) return;
-                    add(QStringLiteral("%1  %2(%3)").arg(curName,
-                            curUnique ? QStringLiteral("UNIQUE ") : QString(),
-                            curCols.join(QStringLiteral(", "))),
-                        QStringLiteral("altertable.ico"));
-                };
-                for(const QStringList &row : rs.rows) {
-                    const QString name = row.value(2);
-                    if(name != curName) { flush(); curName = name; curCols.clear();
-                        curUnique = row.value(1) == QStringLiteral("0"); }
-                    if(!row.value(4).isEmpty()) curCols << row.value(4);
-                }
-                flush();
+            const DbResultSet rs = m_conn->listIndexes(db, tbl);
+            QString curName;
+            QStringList curCols;
+            bool curUnique = false;
+            const auto flush = [&] {
+                if(curName.isEmpty()) return;
+                add(QStringLiteral("%1  %2(%3)").arg(curName,
+                        curUnique ? QStringLiteral("UNIQUE ") : QString(),
+                        curCols.join(QStringLiteral(", "))),
+                    QStringLiteral("altertable.ico"));
+            };
+            for(const QStringList &row : rs.rows) {
+                const QString name = row.value(2);
+                if(name != curName) { flush(); curName = name; curCols.clear();
+                    curUnique = row.value(1) == QStringLiteral("0"); }
+                if(!row.value(4).isEmpty()) curCols << row.value(4);
             }
+            flush();
         } else if(folder == QStringLiteral("Foreign Keys")) {
-            DbResultSet rs;
-            if(m_conn->query(QStringLiteral(
-                    "SELECT CONSTRAINT_NAME, COLUMN_NAME, REFERENCED_TABLE_NAME, "
-                    "REFERENCED_COLUMN_NAME FROM information_schema.KEY_COLUMN_USAGE "
-                    "WHERE TABLE_SCHEMA='%1' AND TABLE_NAME='%2' "
-                    "AND REFERENCED_TABLE_NAME IS NOT NULL "
-                    "ORDER BY CONSTRAINT_NAME, ORDINAL_POSITION")
-                    .arg(QString(db).replace('\'', QStringLiteral("''")), q),
-                    &rs, nullptr)) {
-                for(const QStringList &row : rs.rows)
-                    add(QStringLiteral("%1:  %2 → %3(%4)").arg(
-                            row.value(0), row.value(1), row.value(2), row.value(3)),
-                        QStringLiteral("altertable.ico"));
-            }
+            const DbResultSet rs = m_conn->listForeignKeys(db, tbl);
+            for(const QStringList &row : rs.rows)
+                add(QStringLiteral("%1:  %2 → %3(%4)").arg(
+                        row.value(0), row.value(1), row.value(2), row.value(3)),
+                    QStringLiteral("altertable.ico"));
         } else if(folder == QStringLiteral("Triggers")) {
-            DbResultSet rs;
-            if(m_conn->query(QStringLiteral("SHOW TRIGGERS FROM `%1` WHERE "
-                    "`Table` = '%2'").arg(bq, q), &rs, nullptr)) {
-                for(const QStringList &row : rs.rows)
-                    add(QStringLiteral("%1  (%2 %3)").arg(
-                            row.value(0), row.value(4), row.value(1)),
-                        QStringLiteral("altertrigger.ico"));
-            }
+            const DbResultSet rs = m_conn->listTableTriggers(db, tbl);
+            for(const QStringList &row : rs.rows)
+                add(QStringLiteral("%1  (%2 %3)").arg(
+                        row.value(0), row.value(1), row.value(2)),
+                    QStringLiteral("altertrigger.ico"));
         }
         if(item->childCount() == 0) {
             auto *l = makeItem(KLeaf, QStringLiteral("(none)"));
@@ -370,40 +338,32 @@ void ObjectBrowser::onItemExpanded(QTreeWidgetItem *item)
         return;
     }
     if(folder == QStringLiteral("Tables")) {
-        DbResultSet rs;
-        if(m_conn->query(
-               QStringLiteral("SHOW FULL TABLES FROM `%1` WHERE Table_type='BASE TABLE'")
-                   .arg(bq), &rs, nullptr)) {
-            for(const QStringList &row : rs.rows) {
-                auto *t = makeItem(KTable, row.value(0), db);
-                t->setIcon(0, Icons::get(QStringLiteral("table.ico")));
-                item->addChild(t);
-            }
+        for(const QString &t : m_conn->listTables(db, QStringLiteral("BASE TABLE"))) {
+            auto *ti = makeItem(KTable, t, db);
+            ti->setIcon(0, Icons::get(QStringLiteral("table.ico")));
+            item->addChild(ti);
         }
     } else if(folder == QStringLiteral("Views")) {
-        fillLeaves(m_conn, item,
-            QStringLiteral("SHOW FULL TABLES FROM `%1` WHERE Table_type='VIEW'").arg(bq),
-            0, QStringLiteral("alterview.ico"));
+        fillLeaves(item, m_conn->listTables(db, QStringLiteral("VIEW")),
+                   QStringLiteral("alterview.ico"));
     } else if(folder == QStringLiteral("Stored Procs")) {
-        fillLeaves(m_conn, item,
-            QStringLiteral("SELECT ROUTINE_NAME FROM information_schema.ROUTINES "
-                           "WHERE ROUTINE_SCHEMA='%1' AND ROUTINE_TYPE='PROCEDURE'")
-                .arg(bq),
-            0, QStringLiteral("altersp.ico"));
+        QStringList names;
+        for(const QStringList &row : m_conn->listRoutines(db).rows)
+            if(row.value(1) == QStringLiteral("PROCEDURE"))
+                names << row.value(0);
+        fillLeaves(item, names, QStringLiteral("altersp.ico"));
     } else if(folder == QStringLiteral("Functions")) {
-        fillLeaves(m_conn, item,
-            QStringLiteral("SELECT ROUTINE_NAME FROM information_schema.ROUTINES "
-                           "WHERE ROUTINE_SCHEMA='%1' AND ROUTINE_TYPE='FUNCTION'")
-                .arg(bq),
-            0, QStringLiteral("alterfunction.ico"));
+        QStringList names;
+        for(const QStringList &row : m_conn->listRoutines(db).rows)
+            if(row.value(1) == QStringLiteral("FUNCTION"))
+                names << row.value(0);
+        fillLeaves(item, names, QStringLiteral("alterfunction.ico"));
     } else if(folder == QStringLiteral("Triggers")) {
-        fillLeaves(m_conn, item,
-            QStringLiteral("SHOW TRIGGERS FROM `%1`").arg(bq),
-            0, QStringLiteral("altertrigger.ico"));
+        fillLeaves(item, m_conn->listTriggers(db),
+                   QStringLiteral("altertrigger.ico"));
     } else if(folder == QStringLiteral("Events")) {
-        fillLeaves(m_conn, item,
-            QStringLiteral("SHOW EVENTS FROM `%1`").arg(bq),
-            1, QStringLiteral("alterevent.ico"));   /* col 1 = Name */
+        fillLeaves(item, m_conn->listEvents(db),
+                   QStringLiteral("alterevent.ico"));
     }
 }
 
@@ -418,18 +378,16 @@ void ObjectBrowser::copyCreateTable(const QString &db, const QString &table)
 {
     if(!m_conn)
         return;
-    const QString sql = QStringLiteral("SHOW CREATE TABLE `%1`.`%2`")
-                            .arg(QString(db).replace('`', QStringLiteral("``")),
-                                 QString(table).replace('`', QStringLiteral("``")));
-    DbResultSet rs;
-    if(!m_conn->query(sql, &rs, nullptr) || rs.rows.isEmpty())
+    QString error;
+    const QString ddl = m_conn->showCreate(QStringLiteral("TABLE"), db, table, &error);
+    if(ddl.isEmpty()) {
+        if(!error.isEmpty())
+            emit statusMessage(QStringLiteral("SHOW CREATE failed: %1").arg(error));
         return;
-    const QString ddl = rs.rows.first().value(1);
-    if(!ddl.isEmpty()) {
-        QApplication::clipboard()->setText(ddl + QLatin1Char(';'));
-        emit statusMessage(QStringLiteral("CREATE statement for `%1` copied")
-                               .arg(table));
     }
+    QApplication::clipboard()->setText(ddl + QLatin1Char(';'));
+    emit statusMessage(QStringLiteral("CREATE statement for `%1` copied")
+                           .arg(table));
 }
 
 void ObjectBrowser::copyColumnNames(QTreeWidgetItem *tableItem)
