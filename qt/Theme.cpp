@@ -117,6 +117,29 @@ QSplitter::handle:horizontal { width: 4px; }
 QSplitter::handle:vertical { height: 4px; }
 QTreeView::item { height: 18px; }
 )QSS";
+
+/* Palette from the upstream include/twilight_theme.xml (Dark.xml is an
+ * empty stub upstream — our "dark" theme above is this project's own
+ * design — but Twilight actually ships real colors, so this one is a
+ * faithful port): a dusky navy base with a warm gold accent, in place of
+ * the dark theme's neutral grey + blue. Its decimal color attributes are
+ * Windows COLORREF (BGR) — converted to RGB hex here; its 0x-prefixed
+ * attributes are already plain RGB (cross-checked against Flat.xml, whose
+ * hsplitter/selected values match this project's known-correct SQLyog
+ * blue #3B7DBB / #89BCED verbatim as plain hex, not BGR-swapped). */
+const char *kTwilightTabSheet = R"QSS(
+QTabWidget::pane { border: none; }
+QTabBar { background: #293955; }
+QTabBar::tab { background: #293955; color: #A5B1C9; padding: 3px 12px;
+    margin-right: 1px; font-size: 9pt; }
+QTabBar::tab:selected { background: #FCE198; color: #293955; }
+QLabel#infoStrip { background: #3A5278; color: #FCE198; padding: 2px 8px; }
+QFrame#limitStrip { background: #3A5278; }
+QSplitter::handle { background: #3A5278; }
+QSplitter::handle:horizontal { width: 4px; }
+QSplitter::handle:vertical { height: 4px; }
+QTreeView::item { height: 18px; }
+)QSS";
 } // namespace
 
 QString Theme::load()
@@ -124,8 +147,10 @@ QString Theme::load()
     wyString value;
     wyIni::IniGetString("UserInterface", "theme", "light", &value,
                         themePath().toUtf8());
-    return (value.GetString() == QStringLiteral("dark"))
-               ? QStringLiteral("dark") : QStringLiteral("light");
+    const QString v = QString::fromUtf8(value.GetString());
+    if(v == QStringLiteral("dark") || v == QStringLiteral("twilight"))
+        return v;
+    return QStringLiteral("light");
 }
 
 void Theme::save(const QString &theme)
@@ -136,7 +161,29 @@ void Theme::save(const QString &theme)
 
 void Theme::apply(QApplication &app, const QString &theme)
 {
-    if(theme == QStringLiteral("dark")) {
+    if(theme == QStringLiteral("twilight")) {
+        QPalette p;
+        const QColor window(0x29, 0x39, 0x55), base(0x21, 0x2E, 0x44),
+                     text(0xE9, 0xEC, 0xEE), button(0x3A, 0x52, 0x78),
+                     disabled(0x7A, 0x86, 0x9C), highlight(0xE5, 0xC3, 0x65);
+        p.setColor(QPalette::Window,          window);
+        p.setColor(QPalette::WindowText,      text);
+        p.setColor(QPalette::Base,            base);
+        p.setColor(QPalette::AlternateBase,   window);
+        p.setColor(QPalette::Text,            text);
+        p.setColor(QPalette::Button,          button);
+        p.setColor(QPalette::ButtonText,      text);
+        p.setColor(QPalette::ToolTipBase,     button);
+        p.setColor(QPalette::ToolTipText,     text);
+        p.setColor(QPalette::PlaceholderText, disabled);
+        p.setColor(QPalette::Highlight,       highlight);
+        p.setColor(QPalette::HighlightedText, QColor(0x29, 0x39, 0x55));
+        p.setColor(QPalette::Disabled, QPalette::Text,        disabled);
+        p.setColor(QPalette::Disabled, QPalette::ButtonText,  disabled);
+        p.setColor(QPalette::Disabled, QPalette::WindowText,  disabled);
+        app.setPalette(p);
+        app.setStyleSheet(QString::fromUtf8(kTwilightTabSheet));
+    } else if(theme == QStringLiteral("dark")) {
         QPalette p;
         const QColor window(0x2B, 0x2B, 0x2B), base(0x1E, 0x1E, 0x1E),
                      text(0xD4, 0xD4, 0xD4), button(0x3C, 0x3F, 0x41),

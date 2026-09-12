@@ -12,6 +12,7 @@
 #include "Theme.h"
 
 #include <QAction>
+#include <QActionGroup>
 #include <QApplication>
 #include <QComboBox>
 #include <QIcon>
@@ -594,15 +595,22 @@ MainWindow::MainWindow(QWidget *parent)
     addDisabled(connDetails, QStringLiteral("&Export Connection Details…"));
     addDisabled(connDetails, QStringLiteral("&Import Connection Details…"));
     addDisabled(tools, QStringLiteral("&Preferences…"));
-    QAction *darkTheme = tools->addAction(QStringLiteral("&Dark Theme"));
-    darkTheme->setCheckable(true);
-    darkTheme->setChecked(Theme::load() == QStringLiteral("dark"));
-    connect(darkTheme, &QAction::toggled, this, [](bool checked) {
-        const QString theme = checked ? QStringLiteral("dark")
-                                      : QStringLiteral("light");
-        Theme::save(theme);
-        Theme::apply(*qApp, theme);
-    });
+    QMenu *themeMenu = tools->addMenu(QStringLiteral("&Theme"));
+    auto *themeGroup = new QActionGroup(this);
+    themeGroup->setExclusive(true);
+    const QString curTheme = Theme::load();
+    for(const auto &[label, id] : { QPair{ QStringLiteral("&Light"), QStringLiteral("light") },
+                                    QPair{ QStringLiteral("&Dark"), QStringLiteral("dark") },
+                                    QPair{ QStringLiteral("Twilight"), QStringLiteral("twilight") } }) {
+        QAction *a = themeMenu->addAction(label);
+        a->setCheckable(true);
+        a->setChecked(id == curTheme);
+        themeGroup->addAction(a);
+        connect(a, &QAction::triggered, this, [id] {
+            Theme::save(id);
+            Theme::apply(*qApp, id);
+        });
+    }
 
     /* ================= Powertools =================================== */
     QMenu *powertools = menuBar()->addMenu(QStringLiteral("&Powertools"));
