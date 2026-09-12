@@ -1,4 +1,5 @@
 #include "SqlDump.h"
+#include "db/IDbConnection.h"
 
 #include <QDateTime>
 #include <QIODevice>
@@ -6,66 +7,33 @@
 
 namespace {
 
-bool query(MYSQL *c, const QByteArray &sql, QString *error)
+QStringList baseTables(IDbConnection *c, const QString &db, QString *error)
 {
-    if(mysql_query(c, sql.constData()) == 0)
-        return true;
-    if(error)
-        *error = QString::fromUtf8(mysql_error(c));
-    return false;
-}
-
-QStringList baseTables(MYSQL *c, const QString &db, QString *error)
-{
+    DbResultSet rs;
+    if(!c->query(QStringLiteral(
+           "SHOW FULL TABLES FROM `%1` WHERE Table_type = 'BASE TABLE'")
+               .arg(QString(db).replace('`', QStringLiteral("``"))), &rs, error))
+        return {};
     QStringList out;
-    const QByteArray sql =
-        "SHOW FULL TABLES FROM `" + QByteArray(db.toUtf8()).replace('`', "``")
-        + "` WHERE Table_type = 'BASE TABLE'";
-    if(!query(c, sql, error))
-        return out;
-    if(MYSQL_RES *res = mysql_store_result(c)) {
-        while(MYSQL_ROW row = mysql_fetch_row(res))
-            if(row[0])
-                out << QString::fromUtf8(row[0]);
-        mysql_free_result(res);
-    }
+    for(const QStringList &row : rs.rows)
+        out << row.value(0);
     return out;
 }
 
-QString showCreate(MYSQL *c, const QString &db, const QString &table,
-                   QString *error)
-{
-    const QByteArray sql =
-        "SHOW CREATE TABLE `" + QByteArray(db.toUtf8()).replace('`', "``")
-        + "`.`" + QByteArray(table.toUtf8()).replace('`', "``") + "`";
-    if(!query(c, sql, error))
-        return {};
-    QString ddl;
-    if(MYSQL_RES *res = mysql_store_result(c)) {
-        if(MYSQL_ROW row = mysql_fetch_row(res))
-            ddl = QString::fromUtf8(row[1]);   /* col 1 = "Create Table" */
-        mysql_free_result(res);
-    }
-    return ddl;
-}
-
 /* one INSERT tuple: NULL stays NULL, everything else single-quoted + escaped */
-QString tuple(MYSQL *c, MYSQL_ROW row, unsigned long *lengths, unsigned n)
+QString tuple(IDbConnection *c, const QVector<QByteArray> &fields,
+             const QVector<bool> &isNull)
 {
     QString s = QStringLiteral("(");
-    QByteArray esc;
-    for(unsigned i = 0; i < n; ++i) {
+    for(int i = 0; i < fields.size(); ++i) {
         if(i)
             s += QLatin1Char(',');
-        if(!row[i]) {
+        if(isNull[i]) {
             s += QStringLiteral("NULL");
             continue;
         }
-        esc.resize(int(lengths[i]) * 2 + 1);
-        const unsigned long m = mysql_real_escape_string(
-            c, esc.data(), row[i], lengths[i]);
         s += QLatin1Char('\'');
-        s += QString::fromUtf8(esc.constData(), int(m));
+        s += QString::fromUtf8(c->escape(fields[i]));
         s += QLatin1Char('\'');
     }
     s += QLatin1Char(')');
@@ -74,7 +42,7 @@ QString tuple(MYSQL *c, MYSQL_ROW row, unsigned long *lengths, unsigned n)
 
 } // namespace
 
-bool SqlDump::write(MYSQL *conn, const QString &db, const QStringList &tables,
+bool SqlDump::write(IDbConnection *conn, const QString &db, const QStringList &tables,
                     const Options &opt, QIODevice *out, QString *error)
 {
     if(!conn || !out) {
@@ -113,7 +81,7 @@ bool SqlDump::write(MYSQL *conn, const QString &db, const QStringList &tables,
         if(opt.structure) {
             if(opt.addDropTable)
                 put(QStringLiteral("DROP TABLE IF EXISTS `%1`;").arg(t));
-            const QString ddl = showCreate(conn, db, t, error);
+            const QString ddl = conn->showCreate(QStringLiteral("TABLE"), db, t, error);
             if(ddl.isEmpty())
                 return false;
             put(ddl + QLatin1Char(';'));
@@ -123,32 +91,27 @@ bool SqlDump::write(MYSQL *conn, const QString &db, const QStringList &tables,
         if(!opt.data)
             continue;
 
-        if(!query(conn, "SELECT * FROM `" + qdb + "`.`" + qt + "`", error))
-            return false;
-        MYSQL_RES *res = mysql_use_result(conn);
-        if(!res) {
-            if(error)
-                *error = QString::fromUtf8(mysql_error(conn));
-            return false;
-        }
-        const unsigned n = mysql_num_fields(res);
         int inBatch = 0;
-        MYSQL_ROW row;
-        while((row = mysql_fetch_row(res))) {
-            unsigned long *lengths = mysql_fetch_lengths(res);
-            if(inBatch == 0)
-                out->write(QStringLiteral("INSERT INTO `%1` VALUES\n").arg(t).toUtf8());
-            else
-                out->write(",\n");
-            out->write(tuple(conn, row, lengths, n).toUtf8());
-            if(++inBatch >= qMax(1, opt.rowsPerInsert)) {
-                out->write(";\n");
-                inBatch = 0;
-            }
-        }
+        bool streamOk = conn->streamQuery(
+            QStringLiteral("SELECT * FROM `") + QString::fromUtf8(qdb) + "`.`"
+                + QString::fromUtf8(qt) + "`",
+            error, nullptr,
+            [&](const QVector<QByteArray> &fields, const QVector<bool> &isNull) {
+                if(inBatch == 0)
+                    out->write(QStringLiteral("INSERT INTO `%1` VALUES\n").arg(t).toUtf8());
+                else
+                    out->write(",\n");
+                out->write(tuple(conn, fields, isNull).toUtf8());
+                if(++inBatch >= qMax(1, opt.rowsPerInsert)) {
+                    out->write(";\n");
+                    inBatch = 0;
+                }
+                return true;
+            });
+        if(!streamOk)
+            return false;
         if(inBatch > 0)
             out->write(";\n");
-        mysql_free_result(res);
         put(QString());
     }
 
@@ -157,7 +120,7 @@ bool SqlDump::write(MYSQL *conn, const QString &db, const QStringList &tables,
 }
 
 bool SqlDump::forEachStatement(
-    MYSQL *conn, const QString &db, const QStringList &tables,
+    IDbConnection *conn, const QString &db, const QStringList &tables,
     const Options &opt, const std::function<bool(const QString &)> &exec,
     QString *error)
 {
@@ -182,23 +145,16 @@ bool SqlDump::forEachStatement(
             if(opt.addDropTable
                && !exec(QStringLiteral("DROP TABLE IF EXISTS `%1`").arg(t)))
                 return false;
-            const QString ddl = showCreate(conn, db, t, error);
+            const QString ddl = conn->showCreate(QStringLiteral("TABLE"), db, t, error);
             if(ddl.isEmpty() || !exec(ddl))
                 return false;
         }
         if(!opt.data)
             continue;
 
-        if(!query(conn, "SELECT * FROM `" + qdb + "`.`" + qt + "`", error))
-            return false;
-        MYSQL_RES *res = mysql_use_result(conn);
-        if(!res) {
-            if(error) *error = QString::fromUtf8(mysql_error(conn));
-            return false;
-        }
-        const unsigned n = mysql_num_fields(res);
         QString batch;
         int inBatch = 0;
+        bool execFailed = false;
         const auto flush = [&] {
             if(inBatch == 0)
                 return true;
@@ -207,22 +163,25 @@ bool SqlDump::forEachStatement(
             inBatch = 0;
             return ok;
         };
-        MYSQL_ROW row;
-        bool ok = true;
-        while(ok && (row = mysql_fetch_row(res))) {
-            unsigned long *lengths = mysql_fetch_lengths(res);
-            if(inBatch == 0)
-                batch = QStringLiteral("INSERT INTO `%1` VALUES\n").arg(t);
-            else
-                batch += QStringLiteral(",\n");
-            batch += tuple(conn, row, lengths, n);
-            if(++inBatch >= qMax(1, opt.rowsPerInsert))
-                ok = flush();
-        }
-        if(ok)
-            ok = flush();
-        mysql_free_result(res);
-        if(!ok)
+        bool streamOk = conn->streamQuery(
+            QStringLiteral("SELECT * FROM `") + QString::fromUtf8(qdb) + "`.`"
+                + QString::fromUtf8(qt) + "`",
+            error, nullptr,
+            [&](const QVector<QByteArray> &fields, const QVector<bool> &isNull) {
+                if(inBatch == 0)
+                    batch = QStringLiteral("INSERT INTO `%1` VALUES\n").arg(t);
+                else
+                    batch += QStringLiteral(",\n");
+                batch += tuple(conn, fields, isNull);
+                if(++inBatch >= qMax(1, opt.rowsPerInsert) && !flush()) {
+                    execFailed = true;
+                    return false;
+                }
+                return true;
+            });
+        if(!streamOk || execFailed)
+            return false;
+        if(!flush())
             return false;
     }
 
@@ -237,25 +196,17 @@ bool SqlDump::forEachStatement(
         };
         const auto names = [&](const QString &sql, int col) {
             QStringList out;
-            if(query(conn, sql.toUtf8(), error)) {
-                if(MYSQL_RES *r = mysql_store_result(conn)) {
-                    while(MYSQL_ROW row = mysql_fetch_row(r))
-                        if(row[col]) out << QString::fromUtf8(row[col]);
-                    mysql_free_result(r);
-                }
-            }
+            DbResultSet rs;
+            if(conn->query(sql, &rs, error))
+                for(const QStringList &row : rs.rows)
+                    out << row.value(col);
             return out;
         };
         const auto one = [&](const QString &sql, int col) {
-            QString v;
-            if(query(conn, sql.toUtf8(), error)) {
-                if(MYSQL_RES *r = mysql_store_result(conn)) {
-                    if(MYSQL_ROW row = mysql_fetch_row(r))
-                        v = QString::fromUtf8(row[col] ? row[col] : "");
-                    mysql_free_result(r);
-                }
-            }
-            return v;
+            DbResultSet rs;
+            if(conn->query(sql, &rs, error) && !rs.rows.isEmpty())
+                return rs.rows.first().value(col);
+            return QString();
         };
         const QString dq = QString(db).replace('`', QStringLiteral("``"));
 
@@ -266,44 +217,34 @@ bool SqlDump::forEachStatement(
             if(!ddl.isEmpty() && !exec(ddl))
                 return false;
         }
-        if(query(conn, QStringLiteral("SELECT ROUTINE_NAME, ROUTINE_TYPE FROM "
-                     "information_schema.ROUTINES WHERE ROUTINE_SCHEMA='%1'")
-                     .arg(dq).toUtf8(), error)) {
-            QList<QPair<QString, QString>> rs;
-            if(MYSQL_RES *r = mysql_store_result(conn)) {
-                while(MYSQL_ROW row = mysql_fetch_row(r))
-                    if(row[0] && row[1])
-                        rs << qMakePair(QString::fromUtf8(row[0]),
-                                        QString::fromUtf8(row[1]));
-                mysql_free_result(r);
-            }
-            for(const auto &rt : std::as_const(rs)) {
-                const QString kw = rt.second == QStringLiteral("PROCEDURE")
-                    ? QStringLiteral("PROCEDURE") : QStringLiteral("FUNCTION");
-                const QString ddl = clean(one(
-                    QStringLiteral("SHOW CREATE %1 `%2`.`%3`").arg(kw, dq, rt.first), 2));
-                if(!ddl.isEmpty() && !exec(ddl))
-                    return false;
+        {
+            DbResultSet rs;
+            if(conn->query(QStringLiteral("SELECT ROUTINE_NAME, ROUTINE_TYPE FROM "
+                         "information_schema.ROUTINES WHERE ROUTINE_SCHEMA='%1'")
+                         .arg(dq), &rs, error)) {
+                for(const QStringList &row : rs.rows) {
+                    const QString kw = row.value(1) == QStringLiteral("PROCEDURE")
+                        ? QStringLiteral("PROCEDURE") : QStringLiteral("FUNCTION");
+                    const QString ddl = clean(one(
+                        QStringLiteral("SHOW CREATE %1 `%2`.`%3`").arg(kw, dq, row.value(0)), 2));
+                    if(!ddl.isEmpty() && !exec(ddl))
+                        return false;
+                }
             }
         }
-        if(query(conn, QStringLiteral("SHOW TRIGGERS FROM `%1`").arg(dq).toUtf8(), error)) {
-            QStringList trg;
-            if(MYSQL_RES *r = mysql_store_result(conn)) {
-                while(MYSQL_ROW row = mysql_fetch_row(r)) {
-                    if(!row[0]) continue;
+        {
+            DbResultSet rs;
+            if(conn->query(QStringLiteral("SHOW TRIGGERS FROM `%1`").arg(dq), &rs, error)) {
+                QStringList trg;
+                for(const QStringList &row : rs.rows)
                     trg << QStringLiteral("CREATE TRIGGER `%1` %2 %3 ON `%4` "
                                           "FOR EACH ROW %5")
-                        .arg(QString::fromUtf8(row[0]),
-                             QString::fromUtf8(row[4] ? row[4] : ""),
-                             QString::fromUtf8(row[1] ? row[1] : ""),
-                             QString::fromUtf8(row[2] ? row[2] : ""),
-                             QString::fromUtf8(row[3] ? row[3] : ""));
-                }
-                mysql_free_result(r);
+                        .arg(row.value(0), row.value(4), row.value(1),
+                             row.value(2), row.value(3));
+                for(const QString &s : std::as_const(trg))
+                    if(!exec(s))
+                        return false;
             }
-            for(const QString &s : std::as_const(trg))
-                if(!exec(s))
-                    return false;
         }
         for(const QString &e : names(
                 QStringLiteral("SHOW EVENTS FROM `%1`").arg(dq), 1)) {

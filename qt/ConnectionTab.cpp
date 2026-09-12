@@ -1776,7 +1776,7 @@ void ConnectionTab::promptCopyDatabase(const QString &database)
             opt.data = wantData->isChecked();
             opt.routines = wantRoutines->isChecked();
             ok = SqlDump::forEachStatement(
-                m_conn, srcDb, {}, opt,
+                m_dbConn, srcDb, {}, opt,
                 [&](const QString &stmt) {
                     if(mysql_query(dst, stmt.toUtf8().constData()) == 0)
                         return true;
@@ -2637,7 +2637,7 @@ bool ConnectionTab::dumpDatabaseToFile(const QString &database,
         if(error) *error = QStringLiteral("cannot write %1").arg(path);
         return false;
     }
-    const bool ok = SqlDump::write(m_conn, db, tables, opt, &f, error);
+    const bool ok = SqlDump::write(m_dbConn, db, tables, opt, &f, error);
     f.close();
     return ok;
 }
