@@ -75,6 +75,7 @@ add_executable(openyog
     qt/ConnectionTab.h     qt/ConnectionTab.cpp
     qt/QueryModel.h        qt/QueryModel.cpp
     qt/ConnectionStore.h   qt/ConnectionStore.cpp
+    qt/FavoritesStore.h    qt/FavoritesStore.cpp
     qt/ObjectBrowser.h     qt/ObjectBrowser.cpp
     qt/CreateTableDialog.h qt/CreateTableDialog.cpp
     qt/IndexDialog.h       qt/IndexDialog.cpp

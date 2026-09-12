@@ -133,6 +133,11 @@ public slots:
     void clearHistory();
     void exportResult();   /* CSV / HTML / JSON / Markdown, by chosen filter */
 
+    /* Favorites: named, saved SQL snippets (Favorites menu) */
+    void addCurrentToFavorites();     /* selection, or whole editor if none */
+    void organizeFavorites();         /* rename / delete / insert */
+    void insertFavorite(const QString &name);   /* menu item -> editor */
+
     /* editor Edit-menu ops on the active Query tab */
     void promptFind();
     void findNext();

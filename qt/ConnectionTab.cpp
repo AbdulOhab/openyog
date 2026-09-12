@@ -13,6 +13,7 @@
 #include "IndexDialog.h"
 #include "ForeignKeyDialog.h"
 #include "SqlDump.h"
+#include "FavoritesStore.h"
 #include "Icons.h"
 #include "db/IDbDriver.h"
 #include "db/IDbConnection.h"
@@ -768,6 +769,97 @@ void ConnectionTab::clearHistory()
     m_historyLines.clear();
     m_historyQueries.clear();
     renderHistory();
+}
+
+void ConnectionTab::addCurrentToFavorites()
+{
+    CodeEditor *ed = currentEditor();
+    if(!ed)
+        return;
+    QString sql = ed->textCursor().hasSelection()
+        ? ed->textCursor().selectedText().replace(QChar(0x2029), QLatin1Char('\n'))
+        : ed->toPlainText();
+    sql = sql.trimmed();
+    if(sql.isEmpty()) {
+        QMessageBox::information(this, QStringLiteral("Add To Favorites"),
+            QStringLiteral("Nothing to save — the editor is empty."));
+        return;
+    }
+    bool ok = false;
+    const QString name = QInputDialog::getText(
+        this, QStringLiteral("Add To Favorites"), QStringLiteral("Name:"),
+        QLineEdit::Normal, QString(), &ok);
+    if(!ok || name.trimmed().isEmpty())
+        return;
+    FavoritesStore::save(name.trimmed(), sql);
+    emit executed(QStringLiteral("Saved favorite \"%1\"").arg(name.trimmed()));
+}
+
+void ConnectionTab::insertFavorite(const QString &name)
+{
+    sendHistoryToEditor(FavoritesStore::get(name));
+}
+
+void ConnectionTab::organizeFavorites()
+{
+    QDialog dlg(this);
+    dlg.setWindowTitle(QStringLiteral("Organize Favorites"));
+    dlg.resize(420, 320);
+    auto *list = new QListWidget(&dlg);
+    list->addItems(FavoritesStore::names());
+    auto *insertBtn = new QPushButton(QStringLiteral("&Insert Into Editor"), &dlg);
+    auto *renameBtn = new QPushButton(QStringLiteral("&Rename…"), &dlg);
+    auto *deleteBtn = new QPushButton(QStringLiteral("&Delete"), &dlg);
+    for(QPushButton *b : { insertBtn, renameBtn, deleteBtn })
+        b->setEnabled(false);
+    connect(list, &QListWidget::currentRowChanged, &dlg, [=](int row) {
+        for(QPushButton *b : { insertBtn, renameBtn, deleteBtn })
+            b->setEnabled(row >= 0);
+    });
+    connect(insertBtn, &QPushButton::clicked, &dlg, [=, this, &dlg] {
+        if(auto *item = list->currentItem()) {
+            insertFavorite(item->text());
+            dlg.accept();
+        }
+    });
+    connect(list, &QListWidget::itemDoubleClicked, &dlg,
+            [=, this, &dlg](QListWidgetItem *item) {
+        insertFavorite(item->text());
+        dlg.accept();
+    });
+    connect(renameBtn, &QPushButton::clicked, &dlg, [=, &dlg] {
+        auto *item = list->currentItem();
+        if(!item) return;
+        bool ok = false;
+        const QString name = QInputDialog::getText(
+            &dlg, QStringLiteral("Rename Favorite"), QStringLiteral("New name:"),
+            QLineEdit::Normal, item->text(), &ok);
+        if(ok && !name.trimmed().isEmpty()
+           && FavoritesStore::rename(item->text(), name.trimmed()))
+            item->setText(name.trimmed());
+    });
+    connect(deleteBtn, &QPushButton::clicked, &dlg, [=, &dlg] {
+        auto *item = list->currentItem();
+        if(!item) return;
+        if(QMessageBox::question(&dlg, QStringLiteral("Delete Favorite"),
+               QStringLiteral("Delete \"%1\"?").arg(item->text())) != QMessageBox::Yes)
+            return;
+        FavoritesStore::remove(item->text());
+        delete item;
+    });
+    auto *btnRow = new QHBoxLayout;
+    btnRow->addWidget(insertBtn);
+    btnRow->addWidget(renameBtn);
+    btnRow->addWidget(deleteBtn);
+    btnRow->addStretch(1);
+    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Close, &dlg);
+    connect(buttons, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
+    connect(buttons, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
+    auto *lay = new QVBoxLayout(&dlg);
+    lay->addWidget(list, 1);
+    lay->addLayout(btnRow);
+    lay->addWidget(buttons);
+    dlg.exec();
 }
 
 /* F9 — run the selected text, or the statement under the cursor */
@@ -1929,8 +2021,16 @@ bool ConnectionTab::copyDatabaseTo(const QString &srcDb, const QString &tgtDb,
 
 void ConnectionTab::promptUserManager()
 {
-    if(m_conn)
-        UserManagerDialog(m_conn, this).exec();
+    if(!m_conn)
+        return;
+    if(m_params.driverType == DriverType::Sqlite) {
+        QMessageBox::information(this, QStringLiteral("User Manager"),
+            QStringLiteral("SQLite has no user/permission system — "
+                           "a database file's access is just filesystem "
+                           "permissions on the .sqlite file itself."));
+        return;
+    }
+    UserManagerDialog(m_conn, this).exec();
 }
 
 void ConnectionTab::exportCurrent()
