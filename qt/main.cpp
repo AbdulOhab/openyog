@@ -25,6 +25,8 @@
 #include "SqlFormat.h"
 #include "CodeEditor.h"
 #include "Theme.h"
+#include "db/IDbDriver.h"
+#include "db/IDbConnection.h"
 
 #include <QDebug>
 
@@ -38,8 +40,6 @@
 #include <QTimer>
 
 #include <memory>
-
-#include <mysql/mysql.h>
 
 int main(int argc, char *argv[])
 {
@@ -108,25 +108,24 @@ int main(int argc, char *argv[])
                 QTextStream(stdout) << "schematest: need host:port:user:pw:db\n";
                 return 2;
             }
-            MYSQL *c = mysql_init(nullptr);
-            if(!mysql_real_connect(c, p[0].toUtf8(), p[2].toUtf8(), p[3].toUtf8(),
-                                   p[4].toUtf8(), p[1].toUInt(), nullptr, 0)) {
+            ConnectionParams cp;
+            cp.host = p[0]; cp.port = p[1].toUInt();
+            cp.user = p[2]; cp.password = p[3]; cp.database = p[4];
+            QString connectError;
+            IDbConnection *c = dbDriverFor(cp.driverType)->connect(cp, &connectError);
+            if(!c) {
                 QTextStream(stdout) << "schematest: connect failed: "
-                                    << mysql_error(c) << '\n';
+                                    << connectError << '\n';
                 return 1;
             }
             const QString db = p[4];
             auto run = [&](const QString &sql) {
-                return mysql_query(c, sql.toUtf8().constData()) == 0;
+                return c->query(sql, nullptr, nullptr);
             };
             auto exists = [&](const QString &q) {
-                if(mysql_query(c, q.toUtf8().constData()) != 0) return -1;
-                MYSQL_RES *r = mysql_store_result(c);
-                if(!r) return -1;
-                MYSQL_ROW row = mysql_fetch_row(r);
-                int n = (row && row[0]) ? QString::fromUtf8(row[0]).toInt() : 0;
-                mysql_free_result(r);
-                return n;
+                DbResultSet rs;
+                if(!c->query(q, &rs, nullptr)) return -1;
+                return rs.rows.isEmpty() ? 0 : rs.rows.first().value(0).toInt();
             };
             struct Case { QString kw, name, iq; };
             const QList<Case> cases = {
@@ -165,17 +164,7 @@ int main(int argc, char *argv[])
                     cOk = run(s) && cOk;
                 const bool present = exists(cs.iq) == 1;
                 /* alter round-trip */
-                QString ddl;
-                if(mysql_query(c, QStringLiteral("SHOW CREATE %1 `%2`.`%3`")
-                        .arg(cs.kw, db, cs.name).toUtf8().constData()) == 0) {
-                    if(MYSQL_RES *r = mysql_store_result(c)) {
-                        if(MYSQL_ROW row = mysql_fetch_row(r)) {
-                            int col = SchemaSql::showCreateColumn(cs.kw);
-                            if(row[col]) ddl = QString::fromUtf8(row[col]);
-                        }
-                        mysql_free_result(r);
-                    }
-                }
+                const QString ddl = c->showCreate(cs.kw, db, cs.name, nullptr);
                 bool aOk = !ddl.isEmpty();
                 for(const QString &s : splitStatements(SchemaSql::editorText(
                         cs.kw, db, cs.name, SchemaSql::stripDefiner(ddl), false)))
@@ -192,7 +181,7 @@ int main(int argc, char *argv[])
                     << " kept=" << stillThere << " drop=" << dOk << " gone=" << gone
                     << (caseOk ? "  PASS\n" : "  FAIL\n");
             }
-            mysql_close(c);
+            delete c;
             return allOk ? 0 : 1;
         }
         /* --exporttest=DIR — write a fixed 3-row grid in every format and
@@ -407,7 +396,7 @@ int main(int argc, char *argv[])
     const QString theme = Theme::load();
     Theme::apply(app, theme);
 
-    mysql_library_init(0, nullptr, nullptr);
+    dbDriverFor(DriverType::Mysql)->libraryInit();
     int rc = 0;
 
     /* --delconn=NAME selftest: delete a saved connection and exit */
@@ -417,7 +406,7 @@ int main(int argc, char *argv[])
         const bool gone = !ConnectionStore::storedNames().contains(delConn);
         qInfo("delconn '%s': existed=%d removed=%d",
               qPrintable(delConn), existed, gone);
-        mysql_library_end();
+        dbDriverFor(DriverType::Mysql)->libraryShutdown();
         return (existed && gone) ? 0 : 1;
     }
 
@@ -425,7 +414,7 @@ int main(int argc, char *argv[])
     if(!dumpPath.isEmpty() && doAutoConnect) {
         MainWindow w;
         rc = (w.openAndRun(autoConnect) && w.selftestDump(dumpPath)) ? 0 : 1;
-        mysql_library_end();
+        dbDriverFor(DriverType::Mysql)->libraryShutdown();
         return rc;
     }
 
@@ -435,7 +424,7 @@ int main(int argc, char *argv[])
         MainWindow w;
         rc = (p.size() == 2 && w.openAndRun(autoConnect)
               && w.selftestCopyDb(p[0], p[1])) ? 0 : 1;
-        mysql_library_end();
+        dbDriverFor(DriverType::Mysql)->libraryShutdown();
         return rc;
     }
 
@@ -468,7 +457,7 @@ int main(int argc, char *argv[])
                 QApplication::quit();
             });
             QApplication::exec();
-            mysql_library_end();
+            dbDriverFor(DriverType::Mysql)->libraryShutdown();
             return rc;
         }
         std::unique_ptr<MainWindow> w(new MainWindow);
@@ -510,6 +499,6 @@ int main(int argc, char *argv[])
         rc = QApplication::exec();
     }
 
-    mysql_library_end();
+    dbDriverFor(DriverType::Mysql)->libraryShutdown();
     return rc;
 }
