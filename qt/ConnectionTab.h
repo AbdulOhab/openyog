@@ -53,7 +53,9 @@ public:
     QString currentDatabase() const { return m_params.database; }
     QString hostLabel() const
     {
-        return m_params.host + ':' + QString::number(m_params.port);
+        return m_params.driverType == DriverType::Sqlite
+            ? m_params.filePath
+            : m_params.host + ':' + QString::number(m_params.port);
     }
     /* [db, table] of the browser's selected table, or empty */
     QStringList selectedTableInfo() const;

@@ -17,6 +17,7 @@ class QLineEdit;
 class QPushButton;
 class QRadioButton;
 class QSpinBox;
+class QTabWidget;
 
 class ConnectionDialog : public QDialog
 {
@@ -35,6 +36,8 @@ private slots:
     void renameConnection();
     void deleteConnection();
     void testConnection();
+    void driverChanged(int index);
+    void browseSqliteFile();
 
 private:
     void updateButtonState();
@@ -47,6 +50,12 @@ private:
     QPushButton  *m_save     = nullptr;
     QPushButton  *m_rename   = nullptr;
     QPushButton  *m_delete   = nullptr;
+
+    QComboBox    *m_driverCombo = nullptr;
+    QTabWidget   *m_tabs        = nullptr;
+    QWidget      *m_mysqlTab    = nullptr;
+    QWidget      *m_sqliteTab   = nullptr;
+    QLineEdit    *m_sqlitePath  = nullptr;
 
     QLineEdit    *m_host     = nullptr;
     QLineEdit    *m_user     = nullptr;

@@ -42,8 +42,9 @@ CMakeLists.txt.user*
 # Keep the vendored upstream binaries out of ignore rules:
 !lib/**
 
-# generated symlink (CMakeLists.txt/build.sh recreate it)
+# generated symlinks (CMakeLists.txt/build.sh recreate them)
 port/shim/mysql
+port/shim/sqlite3.h
 
 # stray CSV export test artifact
 employees.csv

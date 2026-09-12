@@ -20,6 +20,20 @@ if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/port/shim/mysql")
     file(CREATE_LINK "${MDB_PARENT}" "${CMAKE_CURRENT_SOURCE_DIR}/port/shim/mysql" SYMBOLIC)
 endif()
 
+# Same story for sqlite3.h: include/sqlite3.h is a bundled amalgamation
+# header that predates the system libsqlite3 we link against below — shim
+# it to the system header so headers and the linked .so actually match
+# (also fixes src/wySqlite.cpp, previously only exercised via smoketest's
+# own explicit ${SQLITE3_LIBRARY} link against the mismatched bundled header).
+find_path(SYS_SQLITE3_DIR sqlite3.h
+          PATHS /usr/include /usr/local/include
+          DOC "Directory containing sqlite3.h"
+          REQUIRED)
+if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/port/shim/sqlite3.h")
+    file(CREATE_LINK "${SYS_SQLITE3_DIR}/sqlite3.h"
+         "${CMAKE_CURRENT_SOURCE_DIR}/port/shim/sqlite3.h" SYMBOLIC)
+endif()
+
 add_library(wycore STATIC
     src/wyString.cpp     # portable string class everything depends on
     src/wyFile.cpp       # POSIX port (PORT guards, Phase 1)
@@ -35,13 +49,10 @@ find_package(Threads REQUIRED)
 target_link_libraries(wycore PUBLIC Threads::Threads)
 
 find_library(MARIADB_LIBRARY mariadb REQUIRED)
-find_library(SQLITE3_LIBRARY sqlite3)
+find_library(SQLITE3_LIBRARY sqlite3 REQUIRED)   # openyog's SqliteDriver needs it too now
 
 add_executable(smoketest port/smoketest.cpp)
-target_link_libraries(smoketest PRIVATE wycore ${MARIADB_LIBRARY})
-if(SQLITE3_LIBRARY)
-    target_link_libraries(smoketest PRIVATE ${SQLITE3_LIBRARY})
-endif()
+target_link_libraries(smoketest PRIVATE wycore ${MARIADB_LIBRARY} ${SQLITE3_LIBRARY})
 target_compile_options(smoketest PRIVATE -Wall)
 
 # ---- Phase 2: the Qt 6 application shell ("OpenYog", name approved 2026-09-08)
@@ -57,6 +68,8 @@ add_executable(openyog
     qt/db/DbDriverRegistry.h   qt/db/DbDriverRegistry.cpp
     qt/db/MySqlDriver.h        qt/db/MySqlDriver.cpp
     qt/db/MySqlConnection.h    qt/db/MySqlConnection.cpp
+    qt/db/SqliteDriver.h       qt/db/SqliteDriver.cpp
+    qt/db/SqliteConnection.h   qt/db/SqliteConnection.cpp
     qt/MainWindow.h        qt/MainWindow.cpp
     qt/ConnectionDialog.h  qt/ConnectionDialog.cpp
     qt/ConnectionTab.h     qt/ConnectionTab.cpp
@@ -79,5 +92,5 @@ add_executable(openyog
     qt/Theme.h             qt/Theme.cpp
     qt/SqlHighlighter.h
 )
-target_link_libraries(openyog PRIVATE wycore Qt6::Widgets ${MARIADB_LIBRARY})
+target_link_libraries(openyog PRIVATE wycore Qt6::Widgets ${MARIADB_LIBRARY} ${SQLITE3_LIBRARY})
 target_compile_options(openyog PRIVATE -Wall)
