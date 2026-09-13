@@ -94,6 +94,9 @@ public slots:
     void promptRenameTable(const QString &database, const QString &table);
     void promptCopyTable(const QString &database, const QString &table);
     void promptCopyDatabase(const QString &database = {});
+    /* non-interactive core for the SQLite branch of promptCopyDatabase,
+     * also used by the --sqlitecopydb= selftest */
+    bool copySqliteFileTo(const QString &target, bool withData, QString *error);
     void promptImportCsv(const QString &database, const QString &table);
     void promptImportXml(const QString &database, const QString &table);
     /* export every row of a table (re-queries — not just the loaded page) */

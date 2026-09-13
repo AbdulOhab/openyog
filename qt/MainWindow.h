@@ -45,6 +45,8 @@ public:
     bool selftestDump(const QString &path);
     /* --copydb=src:tgt selftest */
     bool selftestCopyDb(const QString &src, const QString &tgt);
+    /* --sqlitecopydb=target[:nodata] selftest */
+    bool selftestCopySqliteFile(const QString &target, bool withData);
 
 private:
     ConnectionTab *currentTab() const;

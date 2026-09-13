@@ -1013,6 +1013,18 @@ bool MainWindow::selftestCopyDb(const QString &src, const QString &tgt)
     return ok;
 }
 
+bool MainWindow::selftestCopySqliteFile(const QString &target, bool withData)
+{
+    auto *tab = currentTab();
+    if(!tab)
+        return false;
+    QString err;
+    const bool ok = tab->copySqliteFileTo(target, withData, &err);
+    if(!ok)
+        qWarning("sqlitecopydb failed: %s", qPrintable(err));
+    return ok;
+}
+
 void MainWindow::openTableData(const QString &db, const QString &table)
 {
     if(auto *tab = currentTab())
