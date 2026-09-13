@@ -1490,6 +1490,12 @@ void MainWindow::openSchemaObjectTab(const QString &objType)
         tab->createSchemaObject({}, objType);
 }
 
+void MainWindow::selftestUseDatabase(const QString &db)
+{
+    if(auto *tab = currentTab())
+        tab->useDatabase(db);
+}
+
 void MainWindow::closeTab(int index)
 {
     QWidget *w = m_tabs->widget(index);

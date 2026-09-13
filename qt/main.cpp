@@ -60,6 +60,7 @@ int main(int argc, char *argv[])
     QString checkRows;      /* --checkrows=0,2,4 selftest */
     QString hexCell;        /* --hexcell=row:col:hexdigits selftest */
     QString mkObj;          /* --mkobj=VIEW|PROCEDURE|… selftest */
+    QString useDbArg;       /* --usedb=NAME selftest */
     int editRow = -1, editCol = -1;
     bool stageOnly = false;
     QString editValue;
@@ -828,6 +829,8 @@ int main(int argc, char *argv[])
         /* --mkobj=VIEW : open the Create <obj> editor tab */
         if(a.startsWith(QStringLiteral("--mkobj=")))
             mkObj = a.mid(QStringLiteral("--mkobj=").size());
+        if(a.startsWith(QStringLiteral("--usedb=")))
+            useDbArg = a.mid(QStringLiteral("--usedb=").size());
         /* --autoconnect=host:port:user:password:db */
         if(a.startsWith(QStringLiteral("--autoconnect="))) {
             const QStringList parts = a.mid(14).split(':');
@@ -1020,6 +1023,8 @@ int main(int argc, char *argv[])
                         w->setDataViewMode(QStringLiteral("check:") + checkRows);
                     if(!hexCell.isEmpty())
                         w->setDataViewMode(QStringLiteral("hex:") + hexCell);
+                    if(!useDbArg.isEmpty())
+                        w->selftestUseDatabase(useDbArg);
                     if(!mkObj.isEmpty())
                         w->openSchemaObjectTab(mkObj);
                     QTimer::singleShot(600, [w, screenshot] {

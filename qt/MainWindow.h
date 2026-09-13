@@ -40,6 +40,7 @@ public:
     void openTableData(const QString &db, const QString &table);
     void setDataViewMode(const QString &mode);   /* selftest: "text" | "grid" */
     void openSchemaObjectTab(const QString &objType);   /* selftest */
+    void selftestUseDatabase(const QString &db);   /* --usedb= selftest */
     void editTableCell(int row, int col, const QString &value, bool stageOnly = false);
     /* --dumpdb=FILE selftest: dump the active connection's default db */
     bool selftestDump(const QString &path);
