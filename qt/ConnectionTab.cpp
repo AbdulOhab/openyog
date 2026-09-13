@@ -647,7 +647,7 @@ void ConnectionTab::attachEditor(CodeEditor *ed, const QString &title)
 QString ConnectionTab::defaultDb() const
 {
     if(m_params.driverType == DriverType::Postgres)
-        return QStringLiteral("public");
+        return m_currentSchema.isEmpty() ? QStringLiteral("public") : m_currentSchema;
     return m_params.database;
 }
 
@@ -3387,15 +3387,28 @@ void ConnectionTab::useDatabase(const QString &db)
 {
     if(!m_conn)
         return;
-    /* MySQL-only statement, deliberately not ported: the toolbar combo's
-     * items are listDatabases()'s output, which for PostgreSQL means
-     * schemas (see PostgresConnection.h) — switching to one there is
-     * SET search_path, not USE, and needs separate state from
-     * m_params.database (the connected database, still needed for
-     * reconnects/Copy Connection/Session save) rather than overwriting it.
-     * Not implemented this pass; the query below just surfaces a clear
-     * syntax-error message on Postgres/SQLite rather than silently
-     * corrupting m_params.database (the `if` only assigns on success). */
+    /* the toolbar combo's items are listDatabases()'s output, which for
+     * PostgreSQL means schemas (see PostgresConnection.h) — switching to
+     * one there is SET search_path, tracked in m_currentSchema, not
+     * m_params.database (the connected database — still needed as-is for
+     * reconnects/Copy Connection/Session save). SQLite has no equivalent
+     * of switching the "current" attached database via a single statement
+     * either way, so it's left on the MySQL-shaped USE below, same as
+     * before — that surfaces a clear syntax-error message there rather
+     * than silently doing nothing. */
+    if(m_params.driverType == DriverType::Postgres) {
+        QString error;
+        if(m_conn->query(QStringLiteral("SET search_path TO %1")
+                              .arg(m_conn->quoteIdent(db)), nullptr, &error)) {
+            m_currentSchema = db;
+            m_messages->setPlainText(QStringLiteral("Schema changed to %1").arg(db));
+            m_resultTabs->setCurrentWidget(m_messages);
+            updateCompletions();
+        } else {
+            m_messages->setPlainText(error);
+        }
+        return;
+    }
     QString error;
     if(m_conn->query(QStringLiteral("USE `%1`").arg(db), nullptr, &error)) {
         m_params.database = db;

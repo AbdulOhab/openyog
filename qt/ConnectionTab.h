@@ -236,9 +236,18 @@ private:
      * USE'd or attached at connect time. For PostgreSQL, m_params.database
      * is the *connected* database (needed for the libpq conninfo, see
      * PostgresConnection.h), not a schema — a schema-scoped call needs a
-     * different fallback: "public", Postgres's own default schema for a
-     * session that hasn't SET search_path to anything else. */
+     * different fallback: m_currentSchema (below), which useDatabase()
+     * changes via SET search_path when the user picks one from the
+     * toolbar's database combo; "public" (Postgres's own default schema)
+     * until then. */
     QString defaultDb() const;
+    /* PostgreSQL only: the schema useDatabase()'s SET search_path last
+     * switched to — kept separate from m_params.database on purpose, since
+     * that field must go on meaning "the connected database" for
+     * reconnects/Copy Connection/Session save, not "the schema currently
+     * being browsed". Empty until useDatabase() is called at least once
+     * (defaultDb() falls back to "public" for that case). */
+    QString m_currentSchema;
 
     /* selected table in the browser: [db, table] or empty */
     QStringList currentTableInfo() const;
