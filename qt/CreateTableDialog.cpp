@@ -94,10 +94,14 @@ CreateTableDialog::CreateTableDialog(QString database, QWidget *parent, DriverTy
                        : QStringLiteral("Create Table in `%1`").arg(m_database));
     buildCommon();
 
-    /* seed with an id INT PK AUTO_INCREMENT, like SQLyog's first row */
+    /* seed with an id INT PK AUTO_INCREMENT, like SQLyog's first row.
+     * SQLite gets "INTEGER" specifically (not "INT") because its rowid-alias
+     * auto-increment mechanism only kicks in for a column declared with
+     * that exact type name — see buildCreateSql()'s PK/AUTOINCREMENT
+     * handling below. */
     addColumnRow(QStringLiteral("id"),
-                 m_driver == DriverType::Postgres ? QStringLiteral("INTEGER")
-                                                  : QStringLiteral("INT"));
+                 m_driver == DriverType::Mysql ? QStringLiteral("INT")
+                                               : QStringLiteral("INTEGER"));
     if(auto *pk = cellBox(m_grid->cellWidget(0, CPk)))       pk->setChecked(true);
     if(auto *nn = cellBox(m_grid->cellWidget(0, CNotNull)))  nn->setChecked(true);
     if(auto *ai = cellBox(m_grid->cellWidget(0, CAuto)))     ai->setChecked(true);
@@ -140,17 +144,19 @@ void CreateTableDialog::buildCommon()
 {
     resize(820, 420);
     const bool pg = m_driver == DriverType::Postgres;
+    const bool mysql = m_driver == DriverType::Mysql;
 
     m_name = new QLineEdit(this);
+    m_name->setObjectName(QStringLiteral("tableName"));   /* test discoverability */
     m_name->setPlaceholderText(QStringLiteral("table name"));
 
     auto *top = new QFormLayout;
     top->addRow(QStringLiteral("Table &Name"), m_name);
 
-    /* PostgreSQL has no storage engines or per-table charset at all — not
-     * "not implemented yet" the way e.g. the SSL tab's other gaps are, so
-     * hidden rather than shown-disabled */
-    if(!pg) {
+    /* neither PostgreSQL nor SQLite has storage engines or per-table
+     * charset at all — not "not implemented yet" the way e.g. the SSL
+     * tab's other gaps are, so hidden rather than shown-disabled */
+    if(mysql) {
         m_engine = new QComboBox(this);
         m_engine->addItems({ QStringLiteral("InnoDB"), QStringLiteral("MyISAM"),
                              QStringLiteral("MEMORY"), QStringLiteral("ARCHIVE"),
@@ -179,6 +185,7 @@ void CreateTableDialog::buildCommon()
     }
 
     m_grid = new QTableWidget(0, ColCount, this);
+    m_grid->setObjectName(QStringLiteral("columnGrid"));   /* test discoverability */
     QStringList headers = {
         QStringLiteral("Column Name"), QStringLiteral("Data Type"),
         QStringLiteral("Length"), QStringLiteral("Default"),
@@ -199,6 +206,7 @@ void CreateTableDialog::buildCommon()
         m_grid->horizontalHeader()->resizeSection(c, 66);
 
     auto *addBtn = new QPushButton(QStringLiteral("&Add Column"), this);
+    addBtn->setObjectName(QStringLiteral("addColumnBtn"));   /* test discoverability */
     auto *delBtn = new QPushButton(QStringLiteral("&Remove Column"), this);
     connect(addBtn, &QPushButton::clicked, this, [this] { addColumnRow(); });
     connect(delBtn, &QPushButton::clicked, this,
@@ -336,10 +344,15 @@ QString CreateTableDialog::defBody(const ColumnDef &c) const
 
     if(c.isUnsigned) b += QStringLiteral(" UNSIGNED");
     if(c.notNull || c.pk) b += QStringLiteral(" NOT NULL");
-    if(c.autoInc) b += QStringLiteral(" AUTO_INCREMENT");
+    /* SQLite has no AUTO_INCREMENT column modifier — auto-increment there is
+     * a property of the PRIMARY KEY declaration itself (INTEGER PRIMARY KEY
+     * [AUTOINCREMENT]), composed by buildCreateSql()/buildAlterSqlSqlite(),
+     * not appended here */
+    if(c.autoInc && m_driver == DriverType::Mysql)
+        b += QStringLiteral(" AUTO_INCREMENT");
     if(!c.def.isEmpty())
         b += QStringLiteral(" DEFAULT %1").arg(formatDefault(c.def));
-    if(!c.comment.isEmpty())
+    if(!c.comment.isEmpty() && m_driver == DriverType::Mysql)
         b += QStringLiteral(" COMMENT '%1'")
                  .arg(QString(c.comment).replace('\'', QStringLiteral("''")));
     return b;
@@ -356,15 +369,39 @@ QString CreateTableDialog::buildCreateSql() const
     if(table.isEmpty())
         return {};
     const bool pg = m_driver == DriverType::Postgres;
+    const bool sqlite = m_driver == DriverType::Sqlite;
     const QString qualified = qualifyName(m_driver, m_database, table);
+
+    /* SQLite's auto-increment is a property of the PRIMARY KEY declaration
+     * itself (rowid aliasing), not a column modifier — only possible for a
+     * *single* PK column, and only reliable when its declared type is
+     * exactly "INTEGER". When that shape matches and Auto Incr? is checked,
+     * emit that column inline as "col INTEGER PRIMARY KEY [AUTOINCREMENT]"
+     * instead of a separate trailing PRIMARY KEY (...) clause; a composite
+     * PK (or a single PK column without Auto Incr? checked) falls back to
+     * the normal trailing clause below, same as MySQL/Postgres. */
+    QString sqlitePkAutoIncCol;
+    if(sqlite) {
+        int pkCount = 0;
+        for(int r = 0; r < m_grid->rowCount(); ++r) {
+            const ColumnDef c = rowColumnDef(r);
+            if(c.pk) { ++pkCount; if(c.autoInc) sqlitePkAutoIncCol = c.name; }
+        }
+        if(pkCount != 1)
+            sqlitePkAutoIncCol.clear();
+    }
 
     QStringList defs, pkCols, comments;
     for(int r = 0; r < m_grid->rowCount(); ++r) {
         const ColumnDef c = rowColumnDef(r);
         if(c.name.isEmpty())
             continue;
-        defs << QStringLiteral("  %1 %2").arg(qi(m_driver, c.name), defBody(c));
-        if(c.pk)
+        if(!sqlitePkAutoIncCol.isEmpty() && c.name == sqlitePkAutoIncCol)
+            defs << QStringLiteral("  %1 INTEGER PRIMARY KEY AUTOINCREMENT")
+                        .arg(qi(m_driver, c.name));
+        else
+            defs << QStringLiteral("  %1 %2").arg(qi(m_driver, c.name), defBody(c));
+        if(c.pk && c.name != sqlitePkAutoIncCol)
             pkCols << qi(m_driver, c.name);
         if(pg && !c.comment.isEmpty())
             comments << QStringLiteral("COMMENT ON COLUMN %1.%2 IS '%3'")
@@ -379,7 +416,7 @@ QString CreateTableDialog::buildCreateSql() const
 
     QString sql = QStringLiteral("CREATE TABLE %1 (\n%2\n)")
         .arg(qualified, defs.join(QStringLiteral(",\n")));
-    if(!pg)
+    if(m_driver == DriverType::Mysql)
         sql += QStringLiteral(" ENGINE=%1 DEFAULT CHARSET=%2")
                     .arg(m_engine->currentText(), m_charset->currentText());
     for(const QString &c : comments)
@@ -391,6 +428,8 @@ QString CreateTableDialog::buildAlterSql() const
 {
     if(m_driver == DriverType::Postgres)
         return buildAlterSqlPostgres();
+    if(m_driver == DriverType::Sqlite)
+        return buildAlterSqlSqlite();
 
     QStringList clauses, newPk;
     QStringList seenOrig;
@@ -447,6 +486,77 @@ QString CreateTableDialog::buildAlterSql() const
         : QStringLiteral("`%1`.`%2`").arg(m_database, m_table);
     return QStringLiteral("ALTER TABLE %1\n  %2")
         .arg(qualified, clauses.join(QStringLiteral(",\n  ")));
+}
+
+/* SQLite's ALTER TABLE supports exactly one clause per statement — ADD
+ * COLUMN, DROP COLUMN, RENAME COLUMN or RENAME TO — and none of them can
+ * change an existing column's type/NOT NULL/DEFAULT, add or drop a PRIMARY
+ * KEY, or add/drop AUTOINCREMENT; those all need the classic
+ * create-new-table/copy-data/drop-old/rename-new rebuild, which this
+ * dialog doesn't attempt. This emits the subset SQLite genuinely supports
+ * directly (each as its own statement — SQLite doesn't allow comma-joining
+ * multiple ALTER TABLE clauses the way MySQL/Postgres do); anything else
+ * populates alterLimitation() so the caller can tell the user what wasn't
+ * done, instead of either silently dropping it or sending SQL that would
+ * fail outright. */
+QString CreateTableDialog::buildAlterSqlSqlite() const
+{
+    m_alterLimitation.clear();
+    const QString qualified = qualifyName(m_driver, m_database, m_table);
+    QStringList stmts, newPk, seenOrig, limited;
+
+    for(int r = 0; r < m_grid->rowCount(); ++r) {
+        QTableWidgetItem *nameItem = m_grid->item(r, CName);
+        if(!nameItem)
+            continue;
+        const QString name = nameItem->text().trimmed();
+        if(name.isEmpty())
+            continue;
+        const QString orig = nameItem->data(Qt::UserRole).toString();
+        const ColumnDef c = rowColumnDef(r);
+        if(c.pk)
+            newPk << name;
+
+        if(orig.isEmpty()) {
+            /* ADD COLUMN can't add a PRIMARY KEY/UNIQUE column, and a
+             * NOT NULL column needs a non-NULL DEFAULT — there's no
+             * existing row value to backfill with otherwise */
+            if(c.pk || c.autoInc)
+                limited << QStringLiteral("%1 (new primary key/auto-increment column)").arg(name);
+            else if(c.notNull && c.def.isEmpty())
+                limited << QStringLiteral("%1 (NOT NULL column needs a DEFAULT to add)").arg(name);
+            else
+                stmts << QStringLiteral("ALTER TABLE %1 ADD COLUMN %2 %3")
+                            .arg(qualified, qi(m_driver, name), rowBody(r));
+            continue;
+        }
+
+        seenOrig << orig;
+        const ColumnDef &was = m_originalDefs.value(orig);
+        if(name != orig)
+            stmts << QStringLiteral("ALTER TABLE %1 RENAME COLUMN %2 TO %3")
+                        .arg(qualified, qi(m_driver, orig), qi(m_driver, name));
+        if(rowBody(r) != m_originalBody.value(orig) || c.autoInc != was.autoInc)
+            limited << QStringLiteral("%1 (column type/constraint change)").arg(name);
+    }
+
+    for(const QString &oc : m_originalCols)
+        if(!seenOrig.contains(oc))
+            stmts << QStringLiteral("ALTER TABLE %1 DROP COLUMN %2")
+                        .arg(qualified, qi(m_driver, oc));
+
+    QStringList a = newPk, b = m_originalPk;
+    a.sort();
+    b.sort();
+    if(a != b)
+        limited << QStringLiteral("primary key change");
+
+    if(!limited.isEmpty())
+        m_alterLimitation = QStringLiteral(
+            "SQLite can't change these without rebuilding the table "
+            "(not attempted here): %1.").arg(limited.join(QStringLiteral("; ")));
+
+    return stmts.join(QStringLiteral(";\n"));
 }
 
 /* PostgreSQL's ALTER TABLE can combine ADD/DROP COLUMN and per-column

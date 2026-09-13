@@ -22,6 +22,16 @@ QString qi(DriverType driver, const QString &ident)
                                                       QStringLiteral("``"))
          + QLatin1Char('`');
 }
+
+/* DROP INDEX's index-name argument is schema-qualified with a dot on both
+ * Postgres and SQLite — but a SQLite connection's `database` is routinely
+ * empty (see IDbConnection::qualify()'s own doc comment on this exact
+ * pattern), and an empty-then-dot prefix would be invalid syntax there */
+QString qualifyIndexName(DriverType driver, const QString &db, const QString &name)
+{
+    return db.isEmpty() ? qi(driver, name)
+                        : qi(driver, db) + QLatin1Char('.') + qi(driver, name);
+}
 } // namespace
 
 IndexDialog::IndexDialog(QString database, QString table,
@@ -34,6 +44,7 @@ IndexDialog::IndexDialog(QString database, QString table,
     resize(580, 460);
 
     m_grid = new QTableWidget(0, 3, this);
+    m_grid->setObjectName(QStringLiteral("indexGrid"));   /* test discoverability */
     m_grid->setMinimumHeight(150);
     m_grid->setHorizontalHeaderLabels(
         { QStringLiteral("Name"), QStringLiteral("Columns"),
@@ -51,13 +62,16 @@ IndexDialog::IndexDialog(QString database, QString table,
     }
 
     auto *removeBtn = new QPushButton(QStringLiteral("&Remove Selected"), this);
+    removeBtn->setObjectName(QStringLiteral("removeSelectedBtn"));   /* test discoverability */
     connect(removeBtn, &QPushButton::clicked, this, &IndexDialog::removeSelected);
 
     /* --- add-new area --- */
     m_newName = new QLineEdit(this);
+    m_newName->setObjectName(QStringLiteral("newIndexName"));   /* test discoverability */
     m_newName->setPlaceholderText(QStringLiteral("new index name"));
     m_newUnique = new QCheckBox(QStringLiteral("Unique"), this);
     m_newCols = new QListWidget(this);
+    m_newCols->setObjectName(QStringLiteral("newIndexCols"));   /* test discoverability */
     m_newCols->setSelectionMode(QAbstractItemView::NoSelection);
     m_newCols->setMaximumHeight(110);
     for(const QString &c : m_columns) {
@@ -66,6 +80,7 @@ IndexDialog::IndexDialog(QString database, QString table,
         it->setCheckState(Qt::Unchecked);
     }
     auto *addBtn = new QPushButton(QStringLiteral("&Add Index"), this);
+    addBtn->setObjectName(QStringLiteral("addIndexBtn"));   /* test discoverability */
     connect(addBtn, &QPushButton::clicked, this, &IndexDialog::addPending);
 
     auto *addRowL = new QHBoxLayout;
@@ -151,7 +166,10 @@ void IndexDialog::removeSelected()
 
 QString IndexDialog::buildSql() const
 {
-    const bool pg = m_driver == DriverType::Postgres;
+    /* neither Postgres nor SQLite has an ALTER TABLE ADD/DROP INDEX clause
+     * at all — both need CREATE INDEX/DROP INDEX as their own top-level
+     * statements (MySQL is the odd one out with an ALTER TABLE clause) */
+    const bool standalone = m_driver != DriverType::Mysql;
     QStringList current, adds;
     for(int r = 0; r < m_grid->rowCount(); ++r) {
         QTableWidgetItem *n = m_grid->item(r, 0);
@@ -165,8 +183,7 @@ QString IndexDialog::buildSql() const
             QStringList q;
             for(const QString &c : cols.split(QStringLiteral(", "), Qt::SkipEmptyParts))
                 q << qi(m_driver, c.trimmed());
-            if(pg)
-                /* its own top-level statement, not an ALTER TABLE clause */
+            if(standalone)
                 adds << QStringLiteral("CREATE %1INDEX %2 ON %3 (%4)")
                             .arg(uniq ? QStringLiteral("UNIQUE ") : QString(),
                                  qi(m_driver, name), qi(m_driver, m_table),
@@ -178,17 +195,15 @@ QString IndexDialog::buildSql() const
         }
     }
 
-    if(pg) {
-        /* same reason: DROP INDEX is its own statement in Postgres, not an
-         * ALTER TABLE clause, and takes a schema-qualified index name
-         * directly — no "ON table" (unlike MySQL's older DROP INDEX …
-         * ON table form, or its ALTER TABLE … DROP INDEX clause) */
+    if(standalone) {
+        /* DROP INDEX takes a (schema-qualified) index name directly — no
+         * "ON table" (unlike MySQL's older DROP INDEX … ON table form, or
+         * its ALTER TABLE … DROP INDEX clause) */
         QStringList statements;
         for(const QString &orig : m_originalNames)
             if(!current.contains(orig))
                 statements << QStringLiteral("DROP INDEX %1")
-                                  .arg(qi(m_driver, m_database) + QLatin1Char('.')
-                                       + qi(m_driver, orig));
+                                  .arg(qualifyIndexName(m_driver, m_database, orig));
         statements += adds;
         return statements.isEmpty() ? QString() : statements.join(QStringLiteral(";\n"));
     }

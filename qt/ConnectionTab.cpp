@@ -1651,6 +1651,21 @@ void ConnectionTab::dropDatabase(const QString &database)
     const QString db = database.isEmpty() ? defaultDb() : database;
     if(db.isEmpty())
         return;
+    if(m_params.driverType == DriverType::Sqlite) {
+        /* a SQLite "database" IS the open file — there's no DROP DATABASE
+         * statement, and dropping the file out from under the very
+         * connection reading it isn't something a DDL call can safely do
+         * anyway. Empty Database (drop every object, keep the file) is the
+         * closest real equivalent; actually removing the file is a
+         * filesystem operation the user does after closing the tab. */
+        QMessageBox::information(this, QStringLiteral("Drop Database"),
+            QStringLiteral("A SQLite connection's database is the open file "
+                           "itself — there's nothing to DROP while it's "
+                           "connected. Use Empty Database to drop every "
+                           "table/view/trigger and keep the file, or close "
+                           "this connection and delete the file."));
+        return;
+    }
     if(QMessageBox::warning(this, QStringLiteral("Drop Database"),
             QStringLiteral("Permanently DROP database `%1` and everything in it?")
                 .arg(db),
@@ -1684,6 +1699,18 @@ void ConnectionTab::truncateDatabase(const QString &database)
         const QString qdb = m_conn->quoteIdent(db);
         if(execDdl(QStringLiteral("DROP SCHEMA %1 CASCADE").arg(qdb)))
             execDdl(QStringLiteral("CREATE SCHEMA %1").arg(qdb));
+        return;
+    }
+    if(m_params.driverType == DriverType::Sqlite) {
+        /* SQLite has no CREATE/DROP DATABASE at all — "truncate the
+         * database, keep it empty" just means drop every object directly;
+         * views first (harmless either order, but avoids a moment where a
+         * view outlives the table it reads), then tables (dropping a table
+         * also drops its own triggers/indexes automatically in SQLite) */
+        for(const QString &v : m_conn->listTables(db, QStringLiteral("VIEW")))
+            execDdl(QStringLiteral("DROP VIEW %1").arg(m_conn->qualify(db, v)));
+        for(const QString &t : m_conn->listTables(db, QStringLiteral("BASE TABLE")))
+            execDdl(QStringLiteral("DROP TABLE %1").arg(m_conn->qualify(db, t)));
         return;
     }
 
@@ -1744,6 +1771,15 @@ void ConnectionTab::promptAlterDatabase(const QString &database)
             QStringLiteral("Character set/collation are whole-database "
                            "properties in PostgreSQL, fixed at creation — "
                            "there's nothing here to alter for a schema."));
+        return;
+    }
+    if(m_params.driverType == DriverType::Sqlite) {
+        QMessageBox::information(this, QStringLiteral("Alter Database"),
+            QStringLiteral("SQLite has no per-database character set or "
+                           "collation to alter — text encoding is fixed "
+                           "(UTF-8/16) for the whole file at creation, and "
+                           "collations are attached per-column/-index, not "
+                           "to the database as a whole."));
         return;
     }
 
@@ -3490,11 +3526,14 @@ void ConnectionTab::promptAlterTable(const QString &database,
     if(dlg.exec() != QDialog::Accepted)
         return;
     const QString sql = dlg.buildSql();
+    const QString limitation = dlg.alterLimitation();
     if(sql.isEmpty()) {
         QMessageBox::information(this, QStringLiteral("Alter Table"),
-            QStringLiteral("No changes to apply."));
+            limitation.isEmpty() ? QStringLiteral("No changes to apply.") : limitation);
         return;
     }
+    if(!limitation.isEmpty())
+        QMessageBox::warning(this, QStringLiteral("Alter Table"), limitation);
     execDdl(sql);
     if(m_tableData->loadedTable() == table)
         m_tableData->load(m_conn, db, table);
@@ -3620,7 +3659,39 @@ bool ConnectionTab::execDdl(const QString &sql)
     if(!m_conn)
         return false;
     QString error;
-    const bool ok = m_conn->query(sql, nullptr, &error);
+    bool ok;
+    if(m_params.driverType == DriverType::Sqlite) {
+        /* sqlite3_prepare_v2 (see SqliteConnection::runBuffered) only ever
+         * prepares the FIRST statement in a string and silently discards
+         * anything after it — unlike PQexec, which runs a whole
+         * semicolon-joined string as one implicit transaction. A few
+         * dialogs (e.g. CreateTableDialog's SQLite Alter Table path) build
+         * several ';'-separated statements the same way the Postgres path
+         * does, so split and run each one separately here rather than at
+         * every call site — wrapped in an explicit transaction when there's
+         * more than one, so a mid-sequence failure doesn't leave the
+         * earlier statements applied (matching PQexec's atomicity). */
+        const QStringList stmts = splitStatements(sql);
+        ok = true;
+        const bool multi = stmts.size() > 1;
+        if(multi)
+            m_conn->query(QStringLiteral("BEGIN"), nullptr, nullptr);
+        for(const QString &s : stmts) {
+            if(s.trimmed().isEmpty())
+                continue;
+            QString stmtErr;
+            if(!m_conn->query(s, nullptr, &stmtErr)) {
+                error = stmtErr;
+                ok = false;
+                break;
+            }
+        }
+        if(multi)
+            m_conn->query(ok ? QStringLiteral("COMMIT") : QStringLiteral("ROLLBACK"),
+                          nullptr, nullptr);
+    } else {
+        ok = m_conn->query(sql, nullptr, &error);
+    }
     m_messages->appendPlainText(ok ? QStringLiteral("OK: ") + sql
                                    : QStringLiteral("Error: ") + error);
     m_resultTabs->setCurrentWidget(m_messages);
