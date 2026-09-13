@@ -20,8 +20,10 @@
 #include <QFileDialog>
 #include <QFile>
 #include <QInputDialog>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QJsonValue>
 #include <QLabel>
 #include <QLineEdit>
 #include <QMenuBar>
@@ -175,10 +177,106 @@ MainWindow::MainWindow(QWidget *parent)
     connect(file->addAction(QStringLiteral("S&ave As…")), &QAction::triggered,
             this, [this] { if(auto *t = currentTab()) t->saveEditor(); });
     file->addSeparator();
-    addDisabled(file, QStringLiteral("Open Session Savepoint…\tCtrl+Shift+O"));
-    addDisabled(file, QStringLiteral("Save Session…\tCtrl+Shift+S"));
-    addDisabled(file, QStringLiteral("Save Session As…"));
-    addDisabled(file, QStringLiteral("End Session\tCtrl+Shift+X"));
+    /* a "session" here is just the list of open connections (name, driver,
+     * host/port/user/database-or-filepath — no password, same reasoning as
+     * Export Connection Details) — reopening a session reconnects each one
+     * via the normal openAndRun() path. It does not restore each tab's
+     * unsaved query text/editor tabs, only which servers were open. */
+    const auto saveSessionTo = [this](const QString &file) {
+        QJsonArray conns;
+        for(int i = 0; i < m_tabs->count(); ++i) {
+            if(auto *t = qobject_cast<ConnectionTab *>(m_tabs->widget(i))) {
+                const ConnectionParams &p = t->params();
+                QJsonObject o;
+                o["name"] = p.name;
+                o["driver"] = driverTypeToString(p.driverType);
+                o["host"] = p.host;
+                o["port"] = p.port;
+                o["user"] = p.user;
+                o["database"] = p.database;
+                o["filepath"] = p.filePath;
+                conns.append(o);
+            }
+        }
+        QJsonObject root;
+        root["connections"] = conns;
+        QFile f(file);
+        if(!f.open(QIODevice::WriteOnly | QIODevice::Truncate))
+            return false;
+        f.write(QJsonDocument(root).toJson());
+        m_sessionFile = file;
+        return true;
+    };
+    QAction *saveSession = file->addAction(QStringLiteral("Save Session…\tCtrl+Shift+S"));
+    connect(saveSession, &QAction::triggered, this, [this, saveSessionTo] {
+        QString target = m_sessionFile;
+        if(target.isEmpty())
+            target = QFileDialog::getSaveFileName(
+                this, QStringLiteral("Save Session"), QStringLiteral("session.oysession"),
+                QStringLiteral("OpenYog session (*.oysession)"));
+        if(target.isEmpty())
+            return;
+        if(!saveSessionTo(target))
+            QMessageBox::warning(this, QStringLiteral("Save Session"),
+                QStringLiteral("Could not write %1").arg(target));
+    });
+    QAction *saveSessionAs = file->addAction(QStringLiteral("Save Session As…"));
+    connect(saveSessionAs, &QAction::triggered, this, [this, saveSessionTo] {
+        const QString target = QFileDialog::getSaveFileName(
+            this, QStringLiteral("Save Session As"), QStringLiteral("session.oysession"),
+            QStringLiteral("OpenYog session (*.oysession)"));
+        if(target.isEmpty())
+            return;
+        if(!saveSessionTo(target))
+            QMessageBox::warning(this, QStringLiteral("Save Session"),
+                QStringLiteral("Could not write %1").arg(target));
+    });
+    QAction *openSession = file->addAction(
+        QStringLiteral("Open Session Savepoint…\tCtrl+Shift+O"));
+    connect(openSession, &QAction::triggered, this, [this] {
+        const QString target = QFileDialog::getOpenFileName(
+            this, QStringLiteral("Open Session"), QString(),
+            QStringLiteral("OpenYog session (*.oysession)"));
+        if(target.isEmpty())
+            return;
+        QFile f(target);
+        if(!f.open(QIODevice::ReadOnly)) {
+            QMessageBox::warning(this, QStringLiteral("Open Session"),
+                QStringLiteral("Could not read %1").arg(target));
+            return;
+        }
+        const QJsonArray conns =
+            QJsonDocument::fromJson(f.readAll()).object().value("connections").toArray();
+        for(const QJsonValue &v : conns) {
+            const QJsonObject o = v.toObject();
+            ConnectionParams p;
+            p.name = o.value("name").toString(QStringLiteral("Session connection"));
+            p.driverType = driverTypeFromString(o.value("driver").toString());
+            p.host = o.value("host").toString(p.host);
+            p.port = o.value("port").toInt(p.port);
+            p.user = o.value("user").toString();
+            p.database = o.value("database").toString();
+            p.filePath = o.value("filepath").toString();
+            if(p.driverType == DriverType::Mysql) {
+                bool ok = false;
+                p.password = QInputDialog::getText(
+                    this, QStringLiteral("Open Session"),
+                    QStringLiteral("Password for %1@%2 (left blank if none):")
+                        .arg(p.user, p.host),
+                    QLineEdit::Password, QString(), &ok);
+                if(!ok)
+                    continue;
+            }
+            openAndRun(p);
+        }
+        m_sessionFile = target;
+    });
+    QAction *endSession = file->addAction(QStringLiteral("End Session\tCtrl+Shift+X"));
+    connect(endSession, &QAction::triggered, this, [this] {
+        while(m_tabs->count())
+            closeTab(0);
+        m_sessionFile.clear();
+    });
     file->addSeparator();
     QMenu *recent = file->addMenu(QStringLiteral("&Recent Files"));
     recent->addAction(QStringLiteral("(no recent files)"))->setEnabled(false);

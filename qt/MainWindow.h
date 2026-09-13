@@ -62,4 +62,5 @@ private:
     QLabel     *m_totalLabel       = nullptr;
     QLabel     *m_cursorLabel      = nullptr;
     QLabel     *m_connectionsLabel = nullptr;
+    QString     m_sessionFile;   /* File > Save/Open Session */
 };
