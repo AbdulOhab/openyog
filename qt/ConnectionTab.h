@@ -123,6 +123,7 @@ public slots:
                         bool withData, bool dropFirst, bool withRoutines,
                         QString *error);
     void promptManageIndexes(const QString &database, const QString &table);
+    void promptDropColumn(const QString &database, const QString &table);
     void promptManageForeignKeys(const QString &database, const QString &table);
     void dropTable(const QString &database, const QString &table);
     void truncateTable(const QString &database, const QString &table);

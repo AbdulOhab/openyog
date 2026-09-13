@@ -1787,6 +1787,37 @@ void ConnectionTab::promptCopyTable(const QString &database, const QString &tabl
         execDdl(QStringLiteral("INSERT INTO %1 SELECT * FROM %2").arg(dst, src));
 }
 
+void ConnectionTab::promptDropColumn(const QString &database, const QString &table)
+{
+    if(!m_conn || table.isEmpty())
+        return;
+    const QString db = database.isEmpty() ? m_params.database : database;
+    const QString qualified = m_conn->qualify(db, table);
+
+    QStringList cols;
+    for(const QStringList &row : m_conn->listColumns(db, table).rows)
+        cols << row.value(0);
+    if(cols.isEmpty()) {
+        QMessageBox::information(this, QStringLiteral("Drop Column"),
+            QStringLiteral("No columns found in %1.").arg(qualified));
+        return;
+    }
+    bool ok = false;
+    const QString col = QInputDialog::getItem(
+        this, QStringLiteral("Drop Column"),
+        QStringLiteral("Column to drop from %1:").arg(qualified),
+        cols, 0, false, &ok);
+    if(!ok || col.isEmpty())
+        return;
+    if(QMessageBox::question(this, QStringLiteral("Drop Column"),
+           QStringLiteral("Drop column `%1` from %2? This cannot be undone.")
+               .arg(col, qualified))
+           != QMessageBox::Yes)
+        return;
+    execDdl(QStringLiteral("ALTER TABLE %1 DROP COLUMN %2")
+                .arg(qualified, m_conn->quoteIdent(col)));
+}
+
 void ConnectionTab::promptManageIndexes(const QString &database,
                                         const QString &table)
 {
