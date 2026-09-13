@@ -18,8 +18,12 @@
 #include <QIcon>
 #include <QPixmap>
 #include <QFileDialog>
+#include <QFile>
 #include <QInputDialog>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QLabel>
+#include <QLineEdit>
 #include <QMenuBar>
 #include <QMessageBox>
 #include <QPlainTextEdit>
@@ -620,8 +624,78 @@ MainWindow::MainWindow(QWidget *parent)
     addDisabled(tools, QStringLiteral("Change &Language\tAlt+Shift+L"));
     QMenu *connDetails =
         tools->addMenu(QStringLiteral("Export/I&mport Connection Details"));
-    addDisabled(connDetails, QStringLiteral("&Export Connection Details…"));
-    addDisabled(connDetails, QStringLiteral("&Import Connection Details…"));
+    QAction *exportConn =
+        connDetails->addAction(QStringLiteral("&Export Connection Details…"));
+    connect(exportConn, &QAction::triggered, this, [this] {
+        auto *t = currentTab();
+        if(!t) {
+            QMessageBox::information(this, QStringLiteral("Export Connection Details"),
+                QStringLiteral("Open a connection first."));
+            return;
+        }
+        const ConnectionParams &p = t->params();
+        const QString file = QFileDialog::getSaveFileName(
+            this, QStringLiteral("Export Connection Details"),
+            p.name + QStringLiteral(".json"),
+            QStringLiteral("Connection details (*.json)"));
+        if(file.isEmpty())
+            return;
+        QJsonObject o;
+        o["name"] = p.name;
+        o["driver"] = driverTypeToString(p.driverType);
+        o["host"] = p.host;
+        o["port"] = p.port;
+        o["user"] = p.user;
+        o["database"] = p.database;
+        o["filepath"] = p.filePath;
+        /* password deliberately left out — this file is meant to be
+         * shareable/backed-up; re-enter it on import instead */
+        QFile f(file);
+        if(!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+            QMessageBox::warning(this, QStringLiteral("Export Connection Details"),
+                QStringLiteral("Could not write %1").arg(file));
+            return;
+        }
+        f.write(QJsonDocument(o).toJson());
+        QMessageBox::information(this, QStringLiteral("Export Connection Details"),
+            QStringLiteral("Saved to %1\n(password not included — "
+                           "you'll be asked for it again on import)").arg(file));
+    });
+    QAction *importConn =
+        connDetails->addAction(QStringLiteral("&Import Connection Details…"));
+    connect(importConn, &QAction::triggered, this, [this] {
+        const QString file = QFileDialog::getOpenFileName(
+            this, QStringLiteral("Import Connection Details"), QString(),
+            QStringLiteral("Connection details (*.json)"));
+        if(file.isEmpty())
+            return;
+        QFile f(file);
+        if(!f.open(QIODevice::ReadOnly)) {
+            QMessageBox::warning(this, QStringLiteral("Import Connection Details"),
+                QStringLiteral("Could not read %1").arg(file));
+            return;
+        }
+        const QJsonObject o = QJsonDocument::fromJson(f.readAll()).object();
+        ConnectionParams p;
+        p.name = o.value("name").toString(QStringLiteral("Imported connection"));
+        p.driverType = driverTypeFromString(o.value("driver").toString());
+        p.host = o.value("host").toString(p.host);
+        p.port = o.value("port").toInt(p.port);
+        p.user = o.value("user").toString();
+        p.database = o.value("database").toString();
+        p.filePath = o.value("filepath").toString();
+        if(p.driverType == DriverType::Mysql) {
+            bool ok = false;
+            p.password = QInputDialog::getText(
+                this, QStringLiteral("Import Connection Details"),
+                QStringLiteral("Password for %1@%2 (left blank if none):")
+                    .arg(p.user, p.host),
+                QLineEdit::Password, QString(), &ok);
+            if(!ok)
+                return;
+        }
+        openAndRun(p);
+    });
     addDisabled(tools, QStringLiteral("&Preferences…"));
     QAction *queryTimeout = tools->addAction(QStringLiteral("Query &Timeout…"));
     connect(queryTimeout, &QAction::triggered, this, [this] {
