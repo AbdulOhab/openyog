@@ -2501,7 +2501,7 @@ void ConnectionTab::promptUserManager()
                            "permissions on the .sqlite file itself."));
         return;
     }
-    UserManagerDialog(m_conn, this).exec();
+    UserManagerDialog(m_conn, this, m_params.driverType).exec();
 }
 
 void ConnectionTab::tableDiagnostics(const QString &database, const QString &table)
