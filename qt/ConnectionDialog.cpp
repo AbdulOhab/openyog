@@ -14,8 +14,6 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QMessageBox>
-#include <QFont>
-#include <QPainter>
 #include <QPixmap>
 #include <QPushButton>
 #include <QRadioButton>
@@ -39,74 +37,6 @@ QWidget *placeholderTab(const QString &what)
     return w;
 }
 
-/* draws a plain "cylinder" database glyph — the generic icon used
- * everywhere to mean "a database", not any specific backend's mark */
-void drawDbGlyph(QPainter &p, QRectF r, const QColor &bg)
-{
-    const qreal ellH = r.height() * 0.32;
-    p.setPen(Qt::NoPen);
-    p.setBrush(Qt::white);
-    p.drawRoundedRect(QRectF(r.left(), r.top() + ellH / 2, r.width(), r.height() - ellH),
-                      r.width() * 0.12, r.width() * 0.12);
-    p.setBrush(bg);
-    p.drawEllipse(QRectF(r.left(), r.top(), r.width(), ellH));
-    p.setPen(QPen(Qt::white, qMax(1.2, r.width() * 0.06)));
-    p.setBrush(Qt::NoBrush);
-    p.drawEllipse(QRectF(r.left(), r.top(), r.width(), ellH));
-}
-
-/* The left strip's only MySQL-specific bitmap is its bottom "WORKS WITH
- * MySQL" logo band (upstream include/bitmaps/connection.png); the blue
- * background + plug icon above it are generic. For any other driver, reuse
- * that generic part and relabel the band with a plain database glyph +
- * the name — no third-party trademark reproduced, just a generic "this is
- * a database" icon, so the panel never claims a backend it isn't
- * connecting to while still looking like a deliberate badge, not an
- * afterthought. */
-QPixmap genericBrandPixmap(const QString &name)
-{
-    const QPixmap source(Icons::dir() + QStringLiteral("connection.png"));
-    const QSize size = source.isNull() ? QSize(150, 358) : source.size();
-    constexpr int kIconBandHeight = 270;   /* below this = the MySQL logo band */
-
-    QPixmap out(size);
-    const QColor bg(0, 97, 138);
-    out.fill(bg);
-    QPainter p(&out);
-    p.setRenderHint(QPainter::Antialiasing);
-    if(!source.isNull())
-        p.drawPixmap(0, 0, source, 0, 0, size.width(), kIconBandHeight);
-
-    const int bandTop = kIconBandHeight;
-    const int cx = size.width() / 2;
-
-    p.setPen(QColor(190, 220, 232));
-    QFont capFont = p.font();
-    capFont.setPointSize(8);
-    capFont.setBold(true);
-    p.setFont(capFont);
-    p.drawText(QRect(0, bandTop + 8, size.width(), 16),
-               Qt::AlignHCenter | Qt::AlignTop, QStringLiteral("WORKS WITH"));
-
-    QFont nameFont = p.font();
-    nameFont.setBold(true);
-    nameFont.setPointSize(15);
-    const QFontMetrics fm(nameFont);
-    const int nameW = fm.horizontalAdvance(name);
-    const int iconSize = 26;
-    const int gap = 8;
-    const int groupW = iconSize + gap + nameW;
-    const int groupX = cx - groupW / 2;
-    const int groupY = bandTop + 34;
-
-    drawDbGlyph(p, QRectF(groupX, groupY, iconSize, iconSize), bg);
-    p.setPen(Qt::white);
-    p.setFont(nameFont);
-    p.drawText(QRect(groupX + iconSize + gap, groupY - 4, nameW + 4, iconSize + 8),
-               Qt::AlignVCenter | Qt::AlignLeft, name);
-    p.end();
-    return out;
-}
 } // namespace
 
 ConnectionDialog::ConnectionDialog(QWidget *parent)
@@ -117,10 +47,9 @@ ConnectionDialog::ConnectionDialog(QWidget *parent)
     /* keep port / seconds fields as plain ASCII digits, like SQLyog */
     setLocale(QLocale::c());
 
-    /* ---- left image strip (GPL bitmap from include/bitmaps; swaps to a
-     * plain-text SQLite relabel — see sqliteBrandPixmap() — when that
-     * driver is selected, so this panel never claims to be MySQL when it
-     * isn't) ---------------------------------------------------------- */
+    /* ---- left image strip: include/bitmaps/connection*.png, one 150x358
+     * bitmap per driver, swapped by driverChanged() so this panel never
+     * claims to be MySQL when it isn't ------------------------------- */
     m_brandImage = new QLabel(this);
     m_brandImage->setPixmap(QPixmap(Icons::dir() + QStringLiteral("connection.png")));
     m_brandImage->setAlignment(Qt::AlignTop | Qt::AlignHCenter);
@@ -573,10 +502,10 @@ void ConnectionDialog::driverChanged(int index)
     setWindowTitle(dt == DriverType::Sqlite   ? QStringLiteral("Connect to SQLite Database")
                   : dt == DriverType::Postgres ? QStringLiteral("Connect to PostgreSQL Server")
                                                : QStringLiteral("Connect to MySQL Host"));
-    m_brandImage->setPixmap(
-        dt == DriverType::Sqlite   ? genericBrandPixmap(QStringLiteral("SQLite"))
-      : dt == DriverType::Postgres ? genericBrandPixmap(QStringLiteral("PostgreSQL"))
-                                   : QPixmap(Icons::dir() + QStringLiteral("connection.png")));
+    m_brandImage->setPixmap(QPixmap(Icons::dir() + (
+        dt == DriverType::Sqlite   ? QStringLiteral("connection_sqlite.png")
+      : dt == DriverType::Postgres ? QStringLiteral("connection_postgres.png")
+                                   : QStringLiteral("connection.png"))));
 }
 
 void ConnectionDialog::browseSqliteFile()
