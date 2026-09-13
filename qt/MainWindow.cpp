@@ -982,11 +982,29 @@ MainWindow::MainWindow(QWidget *parent)
         if(auto *t = currentTab())
             t->runStatements(QStringList{ sql }, QStringLiteral("Transaction"));
     };
-    /* isolation level / autocommit-as-a-SET / consistent-snapshot / chained
-     * commit are all InnoDB-transaction concepts with no SQLite equivalent
-     * (SQLite's own isolation is fixed by its locking mode, not settable
-     * per-session) — guarded the same way Flush guards itself. */
+    /* Set Autocommit and Commit RELEASE/NO RELEASE are genuinely MySQL-only
+     * (no SQL-level autocommit toggle in Postgres at all — psql's own
+     * \set AUTOCOMMIT is a client setting, not something SET can touch; and
+     * RELEASE, which closes the client connection after commit, has no
+     * Postgres or SQLite equivalent either). Guarded the same way Flush
+     * guards itself. */
     const auto mysqlOnlyTx = [this](const QString &sql) {
+        auto *t = currentTab();
+        if(!t) return;
+        if(t->driverType() != DriverType::Mysql) {
+            QMessageBox::information(this, QStringLiteral("Transactions"),
+                QStringLiteral("MySQL only."));
+            return;
+        }
+        t->runStatements(QStringList{ sql }, QStringLiteral("Transaction"));
+    };
+    /* isolation level and chained commit ARE standard SQL PostgreSQL
+     * supports directly (confirmed against a live server: "SET SESSION
+     * TRANSACTION ISOLATION LEVEL x" and "COMMIT AND [NO] CHAIN" both work
+     * as-is, the identical MySQL phrasing) — only SQLite has neither
+     * concept (its own isolation is fixed by its locking mode, not
+     * settable per-session, and it has no chained-commit syntax). */
+    const auto notSqliteTx = [this](const QString &sql) {
         auto *t = currentTab();
         if(!t) return;
         if(t->driverType() == DriverType::Sqlite) {
@@ -1015,8 +1033,8 @@ MainWindow::MainWindow(QWidget *parent)
         QAction *a = isolation->addAction(label);
         a->setCheckable(true);
         isoGroup->addAction(a);
-        connect(a, &QAction::triggered, this, [mysqlOnlyTx, level] {
-            mysqlOnlyTx(QStringLiteral("SET SESSION TRANSACTION ISOLATION LEVEL %1")
+        connect(a, &QAction::triggered, this, [notSqliteTx, level] {
+            notSqliteTx(QStringLiteral("SET SESSION TRANSACTION ISOLATION LEVEL %1")
                             .arg(level));
         });
     }
@@ -1030,15 +1048,30 @@ MainWindow::MainWindow(QWidget *parent)
         runTx(t->driverType() == DriverType::Sqlite
                   ? QStringLiteral("BEGIN") : QStringLiteral("START TRANSACTION"));
     });
+    /* "WITH CONSISTENT SNAPSHOT" is MySQL/InnoDB-specific phrasing for a
+     * repeatable-read snapshot semantic Postgres reaches differently — but
+     * the READ ONLY/READ WRITE transaction mode underneath is standard SQL
+     * Postgres supports directly (confirmed against a live server), just
+     * without that clause. SQLite has no transaction-mode concept at all. */
     QMenu *snapshot = startTrx->addMenu(QStringLiteral("With Consistent Snapshot"));
     QAction *snapRO = snapshot->addAction(QStringLiteral("Read only"));
-    connect(snapRO, &QAction::triggered, this, [mysqlOnlyTx] {
-        mysqlOnlyTx(QStringLiteral(
-            "START TRANSACTION WITH CONSISTENT SNAPSHOT, READ ONLY")); });
+    connect(snapRO, &QAction::triggered, this, [this, notSqliteTx] {
+        auto *t = currentTab();
+        if(!t) return;
+        notSqliteTx(t->driverType() == DriverType::Postgres
+                        ? QStringLiteral("START TRANSACTION READ ONLY")
+                        : QStringLiteral(
+                              "START TRANSACTION WITH CONSISTENT SNAPSHOT, READ ONLY"));
+    });
     QAction *snapRW = snapshot->addAction(QStringLiteral("Read Write"));
-    connect(snapRW, &QAction::triggered, this, [mysqlOnlyTx] {
-        mysqlOnlyTx(QStringLiteral(
-            "START TRANSACTION WITH CONSISTENT SNAPSHOT, READ WRITE")); });
+    connect(snapRW, &QAction::triggered, this, [this, notSqliteTx] {
+        auto *t = currentTab();
+        if(!t) return;
+        notSqliteTx(t->driverType() == DriverType::Postgres
+                        ? QStringLiteral("START TRANSACTION READ WRITE")
+                        : QStringLiteral(
+                              "START TRANSACTION WITH CONSISTENT SNAPSHOT, READ WRITE"));
+    });
 
     QMenu *commit = transactions->addMenu(QStringLiteral("Commit"));
     QAction *commitPlain = commit->addAction(QStringLiteral("With no modifier"));
@@ -1047,10 +1080,10 @@ MainWindow::MainWindow(QWidget *parent)
     commit->addSeparator();
     QAction *commitChain = commit->addAction(QStringLiteral("And Chain"));
     connect(commitChain, &QAction::triggered, this,
-            [mysqlOnlyTx] { mysqlOnlyTx(QStringLiteral("COMMIT AND CHAIN")); });
+            [notSqliteTx] { notSqliteTx(QStringLiteral("COMMIT AND CHAIN")); });
     QAction *commitNoChain = commit->addAction(QStringLiteral("And No Chain"));
     connect(commitNoChain, &QAction::triggered, this,
-            [mysqlOnlyTx] { mysqlOnlyTx(QStringLiteral("COMMIT AND NO CHAIN")); });
+            [notSqliteTx] { notSqliteTx(QStringLiteral("COMMIT AND NO CHAIN")); });
     commit->addSeparator();
     QAction *commitRelease = commit->addAction(QStringLiteral("Release"));
     connect(commitRelease, &QAction::triggered, this,
