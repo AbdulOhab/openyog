@@ -1298,14 +1298,25 @@ void MainWindow::createDatabase()
     auto *tab = currentTab();
     if(!tab)
         return;
+    const bool pg = tab->driverType() == DriverType::Postgres;
     bool ok = false;
     const QString name = QInputDialog::getText(
         this, QStringLiteral("Create Database"),
-        QStringLiteral("Database name:"), QLineEdit::Normal, {}, &ok);
+        pg ? QStringLiteral("Schema name:") : QStringLiteral("Database name:"),
+        QLineEdit::Normal, {}, &ok);
     if(!ok || name.isEmpty())
         return;
-    tab->execDdl(QStringLiteral("CREATE DATABASE `%1` CHARACTER SET utf8mb4")
-                     .arg(name));
+    /* "database" means schema for Postgres (see PostgresConnection.h) — no
+     * per-schema charset to specify there, unlike MySQL's whole-database one */
+    if(pg) {
+        const QString qname = QLatin1Char('"')
+            + QString(name).replace(QLatin1Char('"'), QStringLiteral("\"\""))
+            + QLatin1Char('"');
+        tab->execDdl(QStringLiteral("CREATE SCHEMA %1").arg(qname));
+    } else {
+        tab->execDdl(QStringLiteral("CREATE DATABASE `%1` CHARACTER SET utf8mb4")
+                         .arg(name));
+    }
 }
 
 void MainWindow::createTable(const QString &database)

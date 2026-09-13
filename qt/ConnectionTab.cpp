@@ -1844,11 +1844,20 @@ void ConnectionTab::promptCopyTable(const QString &database, const QString &tabl
     const QString tgtDb = targetDb->currentText();
     if(tgt.isEmpty())
         return;
-    const QString src = QStringLiteral("`%1`.`%2`").arg(srcDb, table);
-    const QString dst = QStringLiteral("`%1`.`%2`").arg(tgtDb, tgt);
+    const QString src = m_conn->qualify(srcDb, table);
+    const QString dst = m_conn->qualify(tgtDb, tgt);
 
     if(wantStructure->isChecked()) {
-        if(!execDdl(QStringLiteral("CREATE TABLE %1 LIKE %2").arg(dst, src)))
+        /* MySQL/SQLite: CREATE TABLE new LIKE old (indexes/keys included by
+         * default). PostgreSQL needs the parenthesized LIKE-clause form,
+         * and INCLUDING ALL to get the same completeness — a bare LIKE
+         * there only copies column definitions, not indexes/defaults/
+         * constraints. */
+        const bool ok = m_params.driverType == DriverType::Postgres
+            ? execDdl(QStringLiteral("CREATE TABLE %1 (LIKE %2 INCLUDING ALL)")
+                          .arg(dst, src))
+            : execDdl(QStringLiteral("CREATE TABLE %1 LIKE %2").arg(dst, src));
+        if(!ok)
             return;
     }
     if(wantData->isChecked())
