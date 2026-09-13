@@ -48,8 +48,10 @@ public:
     bool selftestCopyDb(const QString &src, const QString &tgt);
     /* --sqlitecopydb=target[:nodata] selftest */
     bool selftestCopySqliteFile(const QString &target, bool withData);
-    /* --sqlitecsvimport=file.csv:table selftest */
-    bool selftestCsvImportSqlite(const QString &file, const QString &table);
+    /* --sqlitecsvimport=file.csv:table / --pgcsvimport=file.csv:table[:onDup]
+     * selftests (db is "" for SQLite, a schema for PostgreSQL) */
+    bool selftestCsvImportBatched(const QString &db, const QString &file,
+                                  const QString &table, const QString &onDup);
     /* --schemahtmltest=out.html selftest */
     bool selftestSchemaHtml(const QString &outFile);
 

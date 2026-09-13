@@ -2091,12 +2091,12 @@ void ConnectionTab::promptCopyDatabase(const QString &database)
     refreshBrowser();
 }
 
-bool ConnectionTab::importCsvIntoSqlite(const QString &db, const QString &table,
-                                        const QString &file, const QString &sep,
-                                        const QString &quote, const QString &escCh,
-                                        bool hasHeader, int extraSkipLines,
-                                        bool truncateFirst, const QString &onDup,
-                                        int *rowsInserted, QString *error)
+bool ConnectionTab::importCsvBatched(const QString &db, const QString &table,
+                                     const QString &file, const QString &sep,
+                                     const QString &quote, const QString &escCh,
+                                     bool hasHeader, int extraSkipLines,
+                                     bool truncateFirst, const QString &onDup,
+                                     int *rowsInserted, QString *error)
 {
     if(!m_conn) { if(error) *error = QStringLiteral("not connected"); return false; }
     QFile f(file);
@@ -2114,6 +2114,8 @@ bool ConnectionTab::importCsvIntoSqlite(const QString &db, const QString &table,
     QStringList colNames;
     if(hasHeader && !rows.isEmpty()) {
         colNames = rows.first();
+        for(QString &c : colNames)
+            c = c.trimmed();
         start = 1;
     }
     start += extraSkipLines;
@@ -2125,7 +2127,7 @@ bool ConnectionTab::importCsvIntoSqlite(const QString &db, const QString &table,
     if(!colNames.isEmpty()) {
         QStringList q;
         for(const QString &c : colNames)
-            q << m_conn->quoteIdent(c.trimmed());
+            q << m_conn->quoteIdent(c);
         colClause = QStringLiteral(" (%1)").arg(q.join(QStringLiteral(", ")));
     }
     const auto qv = [&](const QString &v) {
@@ -2135,8 +2137,47 @@ bool ConnectionTab::importCsvIntoSqlite(const QString &db, const QString &table,
              + QLatin1Char('\'');
     };
     const QString qualified = m_conn->qualify(db, table);
-    const QString verb = onDup == QStringLiteral("REPLACE")
-        ? QStringLiteral("INSERT OR REPLACE") : QStringLiteral("INSERT OR IGNORE");
+
+    /* SQLite: INSERT OR IGNORE/REPLACE INTO ... — the whole conflict policy
+     * lives in the verb, no clause needed after VALUES(...).
+     * PostgreSQL: has neither keyword — the equivalent is
+     * INSERT INTO ... VALUES (...) ON CONFLICT ... , appended *after* the
+     * tuple, and "DO UPDATE" (REPLACE's real meaning: overwrite the
+     * existing row) needs an explicit conflict target and column list,
+     * not just a bare keyword. Built from the table's primary key when the
+     * header names it (listIndexes() is the same canonical shape used
+     * throughout the seam); anything less certain — no header, or the PK
+     * isn't fully present in the imported columns — falls back to
+     * ON CONFLICT DO NOTHING (IGNORE's behavior) rather than guessing at
+     * an update that could silently target the wrong row. */
+    QString verb = QStringLiteral("INSERT");
+    QString conflictClause;
+    if(m_params.driverType == DriverType::Sqlite) {
+        verb = onDup == QStringLiteral("REPLACE")
+            ? QStringLiteral("INSERT OR REPLACE") : QStringLiteral("INSERT OR IGNORE");
+    } else if(m_params.driverType == DriverType::Postgres) {
+        QStringList pkCols;
+        for(const QStringList &row : m_conn->listIndexes(db, table).rows)
+            if(row.value(2) == QStringLiteral("PRIMARY"))
+                pkCols << row.value(4);
+        const bool pkUsable = !pkCols.isEmpty() && !colNames.isEmpty()
+            && std::all_of(pkCols.cbegin(), pkCols.cend(), [&](const QString &c) {
+                   return colNames.contains(c, Qt::CaseInsensitive); });
+        if(onDup == QStringLiteral("REPLACE") && pkUsable) {
+            QStringList pkQ, setClauses;
+            for(const QString &c : pkCols)
+                pkQ << m_conn->quoteIdent(c);
+            for(const QString &c : colNames)
+                if(!pkCols.contains(c, Qt::CaseInsensitive))
+                    setClauses << QStringLiteral("%1 = EXCLUDED.%1").arg(m_conn->quoteIdent(c));
+            conflictClause = setClauses.isEmpty()
+                ? QStringLiteral(" ON CONFLICT (%1) DO NOTHING").arg(pkQ.join(QStringLiteral(", ")))
+                : QStringLiteral(" ON CONFLICT (%1) DO UPDATE SET %2")
+                      .arg(pkQ.join(QStringLiteral(", ")), setClauses.join(QStringLiteral(", ")));
+        } else {
+            conflictClause = QStringLiteral(" ON CONFLICT DO NOTHING");
+        }
+    }
 
     m_conn->query(QStringLiteral("BEGIN"), nullptr, nullptr);
     int inserted = 0;
@@ -2147,8 +2188,8 @@ bool ConnectionTab::importCsvIntoSqlite(const QString &db, const QString &table,
         QStringList vals;
         for(const QString &v : row)
             vals << qv(v);
-        const QString sql = QStringLiteral("%1 INTO %2%3 VALUES (%4)")
-            .arg(verb, qualified, colClause, vals.join(QStringLiteral(", ")));
+        const QString sql = QStringLiteral("%1 INTO %2%3 VALUES (%4)%5")
+            .arg(verb, qualified, colClause, vals.join(QStringLiteral(", ")), conflictClause);
         QString stmtErr;
         if(!m_conn->query(sql, nullptr, &stmtErr)) {
             m_conn->query(QStringLiteral("ROLLBACK"), nullptr, nullptr);
@@ -2813,10 +2854,10 @@ void ConnectionTab::promptImportXml(const QString &database, const QString &tabl
 {
     if(!m_conn)
         return;
-    if(m_params.driverType == DriverType::Sqlite) {
+    if(m_params.driverType != DriverType::Mysql) {
         QMessageBox::information(this, QStringLiteral("Import XML"),
             QStringLiteral("XML import needs LOAD XML LOCAL INFILE, which is "
-                           "MySQL-only — not available on a SQLite connection. "
+                           "MySQL-only — not available on this connection. "
                            "Use Import CSV instead."));
         return;
     }
@@ -2953,10 +2994,10 @@ void ConnectionTab::promptImportCsv(const QString &database, const QString &tabl
     lay->addLayout(form);
     lay->addWidget(new QLabel(QStringLiteral("File preview:"), &dlg));
     lay->addWidget(importFilePreview(&dlg, file));
-    const bool sqlite = m_params.driverType == DriverType::Sqlite;
-    lay->addWidget(new QLabel(sqlite
+    const bool noBulkLoader = m_params.driverType != DriverType::Mysql;
+    lay->addWidget(new QLabel(noBulkLoader
         ? QStringLiteral("Parsed and inserted row by row inside one transaction "
-                         "(SQLite has no server-side bulk loader).")
+                         "(no server-side bulk loader on this backend).")
         : QStringLiteral(
         "Uses LOAD DATA LOCAL INFILE — the server must allow local-infile."),
         &dlg));
@@ -2974,10 +3015,10 @@ void ConnectionTab::promptImportCsv(const QString &database, const QString &tabl
     };
     const int skip = (header->isChecked() ? 1 : 0) + skipLines->value();
 
-    if(sqlite) {
+    if(noBulkLoader) {
         int rows = 0;
         QString err;
-        const bool ok = importCsvIntoSqlite(
+        const bool ok = importCsvBatched(
             db, target, file, sep, quote, escChar->text(), header->isChecked(),
             skipLines->value(), truncate->isChecked(),
             onDup->currentData().toString(), &rows, &err);

@@ -70,6 +70,7 @@ int main(int argc, char *argv[])
     QString copyDbArg;
     QString sqliteCopyDbArg;
     QString sqliteCsvImportArg;
+    QString pgCsvImportArg;
     QString schemaHtmlArg;
     QString delConn;
     for(int i = 1; i < argc; ++i) {
@@ -107,6 +108,8 @@ int main(int argc, char *argv[])
             sqliteCopyDbArg = a.mid(QStringLiteral("--sqlitecopydb=").size());
         if(a.startsWith(QStringLiteral("--sqlitecsvimport=")))
             sqliteCsvImportArg = a.mid(QStringLiteral("--sqlitecsvimport=").size());
+        if(a.startsWith(QStringLiteral("--pgcsvimport=")))
+            pgCsvImportArg = a.mid(QStringLiteral("--pgcsvimport=").size());
         if(a.startsWith(QStringLiteral("--schemahtmltest=")))
             schemaHtmlArg = a.mid(QStringLiteral("--schemahtmltest=").size());
         if(a.startsWith(QStringLiteral("--delconn=")))
@@ -945,7 +948,21 @@ int main(int argc, char *argv[])
         const QStringList p = sqliteCsvImportArg.split(':');
         MainWindow w;
         rc = (p.size() == 2 && w.openAndRun(autoConnect)
-              && w.selftestCsvImportSqlite(p[0], p[1])) ? 0 : 1;
+              && w.selftestCsvImportBatched({}, p[0], p[1], QStringLiteral("IGNORE")))
+             ? 0 : 1;
+        dbDriverFor(DriverType::Mysql)->libraryShutdown();
+        return rc;
+    }
+
+    /* --pgcsvimport=file.csv:table[:REPLACE] selftest (headless): autoconnect
+     * (via --autoconnectpg=), import the CSV into the "public" schema, exit */
+    if(!pgCsvImportArg.isEmpty() && doAutoConnect) {
+        const QStringList p = pgCsvImportArg.split(':');
+        MainWindow w;
+        rc = (p.size() >= 2 && w.openAndRun(autoConnect)
+              && w.selftestCsvImportBatched(QStringLiteral("public"), p[0], p[1],
+                                            p.size() > 2 ? p[2] : QStringLiteral("IGNORE")))
+             ? 0 : 1;
         dbDriverFor(DriverType::Mysql)->libraryShutdown();
         return rc;
     }
