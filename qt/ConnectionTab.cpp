@@ -2347,6 +2347,73 @@ void ConnectionTab::promptUserManager()
     UserManagerDialog(m_conn, this).exec();
 }
 
+void ConnectionTab::tableDiagnostics(const QString &database, const QString &table)
+{
+    if(!m_conn || table.isEmpty())
+        return;
+    const bool sqlite = m_params.driverType == DriverType::Sqlite;
+    const QString qualified = m_conn->qualify(database, table);
+
+    QDialog dlg(this);
+    dlg.setWindowTitle(QStringLiteral("Table Diagnostics — %1").arg(table));
+    auto *lay = new QVBoxLayout(&dlg);
+    lay->addWidget(new QLabel(QStringLiteral("Run a maintenance statement on %1:")
+                                  .arg(qualified), &dlg));
+
+    struct Op { QString label, mysqlSql, sqliteSql, note; };
+    const QList<Op> ops = {
+        { QStringLiteral("&Check"),
+          QStringLiteral("CHECK TABLE %1").arg(qualified),
+          QStringLiteral("PRAGMA integrity_check"),
+          sqlite ? QStringLiteral(" (whole file, not just this table)") : QString() },
+        { QStringLiteral("&Analyze"),
+          QStringLiteral("ANALYZE TABLE %1").arg(qualified),
+          QStringLiteral("ANALYZE %1").arg(m_conn->quoteIdent(table)), QString() },
+        { QStringLiteral("&Optimize"),
+          QStringLiteral("OPTIMIZE TABLE %1").arg(qualified),
+          QStringLiteral("VACUUM"),
+          sqlite ? QStringLiteral(" (whole file, not just this table)") : QString() },
+        { QStringLiteral("&Repair"),
+          QStringLiteral("REPAIR TABLE %1").arg(qualified),
+          QString(), QStringLiteral(" (no SQLite equivalent)") },
+    };
+    for(const Op &op : ops) {
+        auto *row = new QHBoxLayout;
+        auto *btn = new QPushButton(op.label, &dlg);
+        const QString sql = sqlite ? op.sqliteSql : op.mysqlSql;
+        btn->setEnabled(!sql.isEmpty());
+        connect(btn, &QPushButton::clicked, &dlg, [this, &dlg, sql] {
+            dlg.accept();
+            runStatements(QStringList{ sql }, QStringLiteral("Diagnostics"));
+        });
+        row->addWidget(btn);
+        row->addWidget(new QLabel(op.note, &dlg));
+        row->addStretch(1);
+        lay->addLayout(row);
+    }
+    auto *close = new QDialogButtonBox(QDialogButtonBox::Close, &dlg);
+    connect(close, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
+    connect(close, &QDialogButtonBox::clicked, &dlg, &QDialog::reject);
+    lay->addWidget(close);
+    dlg.exec();
+}
+
+void ConnectionTab::showConnectionInfo()
+{
+    if(!m_conn)
+        return;
+    const QString msg = QStringLiteral(
+        "Driver: %1\nServer: %2\n%3: %4\nCurrent database: %5")
+        .arg(dbDriverFor(m_params.driverType)->driverName(),
+             m_conn->serverInfo(),
+             m_params.driverType == DriverType::Sqlite
+                 ? QStringLiteral("File") : QStringLiteral("Host"),
+             hostLabel(),
+             m_params.database.isEmpty() ? QStringLiteral("(none)")
+                                         : m_params.database);
+    QMessageBox::information(this, QStringLiteral("Connection Info"), msg);
+}
+
 void ConnectionTab::exportCurrent()
 {
     if(m_resultTabs->currentWidget() == m_tableData
