@@ -2633,6 +2633,53 @@ QString ConnectionTab::buildSchemaHtml(const QString &db)
     return html;
 }
 
+void ConnectionTab::promptDataSearch(const QString &database)
+{
+    if(!m_conn)
+        return;
+    const QString db = database.isEmpty() ? m_params.database : database;
+    if(db.isEmpty()) {
+        QMessageBox::information(this, QStringLiteral("Data Search"),
+            QStringLiteral("Select a database first."));
+        return;
+    }
+    bool ok = false;
+    const QString term = QInputDialog::getText(
+        this, QStringLiteral("Data Search"),
+        QStringLiteral("Search every text column of %1 for (LIKE match):").arg(db),
+        QLineEdit::Normal, QString(), &ok);
+    if(!ok || term.trimmed().isEmpty())
+        return;
+    const QString esc = QString::fromUtf8(m_conn->escape(term.toUtf8()));
+    const QString likeClause = QStringLiteral(" LIKE '%") + esc + QStringLiteral("%'");
+
+    /* CHAR/TEXT-ish columns only — a heuristic on the type name, not a
+     * portable type-category API, but good enough to skip numeric/date/
+     * blob columns a LIKE search wouldn't meaningfully match anyway */
+    QStringList unions;
+    for(const QString &table : m_conn->listTables(db, QStringLiteral("BASE TABLE"))) {
+        for(const QStringList &col : m_conn->listColumns(db, table).rows) {
+            const QString type = col.value(1).toUpper();
+            if(!type.contains(QStringLiteral("CHAR")) && !type.contains(QStringLiteral("TEXT")))
+                continue;
+            const QString colName = col.value(0);
+            const QString qcol = m_conn->quoteIdent(colName);
+            unions << QStringLiteral(
+                "SELECT '%1' AS match_table, '%2' AS match_column, %3 AS match_value "
+                "FROM %4 WHERE %5")
+                .arg(table, colName, qcol, m_conn->qualify(db, table), qcol + likeClause);
+        }
+    }
+    if(unions.isEmpty()) {
+        m_messages->setPlainText(QStringLiteral("No text columns found in %1 to search.")
+                                     .arg(db));
+        m_resultTabs->setCurrentWidget(m_messages);
+        return;
+    }
+    runStatements(QStringList{ unions.join(QStringLiteral(" UNION ALL ")) },
+                  QStringLiteral("Search"));
+}
+
 void ConnectionTab::promptSchemaHtml(const QString &database)
 {
     if(!m_conn)
