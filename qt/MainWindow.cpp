@@ -558,8 +558,19 @@ MainWindow::MainWindow(QWidget *parent)
             [this] { if(auto *t = currentTab()) t->pasteSqlTemplate(2); });
     connect(pasteSel, &QAction::triggered, this,
             [this] { if(auto *t = currentTab()) t->pasteSqlTemplate(3); });
-    addDisabled(table,
+    QAction *copyTableHost = table->addAction(
         QStringLiteral("&Copy Table(s) To Different Host/Database…"));
+    connect(copyTableHost, &QAction::triggered, this, [this] {
+        auto *t = currentTab();
+        if(!t) return;
+        const QStringList info = t->selectedTableInfo();
+        if(info.size() < 2) {
+            QMessageBox::information(this, QStringLiteral("OpenYog"),
+                QStringLiteral("Select a table in the object browser first."));
+            return;
+        }
+        t->promptCopyTableToHost(info[0], info[1]);
+    });
     table->addSeparator();
     QAction *openTable = table->addAction(QStringLiteral("&Open Table\tF11"));
     connect(openTable, &QAction::triggered, this, [this] {
@@ -872,7 +883,11 @@ MainWindow::MainWindow(QWidget *parent)
     powertools->addSeparator();
     addDisabled(powertools, QStringLiteral("Scheduled &Jobs…"));
     powertools->addSeparator();
-    addDisabled(powertools, QStringLiteral("&Rebuild tags"));
+    QAction *rebuildTags = powertools->addAction(QStringLiteral("&Rebuild tags"));
+    connect(rebuildTags, &QAction::triggered, this, [this] {
+        if(auto *t = currentTab())
+            t->refreshBrowser();   /* re-syncs the object tree + autocomplete tags */
+    });
 
     /* ================= Transactions ================================= */
     QMenu *transactions = menuBar()->addMenu(QStringLiteral("T&ransactions"));
