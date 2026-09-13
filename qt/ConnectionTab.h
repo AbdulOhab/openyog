@@ -95,6 +95,7 @@ public slots:
     void promptAlterTable(const QString &database, const QString &table);
     void promptRenameTable(const QString &database, const QString &table);
     void promptCopyTable(const QString &database, const QString &table);
+    void promptCopyTableToHost(const QString &database, const QString &table);
     void promptCopyDatabase(const QString &database = {});
     /* non-interactive core for the SQLite branch of promptCopyDatabase,
      * also used by the --sqlitecopydb= selftest */

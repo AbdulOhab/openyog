@@ -2164,6 +2164,93 @@ bool ConnectionTab::copySqliteFileTo(const QString &target, bool withData,
     return ok;
 }
 
+void ConnectionTab::promptCopyTableToHost(const QString &database, const QString &table)
+{
+    if(!m_conn || table.isEmpty())
+        return;
+    const QString srcDb = database.isEmpty() ? m_params.database : database;
+
+    QDialog dlg(this);
+    dlg.setWindowTitle(QStringLiteral("Copy Table `%1` To Different Host/Database")
+                            .arg(table));
+    const bool srcIsMysql = m_params.driverType == DriverType::Mysql;
+    auto *tHost = new QLineEdit(srcIsMysql ? m_params.host : QStringLiteral("127.0.0.1"), &dlg);
+    auto *tPort = new QSpinBox(&dlg);
+    tPort->setRange(1, 65535);
+    tPort->setValue(srcIsMysql ? m_params.port : 3306);
+    tPort->setLocale(QLocale::c());
+    auto *tUser = new QLineEdit(srcIsMysql ? m_params.user : QString(), &dlg);
+    auto *tPass = new QLineEdit(srcIsMysql ? m_params.password : QString(), &dlg);
+    tPass->setEchoMode(QLineEdit::Password);
+    auto *tDb = new QLineEdit(srcDb, &dlg);
+    auto *wantData = new QCheckBox(QStringLiteral("Copy table data"), &dlg);
+    wantData->setChecked(true);
+    auto *form = new QFormLayout;
+    form->addRow(QStringLiteral("Target host"), tHost);
+    form->addRow(QStringLiteral("Target port"), tPort);
+    form->addRow(QStringLiteral("Target user"), tUser);
+    form->addRow(QStringLiteral("Target password"), tPass);
+    form->addRow(QStringLiteral("Target database"), tDb);
+    form->addRow(QString(), wantData);
+    auto *buttons = new QDialogButtonBox(
+        QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
+    buttons->button(QDialogButtonBox::Ok)->setText(QStringLiteral("Copy"));
+    connect(buttons, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
+    auto *lay = new QVBoxLayout(&dlg);
+    lay->addLayout(form);
+    lay->addWidget(new QLabel(QStringLiteral(
+        "The table keeps its name on the target — copy, then rename there "
+        "if you need a different one. The target is always MySQL (there's "
+        "no \"host\" to speak of for a SQLite file)."), &dlg));
+    lay->addWidget(buttons);
+    if(dlg.exec() != QDialog::Accepted)
+        return;
+
+    const QString tgtDb = tDb->text().trimmed();
+    if(tgtDb.isEmpty())
+        return;
+
+    QApplication::setOverrideCursor(Qt::WaitCursor);
+    ConnectionParams tp;
+    tp.driverType = DriverType::Mysql;
+    tp.host = tHost->text().trimmed();
+    tp.port = tPort->value();
+    tp.user = tUser->text().trimmed();
+    tp.password = tPass->text();
+    QString err;
+    IDbConnection *dst = dbDriverFor(DriverType::Mysql)->connect(tp, &err);
+    bool ok = dst != nullptr;
+    if(ok) {
+        const QString tb = QString(tgtDb).replace('`', QStringLiteral("``"));
+        dst->query(QStringLiteral("CREATE DATABASE IF NOT EXISTS `%1`").arg(tb),
+                  nullptr, nullptr);
+        dst->query(QStringLiteral("USE `%1`").arg(tb), nullptr, nullptr);
+        SqlDump::Options opt;
+        opt.data = wantData->isChecked();
+        opt.routines = false;
+        ok = SqlDump::forEachStatement(
+            m_conn, srcDb, { table }, opt,
+            [&](const QString &stmt) {
+                QString stmtErr;
+                if(dst->query(stmt, nullptr, &stmtErr))
+                    return true;
+                err = QStringLiteral("%1\n  at: %2").arg(stmtErr, stmt.left(120));
+                return false;
+            },
+            err.isEmpty() ? &err : nullptr);
+    } else {
+        err = QStringLiteral("target connect failed: %1").arg(err);
+    }
+    delete dst;
+    QApplication::restoreOverrideCursor();
+    m_messages->setPlainText(ok
+        ? QStringLiteral("Copied `%1` to %2:%3/`%4`")
+              .arg(table, tp.host).arg(tp.port).arg(tgtDb)
+        : QStringLiteral("Copy failed:\n%1").arg(err));
+    m_resultTabs->setCurrentWidget(m_messages);
+}
+
 bool ConnectionTab::copyDatabaseTo(const QString &srcDb, const QString &tgtDb,
                                    bool withData, bool dropFirst,
                                    bool withRoutines, QString *error)
