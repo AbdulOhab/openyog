@@ -594,7 +594,27 @@ MainWindow::MainWindow(QWidget *parent)
         if(auto *t = currentTab())
             t->openSelectedTable();
     });
-    addDisabled(table, QStringLiteral("Open Table in &New Tab\tCtrl+F11"));
+    QAction *openTableNewTab = table->addAction(
+        QStringLiteral("Open Table in &New Tab\tCtrl+F11"));
+    connect(openTableNewTab, &QAction::triggered, this, [this] {
+        auto *t = currentTab();
+        if(!t) return;
+        const QStringList info = t->selectedTableInfo();
+        if(info.size() < 2) {
+            QMessageBox::information(this, QStringLiteral("OpenYog"),
+                QStringLiteral("Select a table in the object browser first."));
+            return;
+        }
+        /* a second connection to the same server/file, not a second view
+         * onto the same connection — the app has exactly one TableDataView
+         * per tab, so "new tab" means "new connection tab" here */
+        ConnectionParams p = t->params();
+        p.database = info[0];
+        if(openAndRun(p)) {
+            if(auto *newTab = currentTab())
+                newTab->openTableData(info[0], info[1]);
+        }
+    });
     QAction *createTbl = table->addAction(QStringLiteral("Create &Table\tF4"));
     createTbl->setShortcut(QKeySequence(Qt::Key_F4));
     connect(createTbl, &QAction::triggered, this, [this] { createTable(); });
