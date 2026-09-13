@@ -783,23 +783,39 @@ MainWindow::MainWindow(QWidget *parent)
                  QStringLiteral("Open a connection first."));
     });
     QMenu *show = tools->addMenu(QStringLiteral("Sho&w"));
+    /* SQLite has none of these concepts at all (no server, no runtime
+     * parameters, no other connections to list) — guarded with a plain
+     * message; PostgreSQL has real equivalents, just different statements,
+     * not MySQL's SHOW syntax at all. */
+    const auto showFor = [this](const QString &mysqlSql, const QString &pgSql,
+                                const QString &tabTitle) {
+        auto *t = currentTab();
+        if(!t) return;
+        if(t->driverType() == DriverType::Sqlite) {
+            QMessageBox::information(this, tabTitle,
+                QStringLiteral("SQLite has no server to show this for."));
+            return;
+        }
+        t->runStatements(
+            QStringList{ t->driverType() == DriverType::Postgres ? pgSql : mysqlSql },
+            tabTitle);
+    };
     QAction *showVars = show->addAction(QStringLiteral("&Variables…"));
-    connect(showVars, &QAction::triggered, this, [this] {
-        if(auto *t = currentTab())
-            t->runStatements(QStringList{ QStringLiteral("SHOW VARIABLES") },
-                             QStringLiteral("Variables"));
+    connect(showVars, &QAction::triggered, this, [showFor] {
+        showFor(QStringLiteral("SHOW VARIABLES"), QStringLiteral("SHOW ALL"),
+                QStringLiteral("Variables"));
     });
     QAction *showProc = show->addAction(QStringLiteral("&Processlist…"));
-    connect(showProc, &QAction::triggered, this, [this] {
-        if(auto *t = currentTab())
-            t->runStatements(QStringList{ QStringLiteral("SHOW FULL PROCESSLIST") },
-                             QStringLiteral("Processlist"));
+    connect(showProc, &QAction::triggered, this, [showFor] {
+        showFor(QStringLiteral("SHOW FULL PROCESSLIST"),
+                QStringLiteral("SELECT * FROM pg_stat_activity"),
+                QStringLiteral("Processlist"));
     });
     QAction *showStatus = show->addAction(QStringLiteral("&Status…"));
-    connect(showStatus, &QAction::triggered, this, [this] {
-        if(auto *t = currentTab())
-            t->runStatements(QStringList{ QStringLiteral("SHOW STATUS") },
-                             QStringLiteral("Status"));
+    connect(showStatus, &QAction::triggered, this, [showFor] {
+        showFor(QStringLiteral("SHOW STATUS"),
+                QStringLiteral("SELECT * FROM pg_stat_database"),
+                QStringLiteral("Status"));
     });
     tools->addSeparator();
     addDisabled(tools, QStringLiteral("Change &Language\tAlt+Shift+L"));
