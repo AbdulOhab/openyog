@@ -5,6 +5,8 @@
  * hand). */
 #pragma once
 
+#include "ConnectionParams.h"
+
 #include <QChar>
 #include <QString>
 #include <QStringList>
@@ -26,6 +28,10 @@ struct Options
     QString sqlTable    = QStringLiteral("exported");   /* SQL INSERT target */
     bool    sqlStructure = false;              /* SQL: emit DROP + CREATE first */
     QString sqlCreate;                         /* the CREATE TABLE statement */
+    /* SQL format only: picks identifier quoting (backtick vs double-quote)
+     * to match sqlCreate's own dialect — the source connection's driver,
+     * not necessarily the driver the exported file will ever be run against */
+    DriverType driver   = DriverType::Mysql;
 };
 
 /* cell(row, col) returns the display string; a value equal to Options::nullText

@@ -1269,6 +1269,7 @@ void ConnectionTab::wireResultGrid(QTableView *grid)
         menu.addAction(QStringLiteral("Copy Row(s) as &INSERT"), grid, [=] {
             ResultExport::Options o;
             o.sqlTable = QStringLiteral("result");
+            o.driver = m_params.driverType;
             const std::function<QString(int, int)> cell = [=](int r, int c) {
                 return m->index(rowSet.at(r), c).data().toString();
             };
@@ -1352,9 +1353,11 @@ void ConnectionTab::exportResult()
         const int rr = selOnly ? sel.at(r) : r;
         return m->index(rr, c).data().toString();
     };
+    ResultExport::Options opt = dlg.options();
+    opt.driver = m_params.driverType;
     QString err;
     if(ResultExport::write(dlg.path(), dlg.format(), headers, cell, rows, cols,
-                           dlg.options(), &err))
+                           opt, &err))
         m_messages->appendPlainText(
             QStringLiteral("Exported %1 row(s) → %2").arg(rows).arg(dlg.path()));
     else
@@ -3113,6 +3116,7 @@ void ConnectionTab::exportTableData(const QString &database, const QString &tabl
     ResultExport::Options opt = dlg.options();
     opt.sqlStructure = dlg.includeStructure();
     opt.sqlCreate = createDdl;
+    opt.driver = m_params.driverType;
     const auto cell = [&](int r, int c) { return rows.at(r).at(c); };
     QString err;
     if(ResultExport::write(dlg.path(), dlg.format(), headers, cell,

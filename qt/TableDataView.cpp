@@ -1069,9 +1069,15 @@ void TableDataView::exportRows()
             rows << r;
 
     const auto cell = [&](int r, int c) { return m_model->cur(rows.at(r), c); };
+    ResultExport::Options opt = dlg.options();
+    /* IDbConnection has no driverType() getter — quoteIdent()'s own output
+     * already tells us which dialect it is, without adding new API surface
+     * just for this */
+    opt.driver = m_conn && m_conn->quoteIdent(QStringLiteral("x")).startsWith(QLatin1Char('"'))
+        ? DriverType::Postgres : DriverType::Mysql;
     QString err;
     if(ResultExport::write(dlg.path(), dlg.format(), cols, cell,
-                           rows.size(), cols.size(), dlg.options(), &err))
+                           rows.size(), cols.size(), opt, &err))
         emit statusMessage(QStringLiteral("Exported %1 row(s) → %2")
                                .arg(rows.size()).arg(dlg.path()));
     else
