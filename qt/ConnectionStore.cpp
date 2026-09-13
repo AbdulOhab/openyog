@@ -43,14 +43,15 @@ bool ConnectionStore::load(const QString &name, ConnectionParams *out)
         return false;
 
     out->name       = name;
-    out->driverType = DriverType::Mysql;
+    out->driverType = driver;   /* Mysql or Postgres — same field shape */
     out->host  = value.GetString();
 
     wyIni::IniGetString(n, "user", "", &value, iniPath().toUtf8());
     out->user  = value.GetString();
     wyIni::IniGetString(n, "database", "", &value, iniPath().toUtf8());
     out->database = value.GetString();
-    out->port = wyIni::IniGetInt(n, "port", 3306, iniPath().toUtf8());
+    out->port = wyIni::IniGetInt(n, "port", driver == DriverType::Postgres ? 5432 : 3306,
+                                 iniPath().toUtf8());
 
     /* password is stored base64-encoded, like upstream connection files */
     wyIni::IniGetString(n, "password", "", &value, iniPath().toUtf8());

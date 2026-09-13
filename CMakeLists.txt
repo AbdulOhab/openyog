@@ -50,6 +50,9 @@ target_link_libraries(wycore PUBLIC Threads::Threads)
 
 find_library(MARIADB_LIBRARY mariadb REQUIRED)
 find_library(SQLITE3_LIBRARY sqlite3 REQUIRED)   # openyog's SqliteDriver needs it too now
+find_library(PQ_LIBRARY pq REQUIRED)   # openyog's PostgresDriver — libpq-fe.h is
+                                       # already on the default include path,
+                                       # no header shim needed (unlike mysql/sqlite3)
 
 add_executable(smoketest port/smoketest.cpp)
 target_link_libraries(smoketest PRIVATE wycore ${MARIADB_LIBRARY} ${SQLITE3_LIBRARY})
@@ -70,6 +73,8 @@ add_executable(openyog
     qt/db/MySqlConnection.h    qt/db/MySqlConnection.cpp
     qt/db/SqliteDriver.h       qt/db/SqliteDriver.cpp
     qt/db/SqliteConnection.h   qt/db/SqliteConnection.cpp
+    qt/db/PostgresDriver.h     qt/db/PostgresDriver.cpp
+    qt/db/PostgresConnection.h qt/db/PostgresConnection.cpp
     qt/MainWindow.h        qt/MainWindow.cpp
     qt/ConnectionDialog.h  qt/ConnectionDialog.cpp
     qt/ConnectionTab.h     qt/ConnectionTab.cpp
@@ -93,5 +98,5 @@ add_executable(openyog
     qt/Theme.h             qt/Theme.cpp
     qt/SqlHighlighter.h
 )
-target_link_libraries(openyog PRIVATE wycore Qt6::Widgets ${MARIADB_LIBRARY} ${SQLITE3_LIBRARY})
+target_link_libraries(openyog PRIVATE wycore Qt6::Widgets ${MARIADB_LIBRARY} ${SQLITE3_LIBRARY} ${PQ_LIBRARY})
 target_compile_options(openyog PRIVATE -Wall)
