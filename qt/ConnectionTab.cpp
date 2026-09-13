@@ -1514,7 +1514,7 @@ void ConnectionTab::promptCreateTable(const QString &database)
     if(!m_conn)
         return;
     const QString db = database.isEmpty() ? defaultDb() : database;
-    CreateTableDialog dlg(db, this);
+    CreateTableDialog dlg(db, this, m_params.driverType);
     if(dlg.exec() != QDialog::Accepted)
         return;
     const QString sql = dlg.buildSql();
@@ -3151,7 +3151,11 @@ void ConnectionTab::promptAlterTable(const QString &database,
         return;
 
     QString engine, charset;
-    {
+    if(m_params.driverType == DriverType::Mysql) {
+        /* ENGINE/TABLE_COLLATION: MySQL-only information_schema columns —
+         * PostgreSQL's information_schema.tables has neither (no storage
+         * engines, no per-table charset), so this stays MySQL-only rather
+         * than sending a query guaranteed to fail there */
         DbResultSet rs;
         if(m_conn->query(QStringLiteral(
                "SELECT ENGINE, SUBSTRING_INDEX(TABLE_COLLATION,'_',1) "
@@ -3163,7 +3167,7 @@ void ConnectionTab::promptAlterTable(const QString &database,
         }
     }
 
-    CreateTableDialog dlg(db, table, cols, engine, charset, this);
+    CreateTableDialog dlg(db, table, cols, engine, charset, this, m_params.driverType);
     if(dlg.exec() != QDialog::Accepted)
         return;
     const QString sql = dlg.buildSql();

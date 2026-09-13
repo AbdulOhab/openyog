@@ -4,9 +4,25 @@
  *   Unsigned? | Auto Incr? | Comment
  * The rest (charset/collation/virtuality/check) arrive later.
  * Create mode emits CREATE TABLE; Alter mode diffs the seeded columns against
- * the edited grid and emits one ALTER TABLE with ADD/CHANGE/DROP COLUMN and
- * PRIMARY KEY clauses. The dialog only builds the DDL; the caller runs it. */
+ * the edited grid and emits ALTER TABLE clause(s). The dialog only builds the
+ * DDL; the caller runs it.
+ *
+ * PostgreSQL has no storage engines or per-table charset (Engine/Charset are
+ * hidden for it), no unsigned integer types (Unsigned? is disabled), and no
+ * AUTO_INCREMENT keyword — an Auto Incr? column instead gets "GENERATED
+ * {ALWAYS|BY DEFAULT} AS IDENTITY" (portable across integer types since
+ * PG 10, unlike the SERIAL pseudo-types, which are really just a spelling
+ * for "integer + a sequence + a default" and don't compose as a modifier
+ * the way this checkbox needs). Renames and comments are their own
+ * statements in Postgres (ALTER TABLE can't RENAME COLUMN alongside other
+ * clauses; there's no COMMENT clause on ALTER TABLE at all, only the
+ * top-level COMMENT ON COLUMN statement) — buildAlterSql() may therefore
+ * return several ';'-separated statements for Postgres, sent to the server
+ * as one call: PQexec (unlike mysql_query without CLIENT_MULTI_STATEMENTS)
+ * natively runs a multi-statement string as one implicit transaction. */
 #pragma once
+
+#include "ConnectionParams.h"
 
 #include <QDialog>
 #include <QHash>
@@ -28,14 +44,17 @@ public:
     };
 
     /* create mode */
-    explicit CreateTableDialog(QString database, QWidget *parent = nullptr);
+    explicit CreateTableDialog(QString database, QWidget *parent = nullptr,
+                              DriverType driver = DriverType::Mysql);
     /* alter mode — seed from the live table's columns */
     CreateTableDialog(QString database, QString table,
                       const QList<ColumnDef> &columns, QString engine,
-                      QString charset, QWidget *parent = nullptr);
+                      QString charset, QWidget *parent = nullptr,
+                      DriverType driver = DriverType::Mysql);
 
-    /* CREATE TABLE … (create mode) or ALTER TABLE … (alter mode); empty when
-     * there is nothing to do (no name / no columns / no changes) */
+    /* CREATE TABLE … (create mode) or ALTER TABLE … [;COMMENT ON …;…]
+     * (alter mode, PostgreSQL only ever needs the extra statements); empty
+     * when there is nothing to do (no name / no columns / no changes) */
     QString buildSql() const;
 
 private slots:
@@ -50,17 +69,25 @@ private:
 
     void buildCommon();                 /* shared widget construction */
     void seedRow(const ColumnDef &c);   /* alter mode: row + original name tag */
+    ColumnDef rowColumnDef(int row) const;   /* current grid state of one row */
     QString rowBody(int row) const;     /* "TYPE(..) UNSIGNED NOT NULL … " */
-    static QString defBody(const ColumnDef &c);
+    QString defBody(const ColumnDef &c) const;
     QString buildCreateSql() const;
     QString buildAlterSql() const;
+    QString buildAlterSqlPostgres() const;
 
     Mode         m_mode = Mode::Create;
+    DriverType   m_driver = DriverType::Mysql;
     QString      m_database;
     QString      m_table;               /* alter mode */
     QStringList  m_originalCols;        /* names at open (alter mode) */
     QStringList  m_originalPk;          /* pk col names at open (alter mode) */
     QHash<QString, QString> m_originalBody;  /* name -> defBody() at open */
+    QHash<QString, ColumnDef> m_originalDefs;  /* name -> full def at open
+                                                 * (PostgreSQL's per-clause
+                                                 * ALTER needs each field,
+                                                 * not just the combined
+                                                 * body text) */
 
     QLineEdit   *m_name    = nullptr;
     QTableWidget*m_grid    = nullptr;
