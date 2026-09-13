@@ -1314,6 +1314,16 @@ void MainWindow::createDatabase()
     auto *tab = currentTab();
     if(!tab)
         return;
+    if(tab->driverType() == DriverType::Sqlite) {
+        /* a SQLite "database" is a file — there's no CREATE DATABASE
+         * statement to run against an existing connection at all; a new
+         * database means a new connection to a new file */
+        QMessageBox::information(this, QStringLiteral("Create Database"),
+            QStringLiteral("SQLite has no CREATE DATABASE — a database is "
+                           "just a file. Use File → New Connection (Ctrl+M) "
+                           "and pick a new .sqlite file path instead."));
+        return;
+    }
     const bool pg = tab->driverType() == DriverType::Postgres;
     bool ok = false;
     const QString name = QInputDialog::getText(

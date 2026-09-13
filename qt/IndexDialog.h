@@ -3,12 +3,16 @@
  * DROP. buildSql() diffs against the set the dialog opened with. PRIMARY is
  * shown but not editable here (use Alter Table for the PK).
  *
- * MySQL/SQLite: one ALTER TABLE with DROP INDEX / ADD [UNIQUE] INDEX clauses.
- * PostgreSQL has no such clauses at all — CREATE [UNIQUE] INDEX and DROP
- * INDEX are their own top-level statements, not something ALTER TABLE does —
- * so buildSql() there returns however many separate statements are needed,
- * ';'-joined; PQexec runs a semicolon-separated multi-statement string as
- * one implicit transaction (see CreateTableDialog.h for the same pattern). */
+ * MySQL: one ALTER TABLE with DROP INDEX / ADD [UNIQUE] INDEX clauses.
+ * Neither PostgreSQL nor SQLite has any such clause at all — CREATE [UNIQUE]
+ * INDEX and DROP INDEX are their own top-level statements on both, not
+ * something ALTER TABLE does — so buildSql() there returns however many
+ * separate statements are needed, ';'-joined; PQexec runs a semicolon-
+ * separated multi-statement string as one implicit transaction for Postgres
+ * (see CreateTableDialog.h for the same pattern), while for SQLite
+ * ConnectionTab::execDdl() splits and runs each one separately (wrapped in
+ * an explicit transaction) since SQLite's own prepare call only ever runs
+ * the first statement in a string. */
 #pragma once
 
 #include "ConnectionParams.h"

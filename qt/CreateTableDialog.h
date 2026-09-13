@@ -56,6 +56,12 @@ public:
      * (alter mode, PostgreSQL only ever needs the extra statements); empty
      * when there is nothing to do (no name / no columns / no changes) */
     QString buildSql() const;
+    /* alter mode, SQLite only: non-empty when buildSql() above left some
+     * requested change undone because SQLite's ALTER TABLE can't express it
+     * without a full table rebuild (see buildAlterSqlSqlite()) — the
+     * caller should show this to the user rather than assume "no changes
+     * to apply" the way an empty buildSql() with an empty limitation means */
+    QString alterLimitation() const { return m_alterLimitation; }
 
 private slots:
     void addColumnRow(const QString &name = {}, const QString &type = {});
@@ -75,6 +81,7 @@ private:
     QString buildCreateSql() const;
     QString buildAlterSql() const;
     QString buildAlterSqlPostgres() const;
+    QString buildAlterSqlSqlite() const;
 
     Mode         m_mode = Mode::Create;
     DriverType   m_driver = DriverType::Mysql;
@@ -88,6 +95,7 @@ private:
                                                  * ALTER needs each field,
                                                  * not just the combined
                                                  * body text) */
+    mutable QString m_alterLimitation;   /* see alterLimitation() above */
 
     QLineEdit   *m_name    = nullptr;
     QTableWidget*m_grid    = nullptr;

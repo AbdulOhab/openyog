@@ -37,11 +37,16 @@
 
 #include <QApplication>
 #include <QAction>
+#include <QCheckBox>
 #include <QComboBox>
 #include <QKeySequence>
+#include <QLineEdit>
+#include <QListWidget>
 #include <QFile>
 #include <QFileInfo>
 #include <QIcon>
+#include <QPushButton>
+#include <QTableWidget>
 #include <QTextStream>
 #include <QTimer>
 
@@ -276,6 +281,255 @@ int main(int argc, char *argv[])
                 }
                 QFile::remove(tmp);
             }
+
+            delete c;
+            return fails == 0 ? 0 : 1;
+        }
+        /* --sqlitecreatetabletest=FILE.sqlite — drive CreateTableDialog
+         * headlessly (via its objectName-tagged widgets, not its private
+         * grid-column enum) against a real SQLite file: Create Table with
+         * an autoincrement PK plus a plain column, then Alter Table
+         * renaming/adding columns, confirming a genuinely unsupported
+         * change (retyping an existing column) is flagged via
+         * alterLimitation() rather than silently dropped or sent as SQL
+         * that would fail outright. Grid columns, per CreateTableDialog.h's
+         * private `enum Col`: Name=0 Type=1 Len=2 Default=3 PK=4 NotNull=5
+         * Unsigned=6 Auto=7 Comment=8. */
+        if(a.startsWith(QStringLiteral("--sqlitecreatetabletest="))) {
+            qputenv("QT_QPA_PLATFORM", "offscreen");
+            QApplication app2(argc, argv);
+            const QString path =
+                a.mid(QStringLiteral("--sqlitecreatetabletest=").size());
+            QFile::remove(path);
+            ConnectionParams cp;
+            cp.driverType = DriverType::Sqlite;
+            cp.filePath = path;
+            QString connectError;
+            IDbConnection *c = dbDriverFor(cp.driverType)->connect(cp, &connectError);
+            if(!c) {
+                QTextStream(stdout) << "sqlitecreatetabletest: connect failed: "
+                                    << connectError << '\n';
+                return 1;
+            }
+            int fails = 0;
+            const auto check = [&](bool ok, const QString &what) {
+                if(!ok) ++fails;
+                QTextStream(stdout) << "sqlitecreatetabletest " << what
+                                    << (ok ? "  PASS\n" : "  FAIL\n");
+            };
+            const auto checkBoxAt = [](QTableWidget *g, int r, int col) {
+                return g->cellWidget(r, col) ? g->cellWidget(r, col)->findChild<QCheckBox *>()
+                                             : nullptr;
+            };
+
+            /* ---- CREATE mode: id (seeded PK+auto) + a NOT NULL name col */
+            auto *cdlg = new CreateTableDialog(QString(), nullptr, DriverType::Sqlite);
+            auto *cname = cdlg->findChild<QLineEdit *>(QStringLiteral("tableName"));
+            auto *cgrid = cdlg->findChild<QTableWidget *>(QStringLiteral("columnGrid"));
+            auto *caddBtn = cdlg->findChild<QPushButton *>(QStringLiteral("addColumnBtn"));
+            cname->setText(QStringLiteral("t1"));
+            caddBtn->click();
+            cgrid->item(1, 0)->setText(QStringLiteral("name"));
+            if(auto *tb = qobject_cast<QComboBox *>(cgrid->cellWidget(1, 1)))
+                tb->setCurrentText(QStringLiteral("TEXT"));
+            if(auto *cb = checkBoxAt(cgrid, 1, 5))
+                cb->setChecked(true);   /* NOT NULL */
+
+            const QString createSql = cdlg->buildSql();
+            check(createSql.contains(QStringLiteral("INTEGER PRIMARY KEY AUTOINCREMENT")),
+                  "create: id column is INTEGER PRIMARY KEY AUTOINCREMENT");
+            check(!createSql.contains(QStringLiteral("ENGINE"))
+                  && !createSql.contains(QStringLiteral("CHARSET")),
+                  "create: no ENGINE/CHARSET clause");
+            QString stmtErr;
+            check(c->query(createSql, nullptr, &stmtErr), "create: statement executes");
+            if(!stmtErr.isEmpty())
+                QTextStream(stdout) << "  error: " << stmtErr << " sql=" << createSql << '\n';
+            check(c->query(QStringLiteral(
+                      "INSERT INTO \"t1\" (\"name\") VALUES ('a'), ('b')"),
+                      nullptr, &stmtErr),
+                  "create: insert into new table (autoincrement works)");
+            DbResultSet crs;
+            c->query(QStringLiteral("SELECT \"id\", \"name\" FROM \"t1\" ORDER BY \"id\""),
+                     &crs, nullptr);
+            check(crs.rows.size() == 2 && crs.rows.at(0).value(0) == QStringLiteral("1")
+                      && crs.rows.at(1).value(0) == QStringLiteral("2"),
+                  "create: autoincrement produced 1, 2");
+            delete cdlg;
+
+            /* ---- ALTER mode: rename a column + add a new one (supported) */
+            QList<CreateTableDialog::ColumnDef> cols;
+            {
+                CreateTableDialog::ColumnDef idc;
+                idc.name = QStringLiteral("id");
+                idc.type = QStringLiteral("INTEGER");
+                idc.pk = true; idc.notNull = true; idc.autoInc = true;
+                CreateTableDialog::ColumnDef namec;
+                namec.name = QStringLiteral("name");
+                namec.type = QStringLiteral("TEXT");
+                namec.notNull = true;
+                cols << idc << namec;
+            }
+            auto *adlg = new CreateTableDialog(QString(), QStringLiteral("t1"), cols,
+                                               QString(), QString(), nullptr,
+                                               DriverType::Sqlite);
+            auto *agrid = adlg->findChild<QTableWidget *>(QStringLiteral("columnGrid"));
+            auto *aaddBtn = adlg->findChild<QPushButton *>(QStringLiteral("addColumnBtn"));
+            agrid->item(1, 0)->setText(QStringLiteral("full_name"));   /* rename */
+            aaddBtn->click();
+            agrid->item(2, 0)->setText(QStringLiteral("note"));
+            if(auto *tb = qobject_cast<QComboBox *>(agrid->cellWidget(2, 1)))
+                tb->setCurrentText(QStringLiteral("TEXT"));
+
+            const QString alterSql1 = adlg->buildSql();
+            check(alterSql1.contains(QStringLiteral("RENAME COLUMN"))
+                  && alterSql1.contains(QStringLiteral("ADD COLUMN")),
+                  "alter: rename + add column both emitted");
+            check(adlg->alterLimitation().isEmpty(),
+                  "alter: no limitation reported for rename+add");
+            /* sqlite3_prepare_v2 only ever runs the FIRST statement in a
+             * string (see SqliteConnection::runBuffered) — split, matching
+             * what ConnectionTab::execDdl() now does for the real UI path,
+             * rather than the single-query() call that would silently drop
+             * every statement after the first here in the test too */
+            bool alterOk = true;
+            for(const QString &s : splitStatements(alterSql1)) {
+                if(s.trimmed().isEmpty())
+                    continue;
+                if(!c->query(s, nullptr, &stmtErr)) { alterOk = false; break; }
+            }
+            check(alterOk, "alter: statement(s) execute");
+            if(!stmtErr.isEmpty())
+                QTextStream(stdout) << "  error: " << stmtErr << " sql=" << alterSql1 << '\n';
+            DbResultSet ars;
+            c->query(QStringLiteral("SELECT \"full_name\", \"note\" FROM \"t1\""), &ars, nullptr);
+            check(!ars.headers.isEmpty(), "alter: both full_name and note columns exist");
+            delete adlg;
+
+            /* ---- ALTER mode: an unsupported change (retype an existing
+             * column) must be flagged, not silently dropped or sent broken */
+            QList<CreateTableDialog::ColumnDef> cols2;
+            {
+                CreateTableDialog::ColumnDef idc;
+                idc.name = QStringLiteral("id");
+                idc.type = QStringLiteral("INTEGER");
+                idc.pk = true; idc.notNull = true; idc.autoInc = true;
+                CreateTableDialog::ColumnDef fnc;
+                fnc.name = QStringLiteral("full_name");
+                fnc.type = QStringLiteral("TEXT");
+                fnc.notNull = true;
+                CreateTableDialog::ColumnDef notec;
+                notec.name = QStringLiteral("note");
+                notec.type = QStringLiteral("TEXT");
+                cols2 << idc << fnc << notec;
+            }
+            auto *bdlg = new CreateTableDialog(QString(), QStringLiteral("t1"), cols2,
+                                               QString(), QString(), nullptr,
+                                               DriverType::Sqlite);
+            auto *bgrid = bdlg->findChild<QTableWidget *>(QStringLiteral("columnGrid"));
+            if(auto *tb = qobject_cast<QComboBox *>(bgrid->cellWidget(1, 1)))
+                tb->setCurrentText(QStringLiteral("INTEGER"));   /* full_name TEXT -> INTEGER */
+            const QString alterSql2 = bdlg->buildSql();
+            check(alterSql2.isEmpty(), "alter: retype-only change produces no SQL");
+            check(!bdlg->alterLimitation().isEmpty(),
+                  "alter: retype-only change flagged via alterLimitation()");
+            delete bdlg;
+
+            delete c;
+            return fails == 0 ? 0 : 1;
+        }
+        /* --sqliteindextest=FILE.sqlite — drive IndexDialog headlessly (via
+         * its objectName-tagged widgets) against a real SQLite file: add a
+         * new index and drop an existing one, confirming both come out as
+         * standalone CREATE INDEX/DROP INDEX statements (SQLite has no
+         * ALTER TABLE ADD/DROP INDEX clause, same as Postgres) and that
+         * ConnectionTab::execDdl()'s split-per-statement fix actually
+         * applies every one of them, not just the first. */
+        if(a.startsWith(QStringLiteral("--sqliteindextest="))) {
+            qputenv("QT_QPA_PLATFORM", "offscreen");
+            QApplication app2(argc, argv);
+            const QString path = a.mid(QStringLiteral("--sqliteindextest=").size());
+            QFile::remove(path);
+            ConnectionParams cp;
+            cp.driverType = DriverType::Sqlite;
+            cp.filePath = path;
+            QString connectError;
+            IDbConnection *c = dbDriverFor(cp.driverType)->connect(cp, &connectError);
+            if(!c) {
+                QTextStream(stdout) << "sqliteindextest: connect failed: "
+                                    << connectError << '\n';
+                return 1;
+            }
+            int fails = 0;
+            const auto check = [&](bool ok, const QString &what) {
+                if(!ok) ++fails;
+                QTextStream(stdout) << "sqliteindextest " << what
+                                    << (ok ? "  PASS\n" : "  FAIL\n");
+            };
+
+            QString stmtErr;
+            check(c->query(QStringLiteral(
+                      "CREATE TABLE \"t1\" (\"id\" INTEGER PRIMARY KEY, "
+                      "\"city\" TEXT, \"name\" TEXT)"), nullptr, &stmtErr),
+                  "setup: create table");
+            check(c->query(QStringLiteral(
+                      "CREATE INDEX \"idx_old\" ON \"t1\" (\"name\")"),
+                      nullptr, &stmtErr),
+                  "setup: create pre-existing index");
+
+            IndexDialog::IndexDef pk{ QStringLiteral("PRIMARY"), { QStringLiteral("id") },
+                                      true, true };
+            IndexDialog::IndexDef old{ QStringLiteral("idx_old"), { QStringLiteral("name") },
+                                       false, false };
+            auto *dlg = new IndexDialog(QString(), QStringLiteral("t1"), { pk, old },
+                                        { QStringLiteral("id"), QStringLiteral("city"),
+                                          QStringLiteral("name") },
+                                        nullptr, DriverType::Sqlite);
+            auto *grid = dlg->findChild<QTableWidget *>(QStringLiteral("indexGrid"));
+            auto *removeBtn = dlg->findChild<QPushButton *>(QStringLiteral("removeSelectedBtn"));
+            auto *newName = dlg->findChild<QLineEdit *>(QStringLiteral("newIndexName"));
+            auto *newCols = dlg->findChild<QListWidget *>(QStringLiteral("newIndexCols"));
+            auto *addBtn = dlg->findChild<QPushButton *>(QStringLiteral("addIndexBtn"));
+
+            /* drop idx_old (row 1: row 0 is PRIMARY) */
+            grid->setCurrentCell(1, 0);
+            removeBtn->click();
+            /* add a new index on city */
+            newName->setText(QStringLiteral("idx_city"));
+            newCols->item(1)->setCheckState(Qt::Checked);   /* "city" */
+            addBtn->click();
+
+            const QString sql = dlg->buildSql();
+            check(sql.contains(QStringLiteral("DROP INDEX")) && sql.contains(QStringLiteral("idx_old")),
+                  "drop: idx_old emitted as standalone DROP INDEX");
+            check(sql.contains(QStringLiteral("CREATE")) && sql.contains(QStringLiteral("INDEX"))
+                  && sql.contains(QStringLiteral("idx_city")),
+                  "add: idx_city emitted as standalone CREATE INDEX");
+            check(!sql.contains(QStringLiteral("ALTER TABLE")),
+                  "no ALTER TABLE clause used (SQLite has none for indexes)");
+            delete dlg;
+
+            /* apply exactly like ConnectionTab::execDdl() does for SQLite:
+             * split on ';' and run each statement separately */
+            bool applyOk = true;
+            for(const QString &s : splitStatements(sql)) {
+                if(s.trimmed().isEmpty())
+                    continue;
+                if(!c->query(s, nullptr, &stmtErr)) { applyOk = false; break; }
+            }
+            check(applyOk, "both statements execute");
+            if(!applyOk)
+                QTextStream(stdout) << "  error: " << stmtErr << '\n';
+
+            DbResultSet ixs;
+            c->query(QStringLiteral(
+                "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='t1'"),
+                &ixs, nullptr);
+            QStringList names;
+            for(const QStringList &row : ixs.rows)
+                names << row.value(0);
+            check(names.contains(QStringLiteral("idx_city")) && !names.contains(QStringLiteral("idx_old")),
+                  "final state: idx_city present, idx_old gone");
 
             delete c;
             return fails == 0 ? 0 : 1;
