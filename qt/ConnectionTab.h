@@ -117,6 +117,7 @@ public slots:
     void exportCurrent();
     void promptUserManager();
     void tableDiagnostics(const QString &database, const QString &table);
+    void showTableProperties(const QString &database, const QString &table);
     void showConnectionInfo();
     /* non-interactive core, also used by the --copydb selftest */
     bool copyDatabaseTo(const QString &srcDb, const QString &tgtDb,

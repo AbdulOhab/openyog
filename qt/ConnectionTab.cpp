@@ -2445,6 +2445,55 @@ void ConnectionTab::showConnectionInfo()
     QMessageBox::information(this, QStringLiteral("Connection Info"), msg);
 }
 
+void ConnectionTab::showTableProperties(const QString &database, const QString &table)
+{
+    if(!m_conn || table.isEmpty())
+        return;
+    const QString db = database.isEmpty() ? m_params.database : database;
+    const QString qualified = m_conn->qualify(db, table);
+    QString msg = QStringLiteral("Table: %1\n").arg(qualified);
+
+    if(m_params.driverType == DriverType::Sqlite) {
+        DbResultSet rs;
+        if(m_conn->query(QStringLiteral("SELECT COUNT(*) FROM %1").arg(qualified),
+                         &rs, nullptr) && !rs.rows.isEmpty())
+            msg += QStringLiteral("Rows: %1\n").arg(rs.rows.first().value(0));
+        msg += QStringLiteral("Columns: %1\n")
+                   .arg(m_conn->listColumns(db, table).rows.size());
+        const int idxCount = [&] {
+            QSet<QString> names;
+            for(const QStringList &row : m_conn->listIndexes(db, table).rows)
+                names.insert(row.value(2));
+            return names.size();
+        }();
+        msg += QStringLiteral("Indexes: %1\n").arg(idxCount);
+        if(m_params.driverType == DriverType::Sqlite) {
+            const QFileInfo fi(m_params.filePath);
+            msg += QStringLiteral("Database file size: %1 bytes\n").arg(fi.size());
+        }
+    } else {
+        DbResultSet rs;
+        const QString sb = QString(db).replace('`', QStringLiteral("``"));
+        const QString tb = QString(table).replace('`', QStringLiteral("``"));
+        if(m_conn->query(QStringLiteral(
+               "SHOW TABLE STATUS FROM `%1` LIKE '%2'").arg(sb, tb), &rs, nullptr)
+           && !rs.rows.isEmpty()) {
+            /* SHOW TABLE STATUS: Name,Engine,Version,Row_format,Rows,
+             * Avg_row_length,Data_length,Max_data_length,Index_length,
+             * Data_free,Auto_increment,Create_time,... */
+            const QStringList &row = rs.rows.first();
+            msg += QStringLiteral("Engine: %1\n").arg(row.value(1));
+            msg += QStringLiteral("Rows (estimate): %1\n").arg(row.value(4));
+            msg += QStringLiteral("Data length: %1 bytes\n").arg(row.value(6));
+            msg += QStringLiteral("Index length: %1 bytes\n").arg(row.value(8));
+            msg += QStringLiteral("Created: %1\n").arg(row.value(11));
+        } else {
+            msg += QStringLiteral("(could not read SHOW TABLE STATUS)\n");
+        }
+    }
+    QMessageBox::information(this, QStringLiteral("Table Properties"), msg);
+}
+
 void ConnectionTab::exportCurrent()
 {
     if(m_resultTabs->currentWidget() == m_tableData
