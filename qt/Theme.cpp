@@ -72,9 +72,17 @@ QTabWidget#connTabs > QTabBar::tab:selected { background: #FFFFFF;
  * visible on the light theme */
 QTabWidget#connectDialogTabs > QTabBar { background: #FFFFFF; qproperty-drawBase: 0;
     border-bottom: 2px solid #3B7DBB; }
+/* no margin-right between tabs: with one, the 2px gap next to a *selected*
+ * tab (fill #FFFFFF, same as the tab bar's own background) had no color
+ * contrast against that background, so the thin border line marking the
+ * gap's edges was easy to miss — the whole gap+tab-interior read as one
+ * oversized blank patch next to whichever tab was selected, even though
+ * every gap was the same 2px. Butting the 1px borders together instead
+ * always leaves a visible seam, selected or not. */
 QTabWidget#connectDialogTabs > QTabBar::tab { background: #F0F0F0; color: #3B7DBB;
-    border: 1px solid #C8C8C8; border-bottom: 0; margin-right: 2px;
+    border: 1px solid #C8C8C8; border-bottom: 0; border-right: 0;
     padding: 3px 10px; }
+QTabWidget#connectDialogTabs > QTabBar::tab:last { border-right: 1px solid #C8C8C8; }
 QTabWidget#connectDialogTabs > QTabBar::tab:selected { background: #FFFFFF;
     color: #1E1E1E; font-weight: bold; }
 
