@@ -57,7 +57,14 @@ private:
     QTabWidget   *m_tabs        = nullptr;
     QWidget      *m_mysqlTab    = nullptr;
     QWidget      *m_sqliteTab   = nullptr;
+    QWidget      *m_postgresTab = nullptr;
     QLineEdit    *m_sqlitePath  = nullptr;
+
+    QLineEdit    *m_pgHost     = nullptr;
+    QLineEdit    *m_pgUser     = nullptr;
+    QLineEdit    *m_pgPassword = nullptr;
+    QSpinBox     *m_pgPort     = nullptr;
+    QLineEdit    *m_pgDatabase = nullptr;
 
     QLabel       *m_brandImage  = nullptr;   /* left strip, swaps with the driver */
 

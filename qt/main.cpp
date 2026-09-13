@@ -3,7 +3,7 @@
  * Selftest mode for CI/headless verification:
  *   openyog --screenshot=FILE.png              render main window to FILE, exit
  *   openyog --screenshot=FILE.png --dialog     render the connection dialog
- *   openyog --screenshot=FILE.png --dialog --dialogdriver=sqlite   … with SQLite preselected
+ *   openyog --screenshot=FILE.png --dialog --dialogdriver=sqlite|postgres   … driver preselected
  *   openyog --screenshot=FILE.png --createtable render the Create Table dialog
  *   openyog --autoconnect=h:p:u:pw:db [--opentable=db:t] [--editcell=r:c:v |
  *           --stagecell=r:c:v] --screenshot=FILE.png   drive the data grid
@@ -13,6 +13,7 @@
  *   openyog --fmtsql="SELECT …"                        print the formatted SQL, exit
  *   openyog --comptest                                 autocomplete self-check
  *   openyog --sqlitetest=FILE.sqlite                   SQLite driver shape self-check
+ *   openyog --pgtest=host:port:user:pw:db              PostgreSQL driver shape self-check
  *   openyog --autoconnectfile=FILE.sqlite [--opentable=db:t] [--editcell=r:c:v]
  *           --screenshot=FILE.png       same data-grid selftests, SQLite driver
  */
@@ -267,6 +268,159 @@ int main(int argc, char *argv[])
                     delete c2;
                 }
                 QFile::remove(tmp);
+            }
+
+            delete c;
+            return fails == 0 ? 0 : 1;
+        }
+        /* --pgtest=host:port:user:pw:db — exercise the PostgreSQL driver's
+         * canonical metadata shapes against a live server prepared with the
+         * same layout as xnote/sample.sqlite (employees/emp_dept/
+         * v_employee_dept, a city index, an FK, a BEFORE INSERT trigger). */
+        if(a.startsWith(QStringLiteral("--pgtest="))) {
+            qputenv("QT_QPA_PLATFORM", "offscreen");
+            QApplication app2(argc, argv);
+            const QStringList p = a.mid(QStringLiteral("--pgtest=").size()).split(':');
+            if(p.size() != 5) {
+                QTextStream(stdout) << "pgtest: need host:port:user:pw:db\n";
+                return 2;
+            }
+            ConnectionParams cp;
+            cp.driverType = DriverType::Postgres;
+            cp.host = p[0]; cp.port = p[1].toUInt();
+            cp.user = p[2]; cp.password = p[3]; cp.database = p[4];
+            QString connectError;
+            IDbConnection *c = dbDriverFor(cp.driverType)->connect(cp, &connectError);
+            if(!c) {
+                QTextStream(stdout) << "pgtest: connect failed: " << connectError << '\n';
+                return 1;
+            }
+            int fails = 0;
+            const auto check = [&](bool ok, const QString &what) {
+                if(!ok) ++fails;
+                QTextStream(stdout) << "pgtest " << what
+                                    << (ok ? "  PASS\n" : "  FAIL\n");
+            };
+            const auto findRow = [](const DbResultSet &rs, int col, const QString &val) {
+                for(const QStringList &row : rs.rows)
+                    if(row.value(col) == val)
+                        return row;
+                return QStringList{};
+            };
+
+            check(c->listDatabases().contains(QStringLiteral("public")),
+                  "schemas contain public");
+
+            const QStringList tbls = c->listTables(QStringLiteral("public"));
+            check(tbls.contains(QStringLiteral("employees"))
+                  && tbls.contains(QStringLiteral("emp_dept"))
+                  && !tbls.contains(QStringLiteral("v_employee_dept")),
+                  "listTables base tables");
+            const QStringList views = c->listTables(QStringLiteral("public"),
+                                                    QStringLiteral("VIEW"));
+            check(views.contains(QStringLiteral("v_employee_dept")), "listTables views");
+
+            const DbResultSet cols = c->listColumns(QStringLiteral("public"),
+                                                    QStringLiteral("employees"));
+            const QStringList idCol = findRow(cols, 0, QStringLiteral("id"));
+            check(idCol.value(2) == QStringLiteral("NO")
+                  && idCol.value(3) == QStringLiteral("PRI"),
+                  "listColumns id shape");
+            check(findRow(cols, 0, QStringLiteral("name")).value(2)
+                      == QStringLiteral("NO")
+                  && findRow(cols, 0, QStringLiteral("salary")).value(2)
+                         == QStringLiteral("YES"),
+                  "listColumns nullability");
+
+            const DbResultSet ixs = c->listIndexes(QStringLiteral("public"),
+                                                   QStringLiteral("employees"));
+            const QStringList pk = findRow(ixs, 2, QStringLiteral("PRIMARY"));
+            check(pk.value(1) == QStringLiteral("0") && pk.value(4) == QStringLiteral("id"),
+                  "listIndexes PRIMARY");
+            const QStringList cityIx = findRow(ixs, 2,
+                                               QStringLiteral("idx_employees_city"));
+            check(cityIx.value(1) == QStringLiteral("1")
+                  && cityIx.value(4) == QStringLiteral("city"),
+                  "listIndexes secondary index");
+
+            const DbResultSet fks = c->listForeignKeys(QStringLiteral("public"),
+                                                       QStringLiteral("employees"));
+            check(!fks.rows.isEmpty()
+                  && fks.rows.first().value(1) == QStringLiteral("dept_id")
+                  && fks.rows.first().value(2) == QStringLiteral("emp_dept")
+                  && fks.rows.first().value(3) == QStringLiteral("id"),
+                  "listForeignKeys shape");
+
+            const DbResultSet trgs = c->listTableTriggers(
+                QStringLiteral("public"), QStringLiteral("employees"));
+            check(trgs.rows.size() == 1
+                  && trgs.rows.first().value(0)
+                         == QStringLiteral("trg_employees_no_negative_salary")
+                  && trgs.rows.first().value(1) == QStringLiteral("BEFORE")
+                  && trgs.rows.first().value(2) == QStringLiteral("INSERT"),
+                  "listTableTriggers shape");
+            check(c->listTriggers(QStringLiteral("public"))
+                      .contains(QStringLiteral("trg_employees_no_negative_salary")),
+                  "listTriggers");
+
+            const DbResultSet routines = c->listRoutines(QStringLiteral("public"));
+            check(!findRow(routines, 0, QStringLiteral("trg_no_negative_salary")).isEmpty(),
+                  "listRoutines contains trigger function");
+            check(c->listEvents(QStringLiteral("public")).isEmpty(),
+                  "listEvents empty on PostgreSQL");
+
+            QString ddlErr;
+            check(c->showCreate(QStringLiteral("TABLE"), QStringLiteral("public"),
+                                QStringLiteral("employees"), &ddlErr)
+                      .startsWith(QStringLiteral("CREATE TABLE")),
+                  "showCreate TABLE");
+            check(c->showCreate(QStringLiteral("VIEW"), QStringLiteral("public"),
+                                QStringLiteral("v_employee_dept"), &ddlErr)
+                      .contains(QStringLiteral("CREATE VIEW")),
+                  "showCreate VIEW");
+            check(c->showCreate(QStringLiteral("TRIGGER"), QStringLiteral("public"),
+                                QStringLiteral("trg_employees_no_negative_salary"), &ddlErr)
+                      .contains(QStringLiteral("CREATE TRIGGER")),
+                  "showCreate TRIGGER");
+            check(c->showCreate(QStringLiteral("FUNCTION"), QStringLiteral("public"),
+                                QStringLiteral("trg_no_negative_salary"), &ddlErr)
+                      .contains(QStringLiteral("FUNCTION")),
+                  "showCreate FUNCTION");
+            const QString evtDdl = c->showCreate(
+                QStringLiteral("EVENT"), QStringLiteral("public"),
+                QStringLiteral("nope"), &ddlErr);
+            check(evtDdl.isEmpty() && !ddlErr.isEmpty(), "showCreate EVENT rejected");
+
+            check(c->sqlInsertDefaults(QStringLiteral("public"), QStringLiteral("t"))
+                      .contains(QStringLiteral("DEFAULT VALUES")),
+                  "sqlInsertDefaults shape");
+            check(c->sqlFkChecks(false).contains(QStringLiteral("session_replication_role")),
+                  "sqlFkChecks shape");
+            check(!c->supportsLimitOnUpdateDelete(), "supportsLimitOnUpdateDelete false");
+
+            /* DML round-trip on a throwaway table, mirroring the SQLite/MySQL
+             * selftests' shapes (quoteIdent'd, no LIMIT on UPDATE/DELETE,
+             * DEFAULT VALUES insert) */
+            {
+                QString e;
+                c->query(QStringLiteral("DROP TABLE IF EXISTS dml_t"), nullptr, nullptr);
+                bool ok = c->query(QStringLiteral(
+                    "CREATE TABLE dml_t (id SERIAL PRIMARY KEY, name TEXT)"), nullptr, &e);
+                ok = c->query(c->sqlInsertDefaults(QStringLiteral("public"),
+                                                   QStringLiteral("dml_t")),
+                              nullptr, &e) && ok;
+                ok = c->query(QStringLiteral(
+                    "UPDATE \"dml_t\" SET \"name\" = 'x' WHERE \"id\" = 1"),
+                    nullptr, &e) && ok;
+                ok = c->query(QStringLiteral(
+                    "DELETE FROM \"dml_t\" WHERE \"name\" = 'x'"), nullptr, &e) && ok;
+                DbResultSet rs;
+                ok = c->query(QStringLiteral("SELECT COUNT(*) FROM \"dml_t\""), &rs, &e)
+                     && ok && rs.rows.first().value(0) == QStringLiteral("0");
+                check(ok, "dml: defaults/UPDATE/DELETE round-trip");
+                if(!ok)
+                    QTextStream(stdout) << "  last error: " << e << '\n';
+                c->query(QStringLiteral("DROP TABLE IF EXISTS dml_t"), nullptr, nullptr);
             }
 
             delete c;
@@ -559,6 +713,23 @@ int main(int argc, char *argv[])
             autoConnect.name = QFileInfo(autoConnect.filePath).fileName();
             doAutoConnect = true;
         }
+        /* --autoconnectpg=host:port:user:password:db — same downstream
+         * selftest machinery as --autoconnect=, but for the PostgreSQL driver */
+        if(a.startsWith(QStringLiteral("--autoconnectpg="))) {
+            const QStringList parts = a.mid(QStringLiteral("--autoconnectpg=").size()).split(':');
+            if(parts.size() == 5) {
+                autoConnect.driverType = DriverType::Postgres;
+                autoConnect.host = parts[0];
+                autoConnect.port = parts[1].toInt();
+                autoConnect.user = parts[2];
+                autoConnect.password = parts[3];
+                autoConnect.database = parts[4];
+                autoConnect.name =
+                    QStringLiteral("%1@%2:%3").arg(autoConnect.user,
+                                                   autoConnect.host).arg(autoConnect.port);
+                doAutoConnect = true;
+            }
+        }
     }
 
     /* headless rendering: needs to be set before QApplication starts */
@@ -671,10 +842,14 @@ int main(int argc, char *argv[])
                 dlg = new ConnectionDialog;
                 if(!dialogDriver.isEmpty()) {
                     if(auto *combo = dlg->findChild<QComboBox *>(
-                           QStringLiteral("driverCombo")))
-                        combo->setCurrentIndex(
+                           QStringLiteral("driverCombo"))) {
+                        const int idx =
                             dialogDriver.compare(QStringLiteral("sqlite"),
-                                                 Qt::CaseInsensitive) == 0 ? 1 : 0);
+                                                 Qt::CaseInsensitive) == 0 ? 1
+                          : dialogDriver.compare(QStringLiteral("postgres"),
+                                                 Qt::CaseInsensitive) == 0 ? 2 : 0;
+                        combo->setCurrentIndex(idx);
+                    }
                 }
             }
             dlg->show();

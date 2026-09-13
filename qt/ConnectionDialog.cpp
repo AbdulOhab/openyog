@@ -57,13 +57,13 @@ void drawDbGlyph(QPainter &p, QRectF r, const QColor &bg)
 
 /* The left strip's only MySQL-specific bitmap is its bottom "WORKS WITH
  * MySQL" logo band (upstream include/bitmaps/connection.png); the blue
- * background + plug icon above it are generic. For SQLite, reuse that
- * generic part and relabel the band with a plain database glyph + the
- * name — no SQLite trademark reproduced, just a generic "this is a
- * database" icon, so the panel never claims a backend it isn't
+ * background + plug icon above it are generic. For any other driver, reuse
+ * that generic part and relabel the band with a plain database glyph +
+ * the name — no third-party trademark reproduced, just a generic "this is
+ * a database" icon, so the panel never claims a backend it isn't
  * connecting to while still looking like a deliberate badge, not an
  * afterthought. */
-QPixmap sqliteBrandPixmap()
+QPixmap genericBrandPixmap(const QString &name)
 {
     const QPixmap source(Icons::dir() + QStringLiteral("connection.png"));
     const QSize size = source.isNull() ? QSize(150, 358) : source.size();
@@ -92,7 +92,6 @@ QPixmap sqliteBrandPixmap()
     nameFont.setBold(true);
     nameFont.setPointSize(15);
     const QFontMetrics fm(nameFont);
-    const QString name = QStringLiteral("SQLite");
     const int nameW = fm.horizontalAdvance(name);
     const int iconSize = 26;
     const int gap = 8;
@@ -148,6 +147,8 @@ ConnectionDialog::ConnectionDialog(QWidget *parent)
     m_driverCombo->setObjectName(QStringLiteral("driverCombo"));   /* --dialogdriver= selftest */
     m_driverCombo->addItem(QStringLiteral("MySQL"), QVariant::fromValue(int(DriverType::Mysql)));
     m_driverCombo->addItem(QStringLiteral("SQLite"), QVariant::fromValue(int(DriverType::Sqlite)));
+    m_driverCombo->addItem(QStringLiteral("PostgreSQL"),
+                           QVariant::fromValue(int(DriverType::Postgres)));
     connect(m_driverCombo, &QComboBox::currentIndexChanged, this,
             &ConnectionDialog::driverChanged);
     auto *driverLabel = new QLabel(QStringLiteral("Dri&ver"), this);
@@ -252,7 +253,37 @@ ConnectionDialog::ConnectionDialog(QWidget *parent)
     sqliteLayout->addLayout(sqliteForm);
     sqliteLayout->addStretch(1);
 
-    /* ---- SSL tab: client-cert TLS, wired to mysql_ssl_set() ---------- */
+    /* ---- PostgreSQL tab: host/port/user/password/database, no MySQL-only
+     * compress/idle-timeout/keep-alive options ------------------------- */
+    m_pgHost     = new QLineEdit(QStringLiteral("127.0.0.1"), this);
+    m_pgUser     = new QLineEdit(QStringLiteral("postgres"), this);
+    m_pgPassword = new QLineEdit(this);
+    m_pgPassword->setEchoMode(QLineEdit::Password);
+    m_pgPort     = new QSpinBox(this);
+    m_pgPort->setRange(1, 65535);
+    m_pgPort->setValue(5432);
+    m_pgPort->setGroupSeparatorShown(false);
+    m_pgPort->setLocale(QLocale::c());
+    m_pgDatabase = new QLineEdit(QStringLiteral("postgres"), this);
+    auto *pgForm = new QFormLayout;
+    pgForm->addRow(QStringLiteral("&Host Address"), m_pgHost);
+    pgForm->addRow(QStringLiteral("&Username"), m_pgUser);
+    pgForm->addRow(QStringLiteral("Pass&word"), m_pgPassword);
+    pgForm->addRow(QStringLiteral("P&ort"), m_pgPort);
+    pgForm->addRow(QStringLiteral("Data&base"), m_pgDatabase);
+    auto *pgHint = new QLabel(QStringLiteral(
+        "(A PostgreSQL connection is to one database — the object browser's "
+        "top-level nodes are this database's schemas, not other databases)"),
+        this);
+    pgHint->setEnabled(false);
+    pgHint->setWordWrap(true);
+    pgForm->addRow(QString(), pgHint);
+    m_postgresTab = new QWidget(this);
+    auto *pgLayout = new QVBoxLayout(m_postgresTab);
+    pgLayout->addLayout(pgForm);
+    pgLayout->addStretch(1);
+
+    /* ---- SSL tab: client-cert TLS, wired to mysql_ssl_set()/libpq ---- */
     auto *sslTab = new QWidget(this);
     m_useSsl = new QCheckBox(QStringLiteral("Use SS&L"), sslTab);
     m_sslCa   = new QLineEdit(sslTab);
@@ -292,17 +323,20 @@ ConnectionDialog::ConnectionDialog(QWidget *parent)
     m_tabs = new QTabWidget(this);
     m_tabs->addTab(m_mysqlTab, QStringLiteral("MySQL"));
     m_tabs->addTab(m_sqliteTab, QStringLiteral("SQLite"));
+    m_tabs->addTab(m_postgresTab, QStringLiteral("PostgreSQL"));
     m_tabs->addTab(placeholderTab(QStringLiteral("HTTP tunnel")), QStringLiteral("HTTP"));
     m_tabs->addTab(placeholderTab(QStringLiteral("SSH tunnel")), QStringLiteral("SSH"));
     m_tabs->addTab(sslTab, QStringLiteral("SSL"));
     m_tabs->addTab(placeholderTab(QStringLiteral("Advanced")), QStringLiteral("Advanced"));
     connect(m_tabs, &QTabWidget::currentChanged, this, [this](int) {
-        /* keep the driver combo in sync when the user clicks the SQLite tab
+        /* keep the driver combo in sync when the user clicks a driver tab
          * directly instead of using the combo */
         if(m_tabs->currentWidget() == m_mysqlTab)
             m_driverCombo->setCurrentIndex(0);
         else if(m_tabs->currentWidget() == m_sqliteTab)
             m_driverCombo->setCurrentIndex(1);
+        else if(m_tabs->currentWidget() == m_postgresTab)
+            m_driverCombo->setCurrentIndex(2);
     });
 
     /* ---- Connect / Cancel / Test -------------------------------- */
@@ -458,13 +492,18 @@ void ConnectionDialog::testConnection()
 
 void ConnectionDialog::driverChanged(int index)
 {
-    const bool sqlite = index == 1;
-    m_tabs->setCurrentWidget(sqlite ? m_sqliteTab : m_mysqlTab);
-    setWindowTitle(sqlite ? QStringLiteral("Connect to SQLite Database")
-                          : QStringLiteral("Connect to MySQL Host"));
-    m_brandImage->setPixmap(sqlite
-        ? sqliteBrandPixmap()
-        : QPixmap(Icons::dir() + QStringLiteral("connection.png")));
+    const auto dt = DriverType(m_driverCombo->itemData(index).toInt());
+    QWidget *tab = dt == DriverType::Sqlite   ? m_sqliteTab
+                 : dt == DriverType::Postgres ? m_postgresTab
+                                              : m_mysqlTab;
+    m_tabs->setCurrentWidget(tab);
+    setWindowTitle(dt == DriverType::Sqlite   ? QStringLiteral("Connect to SQLite Database")
+                  : dt == DriverType::Postgres ? QStringLiteral("Connect to PostgreSQL Server")
+                                               : QStringLiteral("Connect to MySQL Host"));
+    m_brandImage->setPixmap(
+        dt == DriverType::Sqlite   ? genericBrandPixmap(QStringLiteral("SQLite"))
+      : dt == DriverType::Postgres ? genericBrandPixmap(QStringLiteral("PostgreSQL"))
+                                   : QPixmap(Icons::dir() + QStringLiteral("connection.png")));
 }
 
 void ConnectionDialog::browseSqliteFile()
@@ -495,7 +534,18 @@ void ConnectionDialog::setParams(const ConnectionParams &p)
     m_password->setText(p.password);
     m_database->setText(p.database);
     m_sqlitePath->setText(p.filePath);
-    m_driverCombo->setCurrentIndex(p.driverType == DriverType::Sqlite ? 1 : 0);
+    /* Postgres shares the host/port/user/password/database shape with
+     * MySQL — seed its tab from the same saved values too, exactly like
+     * the SQLite file path is seeded regardless of which driver a saved
+     * entry actually used (harmless: switching tabs just shows whichever
+     * set the user actually wants) */
+    m_pgHost->setText(p.host);
+    m_pgPort->setValue(p.driverType == DriverType::Postgres ? p.port : 5432);
+    m_pgUser->setText(p.user);
+    m_pgPassword->setText(p.password);
+    m_pgDatabase->setText(p.database);
+    m_driverCombo->setCurrentIndex(p.driverType == DriverType::Sqlite ? 1
+                                  : p.driverType == DriverType::Postgres ? 2 : 0);
     m_useSsl->setChecked(p.useSsl);
     m_sslCa->setText(p.sslCa);
     m_sslCert->setText(p.sslCert);
@@ -514,7 +564,8 @@ ConnectionParams ConnectionDialog::params() const
 {
     ConnectionParams p;
     p.driverType = m_tabs->currentWidget() == m_sqliteTab ? DriverType::Sqlite
-                                                          : DriverType::Mysql;
+                 : m_tabs->currentWidget() == m_postgresTab ? DriverType::Postgres
+                                                            : DriverType::Mysql;
     const QString sel = m_saved->currentText().trimmed();
     const bool hasSavedName = !sel.isEmpty() && sel != QStringLiteral("New Connection");
 
@@ -523,6 +574,21 @@ ConnectionParams ConnectionDialog::params() const
         p.name = hasSavedName ? sel : QFileInfo(p.filePath).baseName();
         if(p.name.isEmpty())
             p.name = QStringLiteral("New SQLite connection");
+        return p;
+    }
+
+    if(p.driverType == DriverType::Postgres) {
+        p.host     = m_pgHost->text().trimmed();
+        p.port     = m_pgPort->value();
+        p.user     = m_pgUser->text().trimmed();
+        p.password = m_pgPassword->text();
+        p.database = m_pgDatabase->text().trimmed();
+        p.useSsl   = m_useSsl->isChecked();
+        p.sslCa    = m_sslCa->text().trimmed();
+        p.sslCert  = m_sslCert->text().trimmed();
+        p.sslKey   = m_sslKey->text().trimmed();
+        p.name = hasSavedName ? sel
+                              : QStringLiteral("%1@%2:%3").arg(p.user, p.host).arg(p.port);
         return p;
     }
 

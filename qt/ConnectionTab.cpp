@@ -347,9 +347,13 @@ ConnectionTab::ConnectionTab(const ConnectionParams &params, QWidget *parent)
 
     /* ---- right-top: editor tabs (Query 1 / History) --------------- */
     m_editor = new CodeEditor(this);
-    m_editor->setPlainText(m_params.driverType == DriverType::Sqlite
-        ? QStringLiteral("SELECT sqlite_version();\nSELECT name FROM sqlite_master;")
-        : QStringLiteral("SELECT VERSION(), CURRENT_USER();\nSHOW DATABASES;"));
+    m_editor->setPlainText(
+        m_params.driverType == DriverType::Sqlite
+            ? QStringLiteral("SELECT sqlite_version();\nSELECT name FROM sqlite_master;")
+        : m_params.driverType == DriverType::Postgres
+            ? QStringLiteral("SELECT version(), current_user;\n"
+                             "SELECT schema_name FROM information_schema.schemata;")
+            : QStringLiteral("SELECT VERSION(), CURRENT_USER();\nSHOW DATABASES;"));
     attachEditor(m_editor, QStringLiteral("Query 1"));
 
     m_history = new QTextBrowser(this);

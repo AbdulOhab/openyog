@@ -4,12 +4,16 @@
 
 #include <QString>
 
-/* PostgreSQL is added here later. */
-enum class DriverType { Mysql = 0, Sqlite = 1 };
+enum class DriverType { Mysql = 0, Sqlite = 1, Postgres = 2 };
 
 inline QString driverTypeToString(DriverType t)
 {
-    return t == DriverType::Sqlite ? QStringLiteral("sqlite") : QStringLiteral("mysql");
+    switch(t) {
+    case DriverType::Sqlite:   return QStringLiteral("sqlite");
+    case DriverType::Postgres: return QStringLiteral("postgres");
+    case DriverType::Mysql:    break;
+    }
+    return QStringLiteral("mysql");
 }
 
 /* Unknown/missing strings fall back to `fallback` — keeps old saved
@@ -18,8 +22,9 @@ inline QString driverTypeToString(DriverType t)
 inline DriverType driverTypeFromString(const QString &s,
                                        DriverType fallback = DriverType::Mysql)
 {
-    if(s == QStringLiteral("sqlite")) return DriverType::Sqlite;
-    if(s == QStringLiteral("mysql"))  return DriverType::Mysql;
+    if(s == QStringLiteral("sqlite"))   return DriverType::Sqlite;
+    if(s == QStringLiteral("postgres")) return DriverType::Postgres;
+    if(s == QStringLiteral("mysql"))    return DriverType::Mysql;
     return fallback;
 }
 
@@ -34,7 +39,7 @@ struct ConnectionParams
     QString    database;   // optional
     QString    filePath;   // SQLite only: path to the .sqlite file
 
-    // MySQL only: client-cert TLS (mysql_ssl_set before mysql_real_connect)
+    // MySQL/PostgreSQL: client-cert TLS (mysql_ssl_set / libpq sslmode=verify-*)
     bool       useSsl  = false;
     QString    sslCa;     // CA cert
     QString    sslCert;   // client cert
