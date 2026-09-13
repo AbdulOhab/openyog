@@ -11,11 +11,24 @@
 #include <QTableWidget>
 #include <QVBoxLayout>
 
+namespace {
+QString qi(DriverType driver, const QString &ident)
+{
+    if(driver == DriverType::Postgres)
+        return QLatin1Char('"') + QString(ident).replace(QLatin1Char('"'),
+                                                          QStringLiteral("\"\""))
+             + QLatin1Char('"');
+    return QLatin1Char('`') + QString(ident).replace(QLatin1Char('`'),
+                                                      QStringLiteral("``"))
+         + QLatin1Char('`');
+}
+} // namespace
+
 IndexDialog::IndexDialog(QString database, QString table,
                          const QList<IndexDef> &indexes, QStringList tableColumns,
-                         QWidget *parent)
-    : QDialog(parent), m_database(std::move(database)), m_table(std::move(table)),
-      m_columns(std::move(tableColumns))
+                         QWidget *parent, DriverType driver)
+    : QDialog(parent), m_driver(driver), m_database(std::move(database)),
+      m_table(std::move(table)), m_columns(std::move(tableColumns))
 {
     setWindowTitle(QStringLiteral("Manage Indexes — `%1`").arg(m_table));
     resize(580, 460);
@@ -138,6 +151,7 @@ void IndexDialog::removeSelected()
 
 QString IndexDialog::buildSql() const
 {
+    const bool pg = m_driver == DriverType::Postgres;
     QStringList current, adds;
     for(int r = 0; r < m_grid->rowCount(); ++r) {
         QTableWidgetItem *n = m_grid->item(r, 0);
@@ -150,11 +164,33 @@ QString IndexDialog::buildSql() const
             const bool uniq = m_grid->item(r, 2)->text() == QStringLiteral("yes");
             QStringList q;
             for(const QString &c : cols.split(QStringLiteral(", "), Qt::SkipEmptyParts))
-                q << QStringLiteral("`%1`").arg(c.trimmed());
-            adds << QStringLiteral("ADD %1INDEX `%2` (%3)")
-                        .arg(uniq ? QStringLiteral("UNIQUE ") : QString(),
-                             name, q.join(QStringLiteral(", ")));
+                q << qi(m_driver, c.trimmed());
+            if(pg)
+                /* its own top-level statement, not an ALTER TABLE clause */
+                adds << QStringLiteral("CREATE %1INDEX %2 ON %3 (%4)")
+                            .arg(uniq ? QStringLiteral("UNIQUE ") : QString(),
+                                 qi(m_driver, name), qi(m_driver, m_table),
+                                 q.join(QStringLiteral(", ")));
+            else
+                adds << QStringLiteral("ADD %1INDEX `%2` (%3)")
+                            .arg(uniq ? QStringLiteral("UNIQUE ") : QString(),
+                                 name, q.join(QStringLiteral(", ")));
         }
+    }
+
+    if(pg) {
+        /* same reason: DROP INDEX is its own statement in Postgres, not an
+         * ALTER TABLE clause, and takes a schema-qualified index name
+         * directly — no "ON table" (unlike MySQL's older DROP INDEX …
+         * ON table form, or its ALTER TABLE … DROP INDEX clause) */
+        QStringList statements;
+        for(const QString &orig : m_originalNames)
+            if(!current.contains(orig))
+                statements << QStringLiteral("DROP INDEX %1")
+                                  .arg(qi(m_driver, m_database) + QLatin1Char('.')
+                                       + qi(m_driver, orig));
+        statements += adds;
+        return statements.isEmpty() ? QString() : statements.join(QStringLiteral(";\n"));
     }
 
     QStringList clauses;

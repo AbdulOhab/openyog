@@ -1891,7 +1891,7 @@ void ConnectionTab::promptManageIndexes(const QString &database,
     for(const QStringList &row : m_conn->listColumns(db, table).rows)
         cols << row.value(0);
 
-    IndexDialog dlg(db, table, indexes, cols, this);
+    IndexDialog dlg(db, table, indexes, cols, this, m_params.driverType);
     if(dlg.exec() != QDialog::Accepted)
         return;
     const QString sql = dlg.buildSql();
