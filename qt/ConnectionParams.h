@@ -45,8 +45,20 @@ struct ConnectionParams
     QString    sslCert;   // client cert
     QString    sslKey;    // client key
 
-    // MySQL only
+    // MySQL only — libpq has no protocol-compression option for a plain
+    // TCP connection, so there's no PostgreSQL equivalent to wire this to
     bool       compress       = false;   // mysql_options(MYSQL_OPT_COMPRESS)
-    int        idleTimeoutSecs = 0;      // 0 = server default; else SET SESSION wait_timeout
-    int        keepAliveSecs   = 0;      // 0 = disabled; else a periodic no-op ping
+
+    // MySQL: 0 = server default, else SET SESSION wait_timeout
+    // PostgreSQL: 0 = server default, else SET idle_session_timeout (PG 14+;
+    //   a best-effort SET on connect, same as MySQL's — an older server
+    //   that doesn't recognize the GUC just keeps its own default)
+    int        idleTimeoutSecs = 0;
+
+    // MySQL: 0 = disabled, else a periodic no-op ping (SELECT 1) on the
+    //   browsing connection
+    // PostgreSQL: 0 = disabled, else real TCP keepalives via libpq's own
+    //   keepalives/keepalives_idle conninfo options — no app-level ping
+    //   needed, the OS socket handles it
+    int        keepAliveSecs   = 0;
 };

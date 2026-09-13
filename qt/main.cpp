@@ -423,6 +423,30 @@ int main(int argc, char *argv[])
                 c->query(QStringLiteral("DROP TABLE IF EXISTS dml_t"), nullptr, nullptr);
             }
 
+            /* Session Idle Timeout / Keep-Alive: a second connection with
+             * both set, checking the server actually applied the GUC (idle
+             * timeout) and that libpq accepted the keepalive conninfo
+             * options (accepted, not observably testable from SQL — a
+             * bad option value would have failed PQconnectdb outright,
+             * which connectOk below already checks). */
+            {
+                ConnectionParams cp2 = cp;
+                cp2.idleTimeoutSecs = 45;
+                cp2.keepAliveSecs = 30;
+                QString err2;
+                IDbConnection *c2 = dbDriverFor(cp2.driverType)->connect(cp2, &err2);
+                check(c2 != nullptr, "idle timeout/keepalive: connect with options set");
+                if(c2) {
+                    DbResultSet rs;
+                    const bool queried = c2->query(
+                        QStringLiteral("SHOW idle_session_timeout"), &rs, nullptr);
+                    check(queried && !rs.rows.isEmpty()
+                              && rs.rows.first().value(0) == QStringLiteral("45s"),
+                          "idle timeout: SET idle_session_timeout applied");
+                    delete c2;
+                }
+            }
+
             delete c;
             return fails == 0 ? 0 : 1;
         }
