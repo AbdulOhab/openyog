@@ -2549,7 +2549,6 @@ void ConnectionTab::tableDiagnostics(const QString &database, const QString &tab
 {
     if(!m_conn || table.isEmpty())
         return;
-    const bool sqlite = m_params.driverType == DriverType::Sqlite;
     const QString qualified = m_conn->qualify(database, table);
 
     QDialog dlg(this);
@@ -2558,34 +2557,47 @@ void ConnectionTab::tableDiagnostics(const QString &database, const QString &tab
     lay->addWidget(new QLabel(QStringLiteral("Run a maintenance statement on %1:")
                                   .arg(qualified), &dlg));
 
-    struct Op { QString label, mysqlSql, sqliteSql, note; };
+    struct Op { QString label, mysqlSql, sqliteSql, pgSql, note, pgNote; };
     const QList<Op> ops = {
         { QStringLiteral("&Check"),
           QStringLiteral("CHECK TABLE %1").arg(qualified),
-          QStringLiteral("PRAGMA integrity_check"),
-          sqlite ? QStringLiteral(" (whole file, not just this table)") : QString() },
+          QStringLiteral("PRAGMA integrity_check"), QString(),
+          QStringLiteral(" (whole file, not just this table)"),
+          QStringLiteral(" (no built-in SQL equivalent — pg_amcheck is a "
+                         "separate command-line tool)") },
         { QStringLiteral("&Analyze"),
           QStringLiteral("ANALYZE TABLE %1").arg(qualified),
-          QStringLiteral("ANALYZE %1").arg(m_conn->quoteIdent(table)), QString() },
+          QStringLiteral("ANALYZE %1").arg(m_conn->quoteIdent(table)),
+          QStringLiteral("ANALYZE %1").arg(qualified), QString(), QString() },
         { QStringLiteral("&Optimize"),
           QStringLiteral("OPTIMIZE TABLE %1").arg(qualified),
           QStringLiteral("VACUUM"),
-          sqlite ? QStringLiteral(" (whole file, not just this table)") : QString() },
+          QStringLiteral("VACUUM (ANALYZE) %1").arg(qualified),
+          QStringLiteral(" (whole file, not just this table)"),
+          QString() },
         { QStringLiteral("&Repair"),
           QStringLiteral("REPAIR TABLE %1").arg(qualified),
-          QString(), QStringLiteral(" (no SQLite equivalent)") },
+          QString(), QString(),
+          QStringLiteral(" (no SQLite equivalent)"),
+          QStringLiteral(" (no PostgreSQL equivalent — corruption there means "
+                         "restoring from backup, not a table-level fix)") },
     };
     for(const Op &op : ops) {
         auto *row = new QHBoxLayout;
         auto *btn = new QPushButton(op.label, &dlg);
-        const QString sql = sqlite ? op.sqliteSql : op.mysqlSql;
+        const QString sql = m_params.driverType == DriverType::Sqlite ? op.sqliteSql
+                           : m_params.driverType == DriverType::Postgres ? op.pgSql
+                                                                        : op.mysqlSql;
+        const QString note = m_params.driverType == DriverType::Sqlite ? op.note
+                            : m_params.driverType == DriverType::Postgres ? op.pgNote
+                                                                         : QString();
         btn->setEnabled(!sql.isEmpty());
         connect(btn, &QPushButton::clicked, &dlg, [this, &dlg, sql] {
             dlg.accept();
             runStatements(QStringList{ sql }, QStringLiteral("Diagnostics"));
         });
         row->addWidget(btn);
-        row->addWidget(new QLabel(op.note, &dlg));
+        row->addWidget(new QLabel(note, &dlg));
         row->addStretch(1);
         lay->addLayout(row);
     }
