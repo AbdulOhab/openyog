@@ -1025,6 +1025,25 @@ bool MainWindow::selftestCopySqliteFile(const QString &target, bool withData)
     return ok;
 }
 
+bool MainWindow::selftestCsvImportSqlite(const QString &file, const QString &table)
+{
+    auto *tab = currentTab();
+    if(!tab)
+        return false;
+    int rows = 0;
+    QString err;
+    const bool ok = tab->importCsvIntoSqlite(
+        {}, table, file, QStringLiteral(","), QStringLiteral("\""),
+        QStringLiteral("\\"), true, 0, false, QStringLiteral("IGNORE"),
+        &rows, &err);
+    if(!ok)
+        qWarning("sqlitecsvimport failed: %s", qPrintable(err));
+    else
+        qInfo("sqlitecsvimport: %d row(s) inserted into %s", rows,
+              qPrintable(table));
+    return ok;
+}
+
 void MainWindow::openTableData(const QString &db, const QString &table)
 {
     if(auto *tab = currentTab())

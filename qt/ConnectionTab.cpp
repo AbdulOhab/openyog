@@ -297,6 +297,45 @@ QVector<QueryResult> runOnConnection(const ConnectionParams &p,
     return results;
 }
 
+/* minimal CSV/TSV-style parser: honours a quote char (with doubled-quote
+ * escaping) and a separate escape char inside quotes, and treats both \n
+ * and \r\n as a line end regardless of the dialog's "Line separator" pick
+ * — used only by the SQLite import path, which has no server-side loader
+ * to hand the raw separator/terminator strings to. */
+QList<QStringList> parseDelimitedText(const QString &text, QChar sep,
+                                      QChar quote, QChar esc)
+{
+    QList<QStringList> rows;
+    QStringList cur;
+    QString field;
+    bool inQuotes = false;
+    const int n = text.size();
+    for(int i = 0; i < n; ) {
+        const QChar c = text[i];
+        if(inQuotes) {
+            if(!esc.isNull() && esc != quote && c == esc && i + 1 < n) {
+                field += text[i + 1]; i += 2; continue;
+            }
+            if(!quote.isNull() && c == quote) {
+                if(i + 1 < n && text[i + 1] == quote) { field += quote; i += 2; continue; }
+                inQuotes = false; ++i; continue;
+            }
+            field += c; ++i; continue;
+        }
+        if(!quote.isNull() && c == quote) { inQuotes = true; ++i; continue; }
+        if(c == sep) { cur << field; field.clear(); ++i; continue; }
+        if(c == QLatin1Char('\r')) { ++i; continue; }
+        if(c == QLatin1Char('\n')) {
+            cur << field; field.clear();
+            rows << cur; cur.clear();
+            ++i; continue;
+        }
+        field += c; ++i;
+    }
+    if(!field.isEmpty() || !cur.isEmpty()) { cur << field; rows << cur; }
+    return rows;
+}
+
 } // namespace
 
 ConnectionTab::ConnectionTab(const ConnectionParams &params, QWidget *parent)
@@ -1965,6 +2004,78 @@ void ConnectionTab::promptCopyDatabase(const QString &database)
     refreshBrowser();
 }
 
+bool ConnectionTab::importCsvIntoSqlite(const QString &db, const QString &table,
+                                        const QString &file, const QString &sep,
+                                        const QString &quote, const QString &escCh,
+                                        bool hasHeader, int extraSkipLines,
+                                        bool truncateFirst, const QString &onDup,
+                                        int *rowsInserted, QString *error)
+{
+    if(!m_conn) { if(error) *error = QStringLiteral("not connected"); return false; }
+    QFile f(file);
+    if(!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        if(error) *error = QStringLiteral("could not open %1").arg(file);
+        return false;
+    }
+    const QString text = QString::fromUtf8(f.readAll());
+    const QChar sepCh = sep.isEmpty() ? QChar(',') : sep.at(0);
+    const QChar quoteCh = quote.isEmpty() ? QChar() : quote.at(0);
+    const QChar escapeCh = escCh.isEmpty() ? QChar() : escCh.at(0);
+    QList<QStringList> rows = parseDelimitedText(text, sepCh, quoteCh, escapeCh);
+
+    int start = 0;
+    QStringList colNames;
+    if(hasHeader && !rows.isEmpty()) {
+        colNames = rows.first();
+        start = 1;
+    }
+    start += extraSkipLines;
+
+    if(truncateFirst)
+        m_conn->query(m_conn->sqlTruncateTable(db, table), nullptr, nullptr);
+
+    QString colClause;
+    if(!colNames.isEmpty()) {
+        QStringList q;
+        for(const QString &c : colNames)
+            q << m_conn->quoteIdent(c.trimmed());
+        colClause = QStringLiteral(" (%1)").arg(q.join(QStringLiteral(", ")));
+    }
+    const auto qv = [&](const QString &v) {
+        if(v == QStringLiteral("NULL"))
+            return QStringLiteral("NULL");
+        return QLatin1Char('\'') + QString::fromUtf8(m_conn->escape(v.toUtf8()))
+             + QLatin1Char('\'');
+    };
+    const QString qualified = m_conn->qualify(db, table);
+    const QString verb = onDup == QStringLiteral("REPLACE")
+        ? QStringLiteral("INSERT OR REPLACE") : QStringLiteral("INSERT OR IGNORE");
+
+    m_conn->query(QStringLiteral("BEGIN"), nullptr, nullptr);
+    int inserted = 0;
+    for(int i = start; i < rows.size(); ++i) {
+        const QStringList &row = rows.at(i);
+        if(row.size() == 1 && row.first().isEmpty())
+            continue;   /* trailing blank line */
+        QStringList vals;
+        for(const QString &v : row)
+            vals << qv(v);
+        const QString sql = QStringLiteral("%1 INTO %2%3 VALUES (%4)")
+            .arg(verb, qualified, colClause, vals.join(QStringLiteral(", ")));
+        QString stmtErr;
+        if(!m_conn->query(sql, nullptr, &stmtErr)) {
+            m_conn->query(QStringLiteral("ROLLBACK"), nullptr, nullptr);
+            if(error) *error = QStringLiteral("%1\n  at row %2: %3")
+                                    .arg(stmtErr).arg(i + 1).arg(sql.left(120));
+            return false;
+        }
+        ++inserted;
+    }
+    m_conn->query(QStringLiteral("COMMIT"), nullptr, nullptr);
+    if(rowsInserted) *rowsInserted = inserted;
+    return true;
+}
+
 bool ConnectionTab::copySqliteFileTo(const QString &target, bool withData,
                                      QString *error)
 {
@@ -2285,6 +2396,13 @@ void ConnectionTab::promptImportXml(const QString &database, const QString &tabl
 {
     if(!m_conn)
         return;
+    if(m_params.driverType == DriverType::Sqlite) {
+        QMessageBox::information(this, QStringLiteral("Import XML"),
+            QStringLiteral("XML import needs LOAD XML LOCAL INFILE, which is "
+                           "MySQL-only — not available on a SQLite connection. "
+                           "Use Import CSV instead."));
+        return;
+    }
     const QString db = database.isEmpty() ? m_params.database : database;
 
     const QString file = QFileDialog::getOpenFileName(
@@ -2418,7 +2536,11 @@ void ConnectionTab::promptImportCsv(const QString &database, const QString &tabl
     lay->addLayout(form);
     lay->addWidget(new QLabel(QStringLiteral("File preview:"), &dlg));
     lay->addWidget(importFilePreview(&dlg, file));
-    lay->addWidget(new QLabel(QStringLiteral(
+    const bool sqlite = m_params.driverType == DriverType::Sqlite;
+    lay->addWidget(new QLabel(sqlite
+        ? QStringLiteral("Parsed and inserted row by row inside one transaction "
+                         "(SQLite has no server-side bulk loader).")
+        : QStringLiteral(
         "Uses LOAD DATA LOCAL INFILE — the server must allow local-infile."),
         &dlg));
     lay->addWidget(buttons);
@@ -2434,6 +2556,24 @@ void ConnectionTab::promptImportCsv(const QString &database, const QString &tabl
                 .replace('\'', QStringLiteral("\\'"));
     };
     const int skip = (header->isChecked() ? 1 : 0) + skipLines->value();
+
+    if(sqlite) {
+        int rows = 0;
+        QString err;
+        const bool ok = importCsvIntoSqlite(
+            db, target, file, sep, quote, escChar->text(), header->isChecked(),
+            skipLines->value(), truncate->isChecked(),
+            onDup->currentData().toString(), &rows, &err);
+        m_messages->setPlainText(ok
+            ? QStringLiteral("Imported %1 row(s) into %2")
+                  .arg(rows).arg(m_conn->qualify(db, target))
+            : QStringLiteral("Import failed: %1").arg(err));
+        m_resultTabs->setCurrentWidget(m_messages);
+        if(ok && m_tableData->loadedTable() == target)
+            m_tableData->load(m_conn, db, target);
+        refreshBrowser();
+        return;
+    }
 
     /* when the file has a header row, map by name — otherwise LOAD DATA loads
      * positionally into every column (wrong for an AUTO_INCREMENT-first table) */

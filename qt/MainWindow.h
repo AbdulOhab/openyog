@@ -47,6 +47,8 @@ public:
     bool selftestCopyDb(const QString &src, const QString &tgt);
     /* --sqlitecopydb=target[:nodata] selftest */
     bool selftestCopySqliteFile(const QString &target, bool withData);
+    /* --sqlitecsvimport=file.csv:table selftest */
+    bool selftestCsvImportSqlite(const QString &file, const QString &table);
 
 private:
     ConnectionTab *currentTab() const;
