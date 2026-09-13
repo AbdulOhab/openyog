@@ -39,4 +39,9 @@ struct ConnectionParams
     QString    sslCa;     // CA cert
     QString    sslCert;   // client cert
     QString    sslKey;    // client key
+
+    // MySQL only
+    bool       compress       = false;   // mysql_options(MYSQL_OPT_COMPRESS)
+    int        idleTimeoutSecs = 0;      // 0 = server default; else SET SESSION wait_timeout
+    int        keepAliveSecs   = 0;      // 0 = disabled; else a periodic no-op ping
 };

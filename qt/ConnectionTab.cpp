@@ -512,6 +512,23 @@ ConnectionTab::ConnectionTab(const ConnectionParams &params, QWidget *parent)
         }
     }
 
+    /* Connect dialog's "Keep-Alive Interval": a periodic no-op query on the
+     * browsing connection so a firewall/proxy — or the server's own idle
+     * timeout — doesn't drop it while the user is just reading, not typing.
+     * Skipped while a batch is running: it shares no state with the worker
+     * thread's own connection, but there's no reason to add an extra query
+     * on top of one already in flight. SQLite is a local file, not a
+     * server socket that can time out — nothing to keep alive. */
+    if(m_params.driverType == DriverType::Mysql && m_params.keepAliveSecs > 0) {
+        m_keepAliveTimer = new QTimer(this);
+        m_keepAliveTimer->setInterval(m_params.keepAliveSecs * 1000);
+        connect(m_keepAliveTimer, &QTimer::timeout, this, [this] {
+            if(m_conn && !m_running)
+                m_conn->query(QStringLiteral("SELECT 1"), nullptr, nullptr);
+        });
+        m_keepAliveTimer->start();
+    }
+
     connect(m_browser, &ObjectBrowser::tableActivated, this,
             [this](const QString &db, const QString &table) {
         if(m_conn) {
