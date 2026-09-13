@@ -17,6 +17,9 @@
 #include <QApplication>
 #include <QColorDialog>
 #include <QComboBox>
+#include <QDialog>
+#include <QDialogButtonBox>
+#include <QFormLayout>
 #include <QIcon>
 #include <QPixmap>
 #include <QFileDialog>
@@ -28,6 +31,7 @@
 #include <QJsonValue>
 #include <QLabel>
 #include <QLineEdit>
+#include <QSpinBox>
 #include <QMenuBar>
 #include <QMessageBox>
 #include <QPlainTextEdit>
@@ -851,7 +855,55 @@ MainWindow::MainWindow(QWidget *parent)
         }
         openAndRun(p);
     });
-    addDisabled(tools, QStringLiteral("&Preferences…"));
+    QAction *preferences = tools->addAction(QStringLiteral("&Preferences…"));
+    connect(preferences, &QAction::triggered, this, [this] {
+        /* one dialog over the same settings the Theme submenu, Query
+         * Timeout… action and Change Object Browser Color already expose
+         * individually — a single stop for the handful of app-wide (not
+         * per-connection) settings that exist so far. */
+        QDialog dlg(this);
+        dlg.setWindowTitle(QStringLiteral("Preferences"));
+        auto *themeCombo = new QComboBox(&dlg);
+        themeCombo->addItems({ QStringLiteral("light"), QStringLiteral("dark"),
+                              QStringLiteral("twilight") });
+        themeCombo->setCurrentText(Theme::load());
+        auto *timeoutSpin = new QSpinBox(&dlg);
+        timeoutSpin->setRange(0, 24 * 3600);
+        timeoutSpin->setValue(ConnectionTab::queryTimeoutSecs());
+        timeoutSpin->setSpecialValueText(QStringLiteral("never"));
+        QColor browserColor = ObjectBrowserColor::load();
+        auto *colorBtn = new QPushButton(
+            browserColor.isValid() ? browserColor.name()
+                                   : QStringLiteral("(theme default)"), &dlg);
+        connect(colorBtn, &QPushButton::clicked, &dlg, [&] {
+            const QColor c = QColorDialog::getColor(
+                browserColor.isValid() ? browserColor : QColor(Qt::white), &dlg,
+                QStringLiteral("Object Browser Selection Color"));
+            if(c.isValid()) {
+                browserColor = c;
+                colorBtn->setText(c.name());
+            }
+        });
+        auto *form = new QFormLayout;
+        form->addRow(QStringLiteral("Theme"), themeCombo);
+        form->addRow(QStringLiteral("Query timeout (seconds)"), timeoutSpin);
+        form->addRow(QStringLiteral("Object browser selection color"), colorBtn);
+        auto *buttons = new QDialogButtonBox(
+            QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
+        connect(buttons, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
+        connect(buttons, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
+        auto *lay = new QVBoxLayout(&dlg);
+        lay->addLayout(form);
+        lay->addWidget(buttons);
+        if(dlg.exec() != QDialog::Accepted)
+            return;
+
+        const QString theme = themeCombo->currentText();
+        Theme::save(theme);
+        Theme::apply(*qApp, theme);
+        ConnectionTab::setQueryTimeoutSecs(timeoutSpin->value());
+        ObjectBrowserColor::save(browserColor);
+    });
     QAction *queryTimeout = tools->addAction(QStringLiteral("Query &Timeout…"));
     connect(queryTimeout, &QAction::triggered, this, [this] {
         bool ok = false;
