@@ -2020,8 +2020,18 @@ void ConnectionTab::promptCopyDatabase(const QString &database)
         return;
     }
 
+    /* Postgres has no cross-database browsing at all (see the schema/
+     * database design note elsewhere in this file) — a connection can
+     * never reach a sibling physical database the way the "different
+     * target host" path below assumes, so "Copy Database" for Postgres is
+     * always a same-connection schema-to-schema copy; the target
+     * host/port/user fields (meaningless here) are omitted entirely rather
+     * than shown and silently ignored. */
+    const bool isPg = m_params.driverType == DriverType::Postgres;
+
     QDialog dlg(this);
-    dlg.setWindowTitle(QStringLiteral("Copy Database `%1`").arg(srcDb));
+    dlg.setWindowTitle(QStringLiteral("Copy %1 `%2`")
+                            .arg(isPg ? QStringLiteral("Schema") : QStringLiteral("Database"), srcDb));
     auto *tHost = new QLineEdit(m_params.host, &dlg);
     auto *tPort = new QSpinBox(&dlg);
     tPort->setRange(1, 65535);
@@ -2034,16 +2044,20 @@ void ConnectionTab::promptCopyDatabase(const QString &database)
     auto *wantData = new QCheckBox(QStringLiteral("Copy table data"), &dlg);
     wantData->setChecked(true);
     auto *dropFirst = new QCheckBox(
-        QStringLiteral("Drop target database first if it exists"), &dlg);
+        QStringLiteral("Drop target %1 first if it exists")
+            .arg(isPg ? QStringLiteral("schema") : QStringLiteral("database")), &dlg);
     auto *wantRoutines = new QCheckBox(
         QStringLiteral("Also copy views, routines, triggers, events"), &dlg);
     wantRoutines->setChecked(true);
     auto *form = new QFormLayout;
-    form->addRow(QStringLiteral("Target host"), tHost);
-    form->addRow(QStringLiteral("Target port"), tPort);
-    form->addRow(QStringLiteral("Target user"), tUser);
-    form->addRow(QStringLiteral("Target password"), tPass);
-    form->addRow(QStringLiteral("New database name"), name);
+    if(!isPg) {
+        form->addRow(QStringLiteral("Target host"), tHost);
+        form->addRow(QStringLiteral("Target port"), tPort);
+        form->addRow(QStringLiteral("Target user"), tUser);
+        form->addRow(QStringLiteral("Target password"), tPass);
+    }
+    form->addRow(isPg ? QStringLiteral("New schema name")
+                       : QStringLiteral("New database name"), name);
     form->addRow(QString(), wantData);
     form->addRow(QString(), wantRoutines);
     form->addRow(QString(), dropFirst);
@@ -2054,9 +2068,13 @@ void ConnectionTab::promptCopyDatabase(const QString &database)
     connect(buttons, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
     auto *lay = new QVBoxLayout(&dlg);
     lay->addLayout(form);
-    lay->addWidget(new QLabel(QStringLiteral(
-        "Same host + port + user → fast CREATE … LIKE copy; a different target "
-        "streams a dump over a fresh connection. DEFINER clauses are stripped."),
+    lay->addWidget(new QLabel(isPg
+        ? QStringLiteral("Copies the schema within this connection "
+                         "(CREATE TABLE … LIKE … INCLUDING ALL, plus foreign keys, "
+                         "views, routines and triggers).")
+        : QStringLiteral(
+            "Same host + port + user → fast CREATE … LIKE copy; a different target "
+            "streams a dump over a fresh connection. DEFINER clauses are stripped."),
         &dlg));
     lay->addWidget(buttons);
     if(dlg.exec() != QDialog::Accepted)
@@ -2065,19 +2083,23 @@ void ConnectionTab::promptCopyDatabase(const QString &database)
     const QString tgt = name->text().trimmed();
     if(tgt.isEmpty())
         return;
-    const bool sameServer = tHost->text().trimmed() == m_params.host
+    const bool sameServer = isPg || (tHost->text().trimmed() == m_params.host
                             && tPort->value() == m_params.port
-                            && tUser->text().trimmed() == m_params.user;
+                            && tUser->text().trimmed() == m_params.user);
     if(sameServer && tgt == srcDb) {
         QMessageBox::information(this, QStringLiteral("Copy Database"),
-            QStringLiteral("Target must differ from the source on the same server."));
+            QStringLiteral("Target must differ from the source on the same %1.")
+                .arg(isPg ? QStringLiteral("connection") : QStringLiteral("server")));
         return;
     }
 
     QApplication::setOverrideCursor(Qt::WaitCursor);
     QString err;
     bool ok;
-    if(sameServer) {
+    if(isPg) {
+        ok = copyDatabaseToPostgres(srcDb, tgt, wantData->isChecked(),
+                                    dropFirst->isChecked(), wantRoutines->isChecked(), &err);
+    } else if(sameServer) {
         ok = copyDatabaseTo(srcDb, tgt, wantData->isChecked(),
                             dropFirst->isChecked(), wantRoutines->isChecked(), &err);
     } else {
@@ -2566,6 +2588,179 @@ bool ConnectionTab::copyDatabaseTo(const QString &srcDb, const QString &tgtDb,
      * put it back on this tab's database */
     if(!m_params.database.isEmpty())
         m_conn->query(QStringLiteral("USE `%1`").arg(m_params.database), nullptr, nullptr);
+    return ok;
+}
+
+bool ConnectionTab::copyDatabaseToPostgres(const QString &srcSchema, const QString &tgtSchema,
+                                           bool withData, bool dropFirst,
+                                           bool withRoutines, QString *error)
+{
+    if(!m_conn || srcSchema.isEmpty() || tgtSchema.isEmpty() || srcSchema == tgtSchema) {
+        if(error) *error = QStringLiteral("bad source/target");
+        return false;
+    }
+    const QString sq = m_conn->quoteIdent(srcSchema);
+    const QString tq = m_conn->quoteIdent(tgtSchema);
+
+    /* blanket-retargets any *qualified* reference the catalog printed with
+     * the source schema (mirrors copyDatabaseTo()'s backtick db-prefix
+     * replace) to the target instead — pg_get_viewdef/functiondef/
+     * triggerdef only double-quote an identifier that actually needs it,
+     * so a plain lowercase schema name like this comes back *unquoted*
+     * (`oy_src.t`, not `"oy_src".t`) far more often than not; matching only
+     * the quoted spelling would silently leave the copy's views/functions/
+     * triggers pointing at the *original* schema's objects instead of the
+     * copies just created (same quoted-vs-bare lesson as the trigger-table
+     * regex fix in SchemaSql.cpp). \b keeps a schema name from matching
+     * inside a longer one (oy_src vs oy_src2). */
+    const QRegularExpression schemaRef(
+        QStringLiteral("(?:\"%1\"|\\b%1\\b)\\.").arg(QRegularExpression::escape(srcSchema)));
+    const auto retarget = [&](QString ddl) {
+        return ddl.replace(schemaRef, QStringLiteral("%1.").arg(tq));
+    };
+
+    const QStringList tables = m_conn->listTables(srcSchema, QStringLiteral("BASE TABLE"));
+
+    QStringList stmts;
+    if(dropFirst)
+        stmts << QStringLiteral("DROP SCHEMA IF EXISTS %1 CASCADE").arg(tq);
+    stmts << QStringLiteral("CREATE SCHEMA IF NOT EXISTS %1").arg(tq);
+    for(const QString &t : tables) {
+        const QString tt = m_conn->quoteIdent(t);
+        /* LIKE ... INCLUDING ALL carries columns, defaults, NOT NULL,
+         * identity, indexes, constraints and comments — but never foreign
+         * keys, regardless of INCLUDING ALL (a documented Postgres LIKE
+         * limitation); those are added explicitly below. A legacy `serial`
+         * column (as opposed to this app's own GENERATED ... AS IDENTITY,
+         * which copies cleanly with its own independent sequence) is a
+         * plain integer DEFAULT nextval('src.seq'::regclass) — LIKE carries
+         * that expression text verbatim, so the copy's column keeps
+         * drawing values from the *source* schema's sequence rather than
+         * getting an independent one; not fixed up here (narrow, only
+         * affects externally-created tables using the legacy style). */
+        stmts << QStringLiteral("CREATE TABLE %1.%2 (LIKE %3.%2 INCLUDING ALL)")
+                     .arg(tq, tt, sq);
+        if(withData)
+            stmts << QStringLiteral("INSERT INTO %1.%2 SELECT * FROM %3.%2")
+                         .arg(tq, tt, sq);
+    }
+
+    /* foreign keys: not carried by LIKE, added once every table exists.
+     * Unlike the MySQL branch above, this can't reuse
+     * information_schema.KEY_COLUMN_USAGE's REFERENCED_TABLE_NAME/
+     * REFERENCED_COLUMN_NAME columns — those are a MySQL-only extension to
+     * that view, absent from the ANSI-standard (and Postgres's) version —
+     * so this reads pg_constraint directly instead, unnesting conkey/confkey
+     * together (WITH ORDINALITY keeps each FK's column pairs and multi-
+     * column order intact, same as ORDER BY ORDINAL_POSITION did above). */
+    {
+        struct Fk { QString name, tbl, refTbl, onDel, onUpd; QStringList cols, refCols; };
+        QList<Fk> fks;
+        DbResultSet rs;
+        if(m_conn->query(QStringLiteral(
+               "SELECT con.conname, cl.relname, refcl.relname, "
+               "  CASE con.confdeltype WHEN 'c' THEN 'CASCADE' WHEN 'n' THEN 'SET NULL' "
+               "    WHEN 'd' THEN 'SET DEFAULT' WHEN 'r' THEN 'RESTRICT' ELSE 'NO ACTION' END, "
+               "  CASE con.confupdtype WHEN 'c' THEN 'CASCADE' WHEN 'n' THEN 'SET NULL' "
+               "    WHEN 'd' THEN 'SET DEFAULT' WHEN 'r' THEN 'RESTRICT' ELSE 'NO ACTION' END, "
+               "  a.attname, af.attname "
+               "FROM pg_constraint con "
+               "JOIN pg_class cl ON cl.oid=con.conrelid "
+               "JOIN pg_namespace n ON n.oid=cl.relnamespace "
+               "JOIN pg_class refcl ON refcl.oid=con.confrelid "
+               "JOIN unnest(con.conkey, con.confkey) WITH ORDINALITY AS u(ck, cfk, ord) ON true "
+               "JOIN pg_attribute a ON a.attrelid=con.conrelid AND a.attnum=u.ck "
+               "JOIN pg_attribute af ON af.attrelid=con.confrelid AND af.attnum=u.cfk "
+               "WHERE con.contype='f' AND n.nspname='%1' "
+               "ORDER BY con.conname, u.ord").arg(srcSchema),
+               &rs, nullptr)) {
+            for(const QStringList &row : rs.rows) {
+                const QString name = row.value(0);
+                Fk *f = nullptr;
+                for(auto &e : fks)
+                    if(e.name == name && e.tbl == row.value(1)) {
+                        f = &e; break;
+                    }
+                if(!f) {
+                    fks << Fk{ name, row.value(1), row.value(2),
+                               row.value(3), row.value(4), {}, {} };
+                    f = &fks.last();
+                }
+                f->cols    << row.value(5);
+                f->refCols << row.value(6);
+            }
+        }
+        for(const Fk &f : std::as_const(fks)) {
+            const auto qlist = [&](const QStringList &l) {
+                QStringList o;
+                for(const QString &c : l) o << m_conn->quoteIdent(c);
+                return o.join(QStringLiteral(", "));
+            };
+            stmts << QStringLiteral(
+                "ALTER TABLE %1.%2 ADD CONSTRAINT %3 FOREIGN KEY (%4) "
+                "REFERENCES %1.%5 (%6) ON DELETE %7 ON UPDATE %8")
+                .arg(tq, m_conn->quoteIdent(f.tbl), m_conn->quoteIdent(f.name), qlist(f.cols),
+                     m_conn->quoteIdent(f.refTbl), qlist(f.refCols), f.onDel, f.onUpd);
+        }
+    }
+
+    /* the connection's schema before this call, so the "SET search_path"
+     * done below for view/routine/trigger creation can be put back after */
+    const QString savedSearchPath = m_currentSchema.isEmpty()
+        ? QStringLiteral("public") : m_currentSchema;
+
+    if(withRoutines) {
+        /* narrow search_path to just the target for this section, mirroring
+         * copyDatabaseTo()'s "USE `tgt`" line — see the retarget() comment */
+        stmts << QStringLiteral("SET search_path TO %1").arg(tq);
+
+        for(const QString &v : m_conn->listTables(srcSchema, QStringLiteral("VIEW"))) {
+            QString err;
+            const QString ddl = retarget(m_conn->showCreate(QStringLiteral("VIEW"), srcSchema, v, &err));
+            if(!ddl.isEmpty())
+                stmts << ddl;
+        }
+
+        for(const QString &kind : { QStringLiteral("FUNCTION"), QStringLiteral("PROCEDURE") }) {
+            DbResultSet rs;
+            if(m_conn->query(QStringLiteral(
+                   "SELECT ROUTINE_NAME FROM information_schema.ROUTINES "
+                   "WHERE ROUTINE_SCHEMA='%1' AND ROUTINE_TYPE='%2'")
+                       .arg(srcSchema, kind), &rs, nullptr)) {
+                for(const QStringList &row : rs.rows) {
+                    QString err;
+                    const QString ddl = retarget(m_conn->showCreate(kind, srcSchema, row.value(0), &err));
+                    if(!ddl.isEmpty())
+                        stmts << ddl;
+                }
+            }
+        }
+
+        /* trigger *functions* are ordinary pg_proc entries, already copied
+         * by the FUNCTION loop above (Postgres has no separate "trigger
+         * body" object) — this only needs the CREATE TRIGGER statements
+         * themselves, which reference them by the now-copied name */
+        for(const QString &tr : m_conn->listTriggers(srcSchema)) {
+            QString err;
+            const QString ddl = retarget(m_conn->showCreate(QStringLiteral("TRIGGER"), srcSchema, tr, &err));
+            if(!ddl.isEmpty())
+                stmts << ddl;
+        }
+    }
+
+    bool ok = true;
+    for(const QString &s : std::as_const(stmts)) {
+        QString stmtError;
+        if(!m_conn->query(s, nullptr, &stmtError)) {
+            if(error)
+                *error = QStringLiteral("%1\n  at: %2").arg(stmtError, s);
+            ok = false;
+            break;
+        }
+    }
+    if(withRoutines)
+        m_conn->query(QStringLiteral("SET search_path TO %1")
+                          .arg(m_conn->quoteIdent(savedSearchPath)), nullptr, nullptr);
     return ok;
 }
 
