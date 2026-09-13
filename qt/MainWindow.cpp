@@ -144,7 +144,9 @@ MainWindow::MainWindow(QWidget *parent)
             [this] { if(auto *t = currentTab()) t->addEditorTab(); });
     addDisabled(file, QStringLiteral("New Query &Builder\tCtrl+K"));
     addDisabled(file, QStringLiteral("Ne&w Schema Designer\tCtrl+Alt+D"));
-    addDisabled(file, QStringLiteral("New Data Searc&h\tCtrl+Shift+D"));
+    QAction *dataSearch = file->addAction(QStringLiteral("New Data Searc&h\tCtrl+Shift+D"));
+    connect(dataSearch, &QAction::triggered, this,
+            [this] { if(auto *t = currentTab()) t->promptDataSearch({}); });
     file->addSeparator();
     QAction *closeTabAct = file->addAction(QStringLiteral("Close &Tab\tAlt+L"));
     connect(closeTabAct, &QAction::triggered, this, [this] {

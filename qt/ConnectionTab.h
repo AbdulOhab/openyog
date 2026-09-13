@@ -141,6 +141,7 @@ public slots:
     void promptAlterDatabase(const QString &db);
     void promptDumpDatabase(const QString &database = {});
     void promptSchemaHtml(const QString &database = {});
+    void promptDataSearch(const QString &database = {});
     /* non-interactive core, also used by the --schemahtmltest= selftest */
     QString buildSchemaHtml(const QString &db);
     /* non-interactive core, also used by the --dumpdb selftest */
