@@ -2494,6 +2494,86 @@ void ConnectionTab::showTableProperties(const QString &database, const QString &
     QMessageBox::information(this, QStringLiteral("Table Properties"), msg);
 }
 
+QString ConnectionTab::buildSchemaHtml(const QString &db)
+{
+    QString html = QStringLiteral(
+        "<!doctype html><html><head><meta charset=\"utf-8\">"
+        "<title>Schema: %1</title><style>"
+        "body{font-family:sans-serif;margin:24px}"
+        "table{border-collapse:collapse;margin:8px 0 24px}"
+        "th,td{border:1px solid #ccc;padding:4px 10px;font-size:13px;text-align:left}"
+        "th{background:#eef3f8}h2{margin-top:32px;border-bottom:2px solid #3b7dbb}"
+        "h3{margin-bottom:4px;color:#555}</style></head><body>"
+        "<h1>Schema: %1</h1>").arg(db.toHtmlEscaped());
+
+    const auto section = [&](const QString &heading, const QString &typeFilter) {
+        const QStringList names = m_conn->listTables(db, typeFilter);
+        for(const QString &name : names) {
+            html += QStringLiteral("<h2>%1: %2</h2>").arg(heading, name.toHtmlEscaped());
+            html += QStringLiteral(
+                "<table><tr><th>Column</th><th>Type</th><th>Null</th>"
+                "<th>Key</th><th>Default</th><th>Extra</th></tr>");
+            for(const QStringList &row : m_conn->listColumns(db, name).rows) {
+                html += QStringLiteral("<tr><td>%1</td><td>%2</td><td>%3</td>"
+                                       "<td>%4</td><td>%5</td><td>%6</td></tr>")
+                            .arg(row.value(0).toHtmlEscaped(), row.value(1).toHtmlEscaped(),
+                                 row.value(2).toHtmlEscaped(), row.value(3).toHtmlEscaped(),
+                                 row.value(4).toHtmlEscaped(), row.value(5).toHtmlEscaped());
+            }
+            html += QStringLiteral("</table>");
+
+            if(typeFilter == QStringLiteral("BASE TABLE")) {
+                const DbResultSet ixs = m_conn->listIndexes(db, name);
+                if(!ixs.rows.isEmpty()) {
+                    html += QStringLiteral("<h3>Indexes</h3><table>"
+                        "<tr><th>Name</th><th>Unique</th><th>Column</th></tr>");
+                    for(const QStringList &row : ixs.rows) {
+                        html += QStringLiteral(
+                            "<tr><td>%1</td><td>%2</td><td>%3</td></tr>")
+                                .arg(row.value(2).toHtmlEscaped(),
+                                     row.value(1) == QStringLiteral("0")
+                                         ? QStringLiteral("yes") : QStringLiteral("no"),
+                                     row.value(4).toHtmlEscaped());
+                    }
+                    html += QStringLiteral("</table>");
+                }
+            }
+        }
+    };
+    section(QStringLiteral("Table"), QStringLiteral("BASE TABLE"));
+    section(QStringLiteral("View"), QStringLiteral("VIEW"));
+    html += QStringLiteral("</body></html>");
+    return html;
+}
+
+void ConnectionTab::promptSchemaHtml(const QString &database)
+{
+    if(!m_conn)
+        return;
+    const QString db = database.isEmpty() ? m_params.database : database;
+    if(db.isEmpty()) {
+        QMessageBox::information(this, QStringLiteral("Create Schema HTML"),
+            QStringLiteral("Select a database first."));
+        return;
+    }
+    const QString file = QFileDialog::getSaveFileName(
+        this, QStringLiteral("Create Schema For Database In HTML"),
+        db + QStringLiteral(".html"), QStringLiteral("HTML (*.html)"));
+    if(file.isEmpty())
+        return;
+
+    const QString html = buildSchemaHtml(db);
+    QFile f(file);
+    if(!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        QMessageBox::warning(this, QStringLiteral("Create Schema HTML"),
+            QStringLiteral("Could not write %1").arg(file));
+        return;
+    }
+    f.write(html.toUtf8());
+    QMessageBox::information(this, QStringLiteral("Create Schema HTML"),
+        QStringLiteral("Saved to %1").arg(file));
+}
+
 void ConnectionTab::exportCurrent()
 {
     if(m_resultTabs->currentWidget() == m_tableData

@@ -534,8 +534,10 @@ MainWindow::MainWindow(QWidget *parent)
         }
     });
     database->addSeparator();
-    addDisabled(database,
+    QAction *schemaHtml = database->addAction(
         QStringLiteral("Create Schema For Database In &HTML…\tCtrl+Shift+Alt+S"));
+    connect(schemaHtml, &QAction::triggered, this,
+            [this] { if(auto *t = currentTab()) t->promptSchemaHtml({}); });
 
     /* ================= Table ======================================== */
     QMenu *table = menuBar()->addMenu(QStringLiteral("T&able"));
@@ -1330,6 +1332,23 @@ bool MainWindow::selftestCopySqliteFile(const QString &target, bool withData)
     if(!ok)
         qWarning("sqlitecopydb failed: %s", qPrintable(err));
     return ok;
+}
+
+bool MainWindow::selftestSchemaHtml(const QString &outFile)
+{
+    auto *tab = currentTab();
+    if(!tab)
+        return false;
+    const QString db = tab->currentDatabase().isEmpty()
+        ? QStringLiteral("main") : tab->currentDatabase();
+    const QString html = tab->buildSchemaHtml(db);
+    QFile f(outFile);
+    if(!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        qWarning("schemahtmltest: could not write %s", qPrintable(outFile));
+        return false;
+    }
+    f.write(html.toUtf8());
+    return true;
 }
 
 bool MainWindow::selftestCsvImportSqlite(const QString &file, const QString &table)
