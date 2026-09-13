@@ -230,6 +230,15 @@ private:
     QStringList         m_tableNames;     /* offered after FROM / JOIN / INTO / UPDATE */
     QStringList         m_columnNames;    /* offered after SELECT / WHERE / ON / SET … */
     void updateCompletions();
+    /* the schema/database to operate on when nothing more specific was
+     * selected (no table chosen in the browser, no explicit db argument).
+     * For MySQL/SQLite this is exactly m_params.database — the database
+     * USE'd or attached at connect time. For PostgreSQL, m_params.database
+     * is the *connected* database (needed for the libpq conninfo, see
+     * PostgresConnection.h), not a schema — a schema-scoped call needs a
+     * different fallback: "public", Postgres's own default schema for a
+     * session that hasn't SET search_path to anything else. */
+    QString defaultDb() const;
 
     /* selected table in the browser: [db, table] or empty */
     QStringList currentTableInfo() const;

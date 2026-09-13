@@ -599,7 +599,7 @@ ConnectionTab::ConnectionTab(const ConnectionParams &params, QWidget *parent)
     m_browser->setConnectionLabel(isSqlite
         ? QFileInfo(m_params.filePath).fileName()
         : QStringLiteral("%1@%2").arg(m_params.user, m_params.host));
-    m_browser->loadDatabases(m_conn, m_params.database);
+    m_browser->loadDatabases(m_conn, defaultDb());
     updateCompletions();
     m_messages->setPlainText(isSqlite
         ? QStringLiteral("Connected to %1\nSQLite version: %2")
@@ -612,7 +612,7 @@ ConnectionTab::ConnectionTab(const ConnectionParams &params, QWidget *parent)
     if(m_conn)
         dbs = m_conn->listDatabases();
     m_databases = dbs;
-    emit databasesChanged(dbs, m_params.database);
+    emit databasesChanged(dbs, defaultDb());
 }
 
 ConnectionTab::~ConnectionTab()
@@ -644,6 +644,13 @@ void ConnectionTab::attachEditor(CodeEditor *ed, const QString &title)
     Q_UNUSED(title);
 }
 
+QString ConnectionTab::defaultDb() const
+{
+    if(m_params.driverType == DriverType::Postgres)
+        return QStringLiteral("public");
+    return m_params.database;
+}
+
 /* schema identifiers (tables + columns of the current db) for autocomplete —
  * kept split so the editor can offer tables after FROM/JOIN and columns after
  * SELECT/WHERE (clause-aware, like SQLyog's AutoCompleteInterface) */
@@ -652,14 +659,14 @@ void ConnectionTab::updateCompletions()
     m_completions.clear();
     m_tableNames.clear();
     m_columnNames.clear();
-    if(m_conn && !m_params.database.isEmpty()) {
+    const QString db = defaultDb();
+    if(m_conn && !db.isEmpty()) {
         QSet<QString> tables, columns;
-        QStringList tbls = m_conn->listTables(m_params.database,
-                                              QStringLiteral("BASE TABLE"));
-        tbls += m_conn->listTables(m_params.database, QStringLiteral("VIEW"));
+        QStringList tbls = m_conn->listTables(db, QStringLiteral("BASE TABLE"));
+        tbls += m_conn->listTables(db, QStringLiteral("VIEW"));
         for(const QString &t : tbls) {
             if(!t.isEmpty()) tables.insert(t);
-            for(const QStringList &row : m_conn->listColumns(m_params.database, t).rows)
+            for(const QStringList &row : m_conn->listColumns(db, t).rows)
                 if(!row.value(0).isEmpty()) columns.insert(row.value(0));
         }
         m_tableNames  = QStringList(tables.cbegin(), tables.cend());
@@ -750,7 +757,7 @@ void ConnectionTab::dumpTable(const QString &database, const QString &table)
 {
     if(!m_conn || table.isEmpty())
         return;
-    const QString db = database.isEmpty() ? m_params.database : database;
+    const QString db = database.isEmpty() ? defaultDb() : database;
     const QString path = QFileDialog::getSaveFileName(
         this, QStringLiteral("Backup `%1` as SQL dump").arg(table),
         table + QStringLiteral(".sql"), QStringLiteral("SQL (*.sql);;All (*)"));
@@ -1015,7 +1022,7 @@ void ConnectionTab::runAndEdit()
         QRegularExpression::CaseInsensitiveOption));
 
     if(m.hasMatch() && !multiTable) {
-        const QString db = m.captured(2).isEmpty() ? m_params.database
+        const QString db = m.captured(2).isEmpty() ? defaultDb()
                                                    : m.captured(1);
         const QString table = m.captured(2).isEmpty() ? m.captured(1)
                                                       : m.captured(2);
@@ -1358,7 +1365,7 @@ void ConnectionTab::exportResult()
 void ConnectionTab::refreshBrowser()
 {
     if(m_conn) {
-        m_browser->loadDatabases(m_conn, m_params.database);
+        m_browser->loadDatabases(m_conn, defaultDb());
         updateCompletions();
     }
 }
@@ -1506,7 +1513,7 @@ void ConnectionTab::promptCreateTable(const QString &database)
 {
     if(!m_conn)
         return;
-    const QString db = database.isEmpty() ? m_params.database : database;
+    const QString db = database.isEmpty() ? defaultDb() : database;
     CreateTableDialog dlg(db, this);
     if(dlg.exec() != QDialog::Accepted)
         return;
@@ -1522,7 +1529,7 @@ void ConnectionTab::promptCreateTable(const QString &database)
 
 void ConnectionTab::dropTable(const QString &database, const QString &table)
 {
-    const QString db = database.isEmpty() ? m_params.database : database;
+    const QString db = database.isEmpty() ? defaultDb() : database;
     if(table.isEmpty() || QMessageBox::question(this,
             QStringLiteral("Drop Table"),
             QStringLiteral("Permanently DROP table `%1`.`%2`?").arg(db, table))
@@ -1535,7 +1542,7 @@ void ConnectionTab::dropTable(const QString &database, const QString &table)
 
 void ConnectionTab::truncateTable(const QString &database, const QString &table)
 {
-    const QString db = database.isEmpty() ? m_params.database : database;
+    const QString db = database.isEmpty() ? defaultDb() : database;
     if(table.isEmpty() || QMessageBox::question(this,
             QStringLiteral("Truncate Table"),
             QStringLiteral("Delete ALL rows of `%1`.`%2`?").arg(db, table))
@@ -1553,7 +1560,7 @@ void ConnectionTab::createSchemaObject(const QString &database,
 {
     if(!m_conn)
         return;
-    const QString db = database.isEmpty() ? m_params.database : database;
+    const QString db = database.isEmpty() ? defaultDb() : database;
     if(db.isEmpty()) {
         QMessageBox::warning(this, QStringLiteral("Create %1").arg(objType),
                              QStringLiteral("Select a database first."));
@@ -1572,7 +1579,7 @@ void ConnectionTab::alterSchemaObject(const QString &database,
 {
     if(!m_conn || name.isEmpty())
         return;
-    const QString db = database.isEmpty() ? m_params.database : database;
+    const QString db = database.isEmpty() ? defaultDb() : database;
     const QString nice = objType.left(1) + objType.mid(1).toLower();
 
     QString error;
@@ -1597,7 +1604,7 @@ void ConnectionTab::dropSchemaObject(const QString &database,
 {
     if(!m_conn || name.isEmpty())
         return;
-    const QString db = database.isEmpty() ? m_params.database : database;
+    const QString db = database.isEmpty() ? defaultDb() : database;
     const QString nice = objType.left(1) + objType.mid(1).toLower();
     if(QMessageBox::question(this, QStringLiteral("Drop %1").arg(nice),
             QStringLiteral("Permanently DROP %1 `%2`.`%3`?").arg(nice, db, name))
@@ -1610,7 +1617,7 @@ void ConnectionTab::dropSchemaObject(const QString &database,
 
 void ConnectionTab::dropDatabase(const QString &database)
 {
-    const QString db = database.isEmpty() ? m_params.database : database;
+    const QString db = database.isEmpty() ? defaultDb() : database;
     if(db.isEmpty())
         return;
     if(QMessageBox::warning(this, QStringLiteral("Drop Database"),
@@ -1624,7 +1631,7 @@ void ConnectionTab::dropDatabase(const QString &database)
 
 void ConnectionTab::truncateDatabase(const QString &database)
 {
-    const QString db = database.isEmpty() ? m_params.database : database;
+    const QString db = database.isEmpty() ? defaultDb() : database;
     if(db.isEmpty())
         return;
     if(QMessageBox::warning(this, QStringLiteral("Truncate Database"),
@@ -1659,7 +1666,7 @@ void ConnectionTab::truncateDatabase(const QString &database)
 
 void ConnectionTab::emptyDatabase(const QString &database)
 {
-    const QString db = database.isEmpty() ? m_params.database : database;
+    const QString db = database.isEmpty() ? defaultDb() : database;
     if(db.isEmpty())
         return;
     if(QMessageBox::warning(this, QStringLiteral("Empty Database"),
@@ -1683,7 +1690,7 @@ void ConnectionTab::promptAlterDatabase(const QString &database)
 {
     if(!m_conn)
         return;
-    const QString db = database.isEmpty() ? m_params.database : database;
+    const QString db = database.isEmpty() ? defaultDb() : database;
     if(db.isEmpty())
         return;
 
@@ -1729,7 +1736,7 @@ void ConnectionTab::promptRenameTable(const QString &database,
 {
     if(!m_conn || table.isEmpty())
         return;
-    const QString db = database.isEmpty() ? m_params.database : database;
+    const QString db = database.isEmpty() ? defaultDb() : database;
     bool ok = false;
     const QString name = QInputDialog::getText(
         this, QStringLiteral("Rename Table"),
@@ -1747,7 +1754,7 @@ void ConnectionTab::promptCopyTable(const QString &database, const QString &tabl
 {
     if(!m_conn || table.isEmpty())
         return;
-    const QString srcDb = database.isEmpty() ? m_params.database : database;
+    const QString srcDb = database.isEmpty() ? defaultDb() : database;
 
     QDialog dlg(this);
     dlg.setWindowTitle(QStringLiteral("Duplicate Table `%1`").arg(table));
@@ -1795,7 +1802,7 @@ void ConnectionTab::promptDropColumn(const QString &database, const QString &tab
 {
     if(!m_conn || table.isEmpty())
         return;
-    const QString db = database.isEmpty() ? m_params.database : database;
+    const QString db = database.isEmpty() ? defaultDb() : database;
     const QString qualified = m_conn->qualify(db, table);
 
     QStringList cols;
@@ -1827,7 +1834,7 @@ void ConnectionTab::promptManageIndexes(const QString &database,
 {
     if(!m_conn || table.isEmpty())
         return;
-    const QString db = database.isEmpty() ? m_params.database : database;
+    const QString db = database.isEmpty() ? defaultDb() : database;
 
     QList<IndexDialog::IndexDef> indexes;
     const auto findIx = [&](const QString &n) -> IndexDialog::IndexDef * {
@@ -1940,7 +1947,7 @@ void ConnectionTab::promptCopyDatabase(const QString &database)
         return;
     }
 
-    const QString srcDb = database.isEmpty() ? m_params.database : database;
+    const QString srcDb = database.isEmpty() ? defaultDb() : database;
     if(srcDb.isEmpty()) {
         QMessageBox::information(this, QStringLiteral("Copy Database"),
             QStringLiteral("Select a database first."));
@@ -2172,7 +2179,7 @@ void ConnectionTab::promptCopyTableToHost(const QString &database, const QString
 {
     if(!m_conn || table.isEmpty())
         return;
-    const QString srcDb = database.isEmpty() ? m_params.database : database;
+    const QString srcDb = database.isEmpty() ? defaultDb() : database;
 
     QDialog dlg(this);
     dlg.setWindowTitle(QStringLiteral("Copy Table `%1` To Different Host/Database")
@@ -2540,7 +2547,7 @@ void ConnectionTab::showTableProperties(const QString &database, const QString &
 {
     if(!m_conn || table.isEmpty())
         return;
-    const QString db = database.isEmpty() ? m_params.database : database;
+    const QString db = database.isEmpty() ? defaultDb() : database;
     const QString qualified = m_conn->qualify(db, table);
     QString msg = QStringLiteral("Table: %1\n").arg(qualified);
 
@@ -2641,7 +2648,7 @@ void ConnectionTab::promptDataSearch(const QString &database)
 {
     if(!m_conn)
         return;
-    const QString db = database.isEmpty() ? m_params.database : database;
+    const QString db = database.isEmpty() ? defaultDb() : database;
     if(db.isEmpty()) {
         QMessageBox::information(this, QStringLiteral("Data Search"),
             QStringLiteral("Select a database first."));
@@ -2688,7 +2695,7 @@ void ConnectionTab::promptSchemaHtml(const QString &database)
 {
     if(!m_conn)
         return;
-    const QString db = database.isEmpty() ? m_params.database : database;
+    const QString db = database.isEmpty() ? defaultDb() : database;
     if(db.isEmpty()) {
         QMessageBox::information(this, QStringLiteral("Create Schema HTML"),
             QStringLiteral("Select a database first."));
@@ -2725,7 +2732,7 @@ void ConnectionTab::exportTableData(const QString &database, const QString &tabl
 {
     if(!m_conn || table.isEmpty())
         return;
-    const QString db = database.isEmpty() ? m_params.database : database;
+    const QString db = database.isEmpty() ? defaultDb() : database;
 
     /* structure, for the SQL "include CREATE TABLE" option */
     const QString createDdl = m_conn->showCreate(QStringLiteral("TABLE"), db, table, nullptr);
@@ -2785,7 +2792,7 @@ void ConnectionTab::promptImportXml(const QString &database, const QString &tabl
                            "Use Import CSV instead."));
         return;
     }
-    const QString db = database.isEmpty() ? m_params.database : database;
+    const QString db = database.isEmpty() ? defaultDb() : database;
 
     const QString file = QFileDialog::getOpenFileName(
         this, QStringLiteral("Import XML — pick a file"), QString(),
@@ -2862,7 +2869,7 @@ void ConnectionTab::promptImportCsv(const QString &database, const QString &tabl
 {
     if(!m_conn)
         return;
-    const QString db = database.isEmpty() ? m_params.database : database;
+    const QString db = database.isEmpty() ? defaultDb() : database;
 
     const QString file = QFileDialog::getOpenFileName(
         this, QStringLiteral("Import CSV — pick a file"), QString(),
@@ -3023,7 +3030,7 @@ void ConnectionTab::promptManageForeignKeys(const QString &database,
 {
     if(!m_conn || table.isEmpty())
         return;
-    const QString db = database.isEmpty() ? m_params.database : database;
+    const QString db = database.isEmpty() ? defaultDb() : database;
 
     QList<ForeignKeyDialog::FkDef> fks;
     const auto find = [&](const QString &n) -> ForeignKeyDialog::FkDef * {
@@ -3074,7 +3081,7 @@ void ConnectionTab::promptAlterTable(const QString &database,
 {
     if(!m_conn || table.isEmpty())
         return;
-    const QString db = database.isEmpty() ? m_params.database : database;
+    const QString db = database.isEmpty() ? defaultDb() : database;
 
     /* canonical shape via listColumns(): Field(0) Type(1) Null(2) Key(3)
      * Default(4) Extra(5) Comment(6) — portable across backends, unlike the
@@ -3146,7 +3153,7 @@ void ConnectionTab::promptDumpDatabase(const QString &database)
 {
     if(!m_conn)
         return;
-    const QString db = database.isEmpty() ? m_params.database : database;
+    const QString db = database.isEmpty() ? defaultDb() : database;
     if(db.isEmpty()) {
         QMessageBox::information(this, QStringLiteral("Backup As SQL Dump"),
             QStringLiteral("Select a database first."));
@@ -3246,7 +3253,7 @@ bool ConnectionTab::dumpDatabaseToFile(const QString &database,
         if(error) *error = QStringLiteral("not connected");
         return false;
     }
-    const QString db = database.isEmpty() ? m_params.database : database;
+    const QString db = database.isEmpty() ? defaultDb() : database;
     QFile f(path);
     if(!f.open(QIODevice::WriteOnly | QIODevice::Text)) {
         if(error) *error = QStringLiteral("cannot write %1").arg(path);
@@ -3352,6 +3359,15 @@ void ConnectionTab::useDatabase(const QString &db)
 {
     if(!m_conn)
         return;
+    /* MySQL-only statement, deliberately not ported: the toolbar combo's
+     * items are listDatabases()'s output, which for PostgreSQL means
+     * schemas (see PostgresConnection.h) — switching to one there is
+     * SET search_path, not USE, and needs separate state from
+     * m_params.database (the connected database, still needed for
+     * reconnects/Copy Connection/Session save) rather than overwriting it.
+     * Not implemented this pass; the query below just surfaces a clear
+     * syntax-error message on Postgres/SQLite rather than silently
+     * corrupting m_params.database (the `if` only assigns on success). */
     QString error;
     if(m_conn->query(QStringLiteral("USE `%1`").arg(db), nullptr, &error)) {
         m_params.database = db;
