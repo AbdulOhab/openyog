@@ -66,6 +66,7 @@ int main(int argc, char *argv[])
     bool doAutoConnect = false;
     QString dumpPath;
     QString copyDbArg;
+    QString sqliteCopyDbArg;
     QString delConn;
     for(int i = 1; i < argc; ++i) {
         const QString a = QString::fromLocal8Bit(argv[i]);
@@ -98,6 +99,8 @@ int main(int argc, char *argv[])
             dumpPath = a.mid(QStringLiteral("--dumpdb=").size());
         if(a.startsWith(QStringLiteral("--copydb=")))
             copyDbArg = a.mid(QStringLiteral("--copydb=").size());
+        if(a.startsWith(QStringLiteral("--sqlitecopydb=")))
+            sqliteCopyDbArg = a.mid(QStringLiteral("--sqlitecopydb=").size());
         if(a.startsWith(QStringLiteral("--delconn=")))
             delConn = a.mid(QStringLiteral("--delconn=").size());
         if(a.startsWith(QStringLiteral("--fmtsql="))) {
@@ -600,6 +603,19 @@ int main(int argc, char *argv[])
         MainWindow w;
         rc = (p.size() == 2 && w.openAndRun(autoConnect)
               && w.selftestCopyDb(p[0], p[1])) ? 0 : 1;
+        dbDriverFor(DriverType::Mysql)->libraryShutdown();
+        return rc;
+    }
+
+    /* --sqlitecopydb=target[:nodata] selftest (headless): autoconnect (via
+     * --autoconnectfile=), copy the open .sqlite file, exit */
+    if(!sqliteCopyDbArg.isEmpty() && doAutoConnect) {
+        const bool nodata = sqliteCopyDbArg.endsWith(QStringLiteral(":nodata"));
+        const QString target = nodata
+            ? sqliteCopyDbArg.chopped(7) : sqliteCopyDbArg;
+        MainWindow w;
+        rc = (w.openAndRun(autoConnect)
+              && w.selftestCopySqliteFile(target, !nodata)) ? 0 : 1;
         dbDriverFor(DriverType::Mysql)->libraryShutdown();
         return rc;
     }

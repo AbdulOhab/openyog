@@ -1781,6 +1781,74 @@ void ConnectionTab::promptCopyDatabase(const QString &database)
 {
     if(!m_conn)
         return;
+
+    /* SQLite has no server/multi-database concept the MySQL dialog below
+     * assumes (host/port/user, CREATE DATABASE, information_schema FKs) —
+     * a SQLite "database" just *is* the file. "Copy" means: duplicate the
+     * file (schema + data, in one shot — a plain file copy is not just an
+     * equivalent to the MySQL path, it's more complete, since it carries
+     * indexes/views/triggers with no per-object-type code needed), or
+     * recreate just the schema (CREATE TABLE/VIEW from showCreate()) into
+     * a fresh file when data isn't wanted. */
+    if(m_params.driverType == DriverType::Sqlite) {
+        QDialog dlg(this);
+        dlg.setWindowTitle(QStringLiteral("Copy Database"));
+        auto *path = new QLineEdit(
+            m_params.filePath + QStringLiteral("_copy.sqlite"), &dlg);
+        auto *browse = new QPushButton(QStringLiteral("Browse…"), &dlg);
+        connect(browse, &QPushButton::clicked, &dlg, [&] {
+            /* unlike the "open/create a file" browse button on the SQLite
+             * connect tab, picking a target *here* really does mean
+             * overwrite — keep QFileDialog's default confirm-overwrite
+             * prompt instead of suppressing it. */
+            const QString p = QFileDialog::getSaveFileName(
+                &dlg, QStringLiteral("Copy Database As"), path->text(),
+                QStringLiteral("SQLite database (*.sqlite *.db *.sqlite3)"));
+            if(!p.isEmpty())
+                path->setText(p);
+        });
+        auto *pathRow = new QHBoxLayout;
+        pathRow->addWidget(path, 1);
+        pathRow->addWidget(browse);
+        auto *wantData = new QCheckBox(QStringLiteral("Copy table data"), &dlg);
+        wantData->setChecked(true);
+        auto *form = new QFormLayout;
+        form->addRow(QStringLiteral("Copy to file"), pathRow);
+        form->addRow(QString(), wantData);
+        auto *buttons = new QDialogButtonBox(
+            QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
+        buttons->button(QDialogButtonBox::Ok)->setText(QStringLiteral("Copy"));
+        connect(buttons, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
+        connect(buttons, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
+        auto *lay = new QVBoxLayout(&dlg);
+        lay->addLayout(form);
+        lay->addWidget(buttons);
+        if(dlg.exec() != QDialog::Accepted)
+            return;
+
+        const QString target = path->text().trimmed();
+        if(target.isEmpty() || target == m_params.filePath)
+            return;
+        /* the Browse… button's own save dialog already confirms an
+         * overwrite, but a path typed directly into the field skips that —
+         * ask here too before the upcoming QFile::remove() */
+        if(QFile::exists(target)
+           && QMessageBox::question(this, QStringLiteral("Copy Database"),
+                  QStringLiteral("%1 already exists. Overwrite it?").arg(target))
+                  != QMessageBox::Yes)
+            return;
+
+        QApplication::setOverrideCursor(Qt::WaitCursor);
+        QString err;
+        const bool ok = copySqliteFileTo(target, wantData->isChecked(), &err);
+        QApplication::restoreOverrideCursor();
+        m_messages->setPlainText(ok
+            ? QStringLiteral("Copied database to %1").arg(target)
+            : QStringLiteral("Copy failed:\n%1").arg(err));
+        m_resultTabs->setCurrentWidget(m_messages);
+        return;
+    }
+
     const QString srcDb = database.isEmpty() ? m_params.database : database;
     if(srcDb.isEmpty()) {
         QMessageBox::information(this, QStringLiteral("Copy Database"),
@@ -1895,6 +1963,46 @@ void ConnectionTab::promptCopyDatabase(const QString &database)
         : QStringLiteral("Copy failed:\n%1").arg(err));
     m_resultTabs->setCurrentWidget(m_messages);
     refreshBrowser();
+}
+
+bool ConnectionTab::copySqliteFileTo(const QString &target, bool withData,
+                                     QString *error)
+{
+    if(!m_conn || m_params.driverType != DriverType::Sqlite || target.isEmpty()) {
+        if(error) *error = QStringLiteral("bad source/target");
+        return false;
+    }
+    QFile::remove(target);
+    if(withData) {
+        if(QFile::copy(m_params.filePath, target))
+            return true;
+        if(error) *error = QStringLiteral("file copy failed");
+        return false;
+    }
+    ConnectionParams tp;
+    tp.driverType = DriverType::Sqlite;
+    tp.filePath = target;
+    IDbConnection *dst = dbDriverFor(DriverType::Sqlite)->connect(tp, error);
+    if(!dst)
+        return false;
+    bool ok = true;
+    for(const QString &kind : { QStringLiteral("TABLE"), QStringLiteral("VIEW") }) {
+        if(!ok) break;
+        for(const QString &name : m_conn->listTables(
+                QStringLiteral("main"),
+                kind == QStringLiteral("TABLE") ? QStringLiteral("BASE TABLE") : kind)) {
+            QString ddlErr;
+            const QString ddl = m_conn->showCreate(kind, QStringLiteral("main"),
+                                                   name, &ddlErr);
+            if(ddl.isEmpty() || !dst->query(ddl, nullptr, error)) {
+                ok = false;
+                if(error && error->isEmpty()) *error = ddlErr;
+                break;
+            }
+        }
+    }
+    delete dst;
+    return ok;
 }
 
 bool ConnectionTab::copyDatabaseTo(const QString &srcDb, const QString &tgtDb,
