@@ -621,16 +621,34 @@ MainWindow::MainWindow(QWidget *parent)
     connect(importXml, &QAction::triggered, this,
             [onSelectedTable] { onSelectedTable(&ConnectionTab::promptImportXml); });
     table->addSeparator();
-    addDisabled(table, QStringLiteral("Create Tri&gger…"));
+    QAction *createTrig = table->addAction(QStringLiteral("Create Tri&gger…"));
+    connect(createTrig, &QAction::triggered, this, [this] {
+        auto *t = currentTab();
+        if(!t) return;
+        const QStringList info = t->selectedTableInfo();
+        /* same generic CREATE TRIGGER template Database > Create > Trigger…
+         * uses — just pre-scoped to the selected table's database when one
+         * is selected in the browser, since that's the common case here */
+        t->createSchemaObject(info.size() >= 1 ? info[0] : QString(),
+                              QStringLiteral("TRIGGER"));
+    });
 
     /* ================= Others ======================================= */
     QMenu *others = menuBar()->addMenu(QStringLiteral("&Others"));
     QMenu *columns = others->addMenu(QStringLiteral("&Columns"));
-    addDisabled(columns, QStringLiteral("Drop &Column…\tDel"));
-    addDisabled(columns, QStringLiteral("&Manage Columns\tF6"));
+    QAction *dropCol = columns->addAction(QStringLiteral("Drop &Column…\tDel"));
+    connect(dropCol, &QAction::triggered, this,
+            [onSelectedTable] { onSelectedTable(&ConnectionTab::promptDropColumn); });
+    QAction *manageCols = columns->addAction(QStringLiteral("&Manage Columns\tF6"));
+    connect(manageCols, &QAction::triggered, this,
+            [onSelectedTable] { onSelectedTable(&ConnectionTab::promptAlterTable); });
     QMenu *indexes = others->addMenu(QStringLiteral("&Indexes"));
-    addDisabled(indexes, QStringLiteral("Create &Index\tF4"));
-    addDisabled(indexes, QStringLiteral("&Edit Index\tF6"));
+    QAction *createIdx = indexes->addAction(QStringLiteral("Create &Index\tF4"));
+    connect(createIdx, &QAction::triggered, this,
+            [onSelectedTable] { onSelectedTable(&ConnectionTab::promptManageIndexes); });
+    QAction *editIdx = indexes->addAction(QStringLiteral("&Edit Index\tF6"));
+    connect(editIdx, &QAction::triggered, this,
+            [onSelectedTable] { onSelectedTable(&ConnectionTab::promptManageIndexes); });
 
     /* ================= Tools ======================================== */
     QMenu *tools = menuBar()->addMenu(QStringLiteral("&Tools"));
