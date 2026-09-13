@@ -63,6 +63,7 @@ public:
     /* [db, table] of the browser's selected table, or empty */
     QStringList selectedTableInfo() const;
     DriverType driverType() const { return m_params.driverType; }
+    const ConnectionParams &params() const { return m_params; }
 
     /* Query timeout, persisted in OpenYog.ini [Query] (0 = disabled, the
      * default). Global, not per-tab — mirrors Theme::load()/save(). */
