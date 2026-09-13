@@ -1654,7 +1654,13 @@ void ConnectionTab::dropDatabase(const QString &database)
             QMessageBox::Yes | QMessageBox::No, QMessageBox::No)
             != QMessageBox::Yes)
         return;
-    execDdl(QStringLiteral("DROP DATABASE `%1`").arg(db));
+    /* PostgreSQL: "database" here means schema (see PostgresConnection.h —
+     * a connection can't reach another actual Postgres database at all,
+     * let alone drop one), and there's no DROP DATABASE for that; CASCADE
+     * is required since a non-empty schema otherwise refuses to drop. */
+    execDdl(m_params.driverType == DriverType::Postgres
+                ? QStringLiteral("DROP SCHEMA %1 CASCADE").arg(m_conn->quoteIdent(db))
+                : QStringLiteral("DROP DATABASE `%1`").arg(db));
 }
 
 void ConnectionTab::truncateDatabase(const QString &database)
@@ -1668,6 +1674,15 @@ void ConnectionTab::truncateDatabase(const QString &database)
             QMessageBox::Yes | QMessageBox::No, QMessageBox::No)
             != QMessageBox::Yes)
         return;
+
+    if(m_params.driverType == DriverType::Postgres) {
+        /* no per-schema charset/collation to preserve (that's a whole-
+         * database property in Postgres) — just drop and recreate empty */
+        const QString qdb = m_conn->quoteIdent(db);
+        if(execDdl(QStringLiteral("DROP SCHEMA %1 CASCADE").arg(qdb)))
+            execDdl(QStringLiteral("CREATE SCHEMA %1").arg(qdb));
+        return;
+    }
 
     /* read the current charset/collation so the recreated db keeps them */
     QString charset = QStringLiteral("utf8mb4"), collation;
@@ -1721,6 +1736,13 @@ void ConnectionTab::promptAlterDatabase(const QString &database)
     const QString db = database.isEmpty() ? defaultDb() : database;
     if(db.isEmpty())
         return;
+    if(m_params.driverType == DriverType::Postgres) {
+        QMessageBox::information(this, QStringLiteral("Alter Database"),
+            QStringLiteral("Character set/collation are whole-database "
+                           "properties in PostgreSQL, fixed at creation — "
+                           "there's nothing here to alter for a schema."));
+        return;
+    }
 
     QString curCharset, curCollation;
     {
@@ -1772,8 +1794,15 @@ void ConnectionTab::promptRenameTable(const QString &database,
         QLineEdit::Normal, table, &ok);
     if(!ok || name.trimmed().isEmpty() || name == table)
         return;
-    execDdl(QStringLiteral("RENAME TABLE `%1`.`%2` TO `%1`.`%3`")
-                .arg(db, table, name.trimmed()));
+    /* MySQL/SQLite: RENAME TABLE db.old TO db.new. PostgreSQL has no such
+     * statement — ALTER TABLE ... RENAME TO new does the same job there,
+     * within the same schema (there's no cross-schema form to worry about
+     * since this function never changes db, only the table name). */
+    execDdl(m_params.driverType == DriverType::Postgres
+                ? QStringLiteral("ALTER TABLE %1 RENAME TO %2")
+                      .arg(m_conn->qualify(db, table), m_conn->quoteIdent(name.trimmed()))
+                : QStringLiteral("RENAME TABLE `%1`.`%2` TO `%1`.`%3`")
+                      .arg(db, table, name.trimmed()));
     if(m_tableData->loadedTable() == table)
         m_tableData->load(m_conn, db, name.trimmed());
 }
