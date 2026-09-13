@@ -2688,6 +2688,35 @@ void ConnectionTab::showTableProperties(const QString &database, const QString &
             const QFileInfo fi(m_params.filePath);
             msg += QStringLiteral("Database file size: %1 bytes\n").arg(fi.size());
         }
+    } else if(m_params.driverType == DriverType::Postgres) {
+        msg += QStringLiteral("Columns: %1\n")
+                   .arg(m_conn->listColumns(db, table).rows.size());
+        {
+            QSet<QString> names;
+            for(const QStringList &row : m_conn->listIndexes(db, table).rows)
+                names.insert(row.value(2));
+            msg += QStringLiteral("Indexes: %1\n").arg(names.size());
+        }
+        DbResultSet rs;
+        /* pg_class.reltuples is a planner estimate (exact after ANALYZE),
+         * same "estimate" caveat SHOW TABLE STATUS's own Rows column has
+         * for MySQL; pg_relation_size/pg_indexes_size split table vs index
+         * bytes the same way Data_length/Index_length do below. */
+        if(m_conn->query(QStringLiteral(
+               "SELECT c.reltuples::bigint, pg_relation_size(c.oid), "
+               "pg_indexes_size(c.oid) "
+               "FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace "
+               "WHERE n.nspname = '%1' AND c.relname = '%2'")
+                   .arg(QString(db).replace('\'', QStringLiteral("''")),
+                        QString(table).replace('\'', QStringLiteral("''"))),
+               &rs, nullptr) && !rs.rows.isEmpty()) {
+            const QStringList &row = rs.rows.first();
+            msg += QStringLiteral("Rows (estimate): %1\n").arg(row.value(0));
+            msg += QStringLiteral("Data length: %1 bytes\n").arg(row.value(1));
+            msg += QStringLiteral("Index length: %1 bytes\n").arg(row.value(2));
+        } else {
+            msg += QStringLiteral("(could not read pg_class)\n");
+        }
     } else {
         DbResultSet rs;
         const QString sb = QString(db).replace('`', QStringLiteral("``"));
