@@ -450,6 +450,121 @@ int main(int argc, char *argv[])
             delete c;
             return fails == 0 ? 0 : 1;
         }
+        /* --pgschematest=host:port:user:pw:db — the same create/alter/drop
+         * round-trip as --schematest=, but for SchemaSql's PostgreSQL
+         * branches (dollar-quoted bodies, CREATE OR REPLACE alters, the
+         * trigger-needs-a-function two-statement template, DROP TRIGGER's
+         * "ON table" pulled from the DDL). No EVENT case — PostgreSQL has
+         * no equivalent, ConnectionTab guards it before ever calling in. */
+        if(a.startsWith(QStringLiteral("--pgschematest="))) {
+            qputenv("QT_QPA_PLATFORM", "offscreen");
+            QApplication app2(argc, argv);
+            const QStringList p = a.mid(QStringLiteral("--pgschematest=").size()).split(':');
+            if(p.size() != 5) {
+                QTextStream(stdout) << "pgschematest: need host:port:user:pw:db\n";
+                return 2;
+            }
+            ConnectionParams cp;
+            cp.driverType = DriverType::Postgres;
+            cp.host = p[0]; cp.port = p[1].toUInt();
+            cp.user = p[2]; cp.password = p[3]; cp.database = p[4];
+            QString connectError;
+            IDbConnection *c = dbDriverFor(cp.driverType)->connect(cp, &connectError);
+            if(!c) {
+                QTextStream(stdout) << "pgschematest: connect failed: "
+                                    << connectError << '\n';
+                return 1;
+            }
+            const QString db = QStringLiteral("public");
+            auto run = [&](const QString &sql) {
+                QString err;
+                const bool ok = c->query(sql, nullptr, &err);
+                if(!ok) QTextStream(stdout) << "  [run failed] " << sql.left(200)
+                                            << "\n  -> " << err << '\n';
+                return ok;
+            };
+            auto exists = [&](const QString &q) {
+                DbResultSet rs;
+                if(!c->query(q, &rs, nullptr)) return -1;
+                return rs.rows.isEmpty() ? 0 : rs.rows.first().value(0).toInt();
+            };
+            run(QStringLiteral("DROP TABLE IF EXISTS oy_schema_test_t"));
+            run(QStringLiteral("CREATE TABLE oy_schema_test_t (id INT)"));
+
+            struct Case { QString kw, name, iq; };
+            const QList<Case> cases = {
+                { QStringLiteral("VIEW"), QStringLiteral("oy_st_view"),
+                  QStringLiteral("SELECT COUNT(*) FROM information_schema.views "
+                    "WHERE table_schema='%1' AND table_name='oy_st_view'").arg(db) },
+                { QStringLiteral("PROCEDURE"), QStringLiteral("oy_st_proc"),
+                  QStringLiteral("SELECT COUNT(*) FROM information_schema.routines "
+                    "WHERE routine_schema='%1' AND routine_name='oy_st_proc' "
+                    "AND routine_type='PROCEDURE'").arg(db) },
+                { QStringLiteral("FUNCTION"), QStringLiteral("oy_st_func"),
+                  QStringLiteral("SELECT COUNT(*) FROM information_schema.routines "
+                    "WHERE routine_schema='%1' AND routine_name='oy_st_func' "
+                    "AND routine_type='FUNCTION'").arg(db) },
+                { QStringLiteral("TRIGGER"), QStringLiteral("oy_st_trg"),
+                  QStringLiteral("SELECT COUNT(*) FROM information_schema.triggers "
+                    "WHERE trigger_schema='%1' AND trigger_name='oy_st_trg'").arg(db) },
+            };
+            bool allOk = true;
+            for(const Case &cs : cases) {
+                /* TRIGGER isn't schema.name-addressable in a DROP (Postgres
+                 * wants "ON table", not a qualified name) — its own branch
+                 * below does the right cleanup instead */
+                if(cs.kw == QStringLiteral("TRIGGER")) {
+                    run(QStringLiteral("DROP TRIGGER IF EXISTS \"%1\" ON oy_schema_test_t")
+                            .arg(cs.name));
+                    run(QStringLiteral("DROP FUNCTION IF EXISTS \"%1\".\"%2_fn\"")
+                            .arg(db, cs.name));
+                } else {
+                    run(QStringLiteral("DROP %1 IF EXISTS \"%2\".\"%3\"")
+                            .arg(cs.kw, db, cs.name));
+                }
+                QString tmpl = SchemaSql::createTemplate(cs.kw, db, DriverType::Postgres);
+                tmpl.replace(QStringLiteral("new_view"),    cs.name);
+                tmpl.replace(QStringLiteral("new_proc"),    cs.name);
+                tmpl.replace(QStringLiteral("new_func"),    cs.name);
+                tmpl.replace(QStringLiteral("new_trigger"), cs.name);
+                tmpl.replace(QStringLiteral("some_table"),  QStringLiteral("oy_schema_test_t"));
+                bool cOk = true;
+                for(const QString &s : splitStatements(SchemaSql::editorText(
+                        cs.kw, db, cs.name, tmpl, true, DriverType::Postgres)))
+                    cOk = run(s) && cOk;
+                const bool present = exists(cs.iq) == 1;
+
+                const QString ddl = c->showCreate(cs.kw, db, cs.name, nullptr);
+                bool aOk = !ddl.isEmpty();
+                for(const QString &s : splitStatements(SchemaSql::editorText(
+                        cs.kw, db, cs.name, SchemaSql::stripDefiner(ddl), false,
+                        DriverType::Postgres)))
+                    aOk = run(s) && aOk;
+                const bool stillThere = exists(cs.iq) == 1;
+
+                bool dOk;
+                if(cs.kw == QStringLiteral("TRIGGER")) {
+                    dOk = run(QStringLiteral("DROP TRIGGER IF EXISTS \"%1\" ON oy_schema_test_t")
+                                  .arg(cs.name));
+                    run(QStringLiteral("DROP FUNCTION IF EXISTS \"%1\".\"%2_fn\"")
+                            .arg(db, cs.name));   /* the template's companion function */
+                } else {
+                    dOk = run(QStringLiteral("DROP %1 IF EXISTS \"%2\".\"%3\"")
+                                  .arg(cs.kw, db, cs.name));
+                }
+                const bool gone = exists(cs.iq) == 0;
+                const bool caseOk = cOk && present && aOk && stillThere && dOk && gone;
+                allOk = allOk && caseOk;
+                QTextStream(stdout)
+                    << "pgschematest " << cs.kw << ": create=" << cOk
+                    << " present=" << present << " alter=" << aOk
+                    << " kept=" << stillThere << " drop=" << dOk << " gone=" << gone
+                    << (caseOk ? "  PASS\n" : "  FAIL\n");
+            }
+            run(QStringLiteral("DROP TABLE IF EXISTS oy_schema_test_t"));
+            delete c;
+            return allOk ? 0 : 1;
+        }
         /* --schematest=host:port:user:pw:db — exercise the schema-object DDL
          * helpers (createTemplate / stripDefiner / alterStatements) against a
          * live server: create → alter → drop a View / Procedure / Function /
