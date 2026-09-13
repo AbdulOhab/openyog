@@ -1275,13 +1275,18 @@ void MainWindow::syncToolbarToCurrentTab()
     m_dbCombo->clear();
     if(tab) {
         m_dbCombo->addItems(tab->databases());
-        m_dbCombo->setCurrentText(tab->currentDatabase());
+        /* defaultDb(), not currentDatabase(): for Postgres the latter is
+         * the *connected* database (e.g. "postgres"), which generally
+         * isn't even one of the schema names tab->databases() just
+         * populated the combo with — defaultDb() is the schema actually
+         * being browsed (see ConnectionTab.h's doc comment on it) */
+        m_dbCombo->setCurrentText(tab->defaultDb());
     }
     m_dbCombo->blockSignals(false);
 
     if(tab) {
         setWindowTitle(QStringLiteral("OpenYog - [%1/%2 - %3]")
-                           .arg(tab->title(), tab->currentDatabase(),
+                           .arg(tab->title(), tab->defaultDb(),
                                 tab->hostLabel()));
         m_connectionsLabel->setText(
             QStringLiteral("Connections: %1").arg(m_tabs->count()));
@@ -1523,8 +1528,8 @@ bool MainWindow::selftestSchemaHtml(const QString &outFile)
     auto *tab = currentTab();
     if(!tab)
         return false;
-    const QString db = tab->currentDatabase().isEmpty()
-        ? QStringLiteral("main") : tab->currentDatabase();
+    const QString db = tab->defaultDb().isEmpty()
+        ? QStringLiteral("main") : tab->defaultDb();
     const QString html = tab->buildSchemaHtml(db);
     QFile f(outFile);
     if(!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
