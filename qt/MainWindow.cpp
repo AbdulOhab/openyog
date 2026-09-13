@@ -742,9 +742,9 @@ MainWindow::MainWindow(QWidget *parent)
     const auto flushWith = [this](const QString &sql) {
         auto *t = currentTab();
         if(!t) return;
-        if(t->driverType() == DriverType::Sqlite) {
+        if(t->driverType() != DriverType::Mysql) {
             QMessageBox::information(this, QStringLiteral("Flush"),
-                QStringLiteral("FLUSH has no SQLite equivalent."));
+                QStringLiteral("FLUSH is MySQL-only."));
             return;
         }
         t->runStatements(QStringList{ sql }, QStringLiteral("Flush"));
