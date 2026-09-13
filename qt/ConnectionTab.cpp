@@ -1566,12 +1566,18 @@ void ConnectionTab::createSchemaObject(const QString &database,
                              QStringLiteral("Select a database first."));
         return;
     }
+    if(m_params.driverType == DriverType::Postgres && objType == QStringLiteral("EVENT")) {
+        QMessageBox::information(this, QStringLiteral("Create Event"),
+            QStringLiteral("PostgreSQL has no built-in scheduled-event feature."));
+        return;
+    }
     const QString nice = objType.left(1) + objType.mid(1).toLower();
     /* SQLyog opens the DDL in a new query-editor tab, not a modal dialog */
     openEditorWithSql(
         QStringLiteral("Create %1").arg(nice),
         SchemaSql::editorText(objType, db, QString(),
-                              SchemaSql::createTemplate(objType, db), true));
+                              SchemaSql::createTemplate(objType, db, m_params.driverType),
+                              true, m_params.driverType));
 }
 
 void ConnectionTab::alterSchemaObject(const QString &database,
@@ -1596,7 +1602,7 @@ void ConnectionTab::alterSchemaObject(const QString &database,
     openEditorWithSql(
         QStringLiteral("Alter %1 `%2`").arg(nice, name),
         SchemaSql::editorText(objType, db, name,
-                              SchemaSql::stripDefiner(ddl), false));
+                              SchemaSql::stripDefiner(ddl), false, m_params.driverType));
 }
 
 void ConnectionTab::dropSchemaObject(const QString &database,
@@ -1607,10 +1613,32 @@ void ConnectionTab::dropSchemaObject(const QString &database,
     const QString db = database.isEmpty() ? defaultDb() : database;
     const QString nice = objType.left(1) + objType.mid(1).toLower();
     if(QMessageBox::question(this, QStringLiteral("Drop %1").arg(nice),
-            QStringLiteral("Permanently DROP %1 `%2`.`%3`?").arg(nice, db, name))
+            QStringLiteral("Permanently DROP %1 %2?")
+                .arg(nice, m_conn->qualify(db, name)))
             != QMessageBox::Yes)
         return;
-    execDdl(QStringLiteral("DROP %1 IF EXISTS `%2`.`%3`").arg(objType, db, name));
+    /* PostgreSQL's DROP TRIGGER needs "ON table", not a db-qualified name —
+     * pulled from pg_trigger since dropSchemaObject() has no table
+     * parameter of its own to pass in */
+    if(m_params.driverType == DriverType::Postgres && objType == QStringLiteral("TRIGGER")) {
+        DbResultSet rs;
+        m_conn->query(QStringLiteral(
+            "SELECT c.relname FROM pg_trigger t "
+            "JOIN pg_class c ON c.oid = t.tgrelid "
+            "JOIN pg_namespace n ON n.oid = c.relnamespace "
+            "WHERE NOT t.tgisinternal AND n.nspname = '%1' AND t.tgname = '%2'")
+                .arg(db, name), &rs, nullptr);
+        if(rs.rows.isEmpty()) {
+            QMessageBox::warning(this, QStringLiteral("Drop Trigger"),
+                QStringLiteral("Could not find the table this trigger belongs to."));
+            return;
+        }
+        execDdl(QStringLiteral("DROP TRIGGER IF EXISTS %1 ON %2")
+                    .arg(m_conn->quoteIdent(name),
+                         m_conn->qualify(db, rs.rows.first().value(0))));
+        return;
+    }
+    execDdl(QStringLiteral("DROP %1 IF EXISTS %2").arg(objType, m_conn->qualify(db, name)));
 }
 
 /* ---- database-level operations ----------------------------------------- */
