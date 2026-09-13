@@ -65,6 +65,10 @@ private:
     QLineEdit    *m_pgPassword = nullptr;
     QSpinBox     *m_pgPort     = nullptr;
     QLineEdit    *m_pgDatabase = nullptr;
+    QRadioButton *m_pgIdleDefault = nullptr;
+    QRadioButton *m_pgIdleCustom  = nullptr;
+    QSpinBox     *m_pgIdleSecs    = nullptr;
+    QSpinBox     *m_pgKeepAlive   = nullptr;
 
     QLabel       *m_brandImage  = nullptr;   /* left strip, swaps with the driver */
 

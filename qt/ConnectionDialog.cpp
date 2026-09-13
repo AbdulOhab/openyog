@@ -253,8 +253,13 @@ ConnectionDialog::ConnectionDialog(QWidget *parent)
     sqliteLayout->addLayout(sqliteForm);
     sqliteLayout->addStretch(1);
 
-    /* ---- PostgreSQL tab: host/port/user/password/database, no MySQL-only
-     * compress/idle-timeout/keep-alive options ------------------------- */
+    /* ---- PostgreSQL tab: same host/port/user/password/database shape as
+     * MySQL, plus the same Idle Timeout / Keep-Alive controls (both have
+     * real libpq/Postgres equivalents — see ConnectionParams.h). Use
+     * Compressed Protocol is shown but disabled: libpq has no protocol
+     * compression for a plain TCP connection, so there's nothing to wire
+     * it to — shown anyway (rather than just missing) so the gap reads as
+     * "not available here" instead of "forgotten". ------------------- */
     m_pgHost     = new QLineEdit(QStringLiteral("127.0.0.1"), this);
     m_pgUser     = new QLineEdit(QStringLiteral("postgres"), this);
     m_pgPassword = new QLineEdit(this);
@@ -265,6 +270,11 @@ ConnectionDialog::ConnectionDialog(QWidget *parent)
     m_pgPort->setGroupSeparatorShown(false);
     m_pgPort->setLocale(QLocale::c());
     m_pgDatabase = new QLineEdit(QStringLiteral("postgres"), this);
+    auto *pgCompress = new QCheckBox(QStringLiteral("Use Compressed Protocol"), this);
+    pgCompress->setEnabled(false);
+    pgCompress->setToolTip(QStringLiteral(
+        "Not available on PostgreSQL — libpq has no protocol compression "
+        "for a plain TCP connection."));
     auto *pgForm = new QFormLayout;
     pgForm->addRow(QStringLiteral("&Host Address"), m_pgHost);
     pgForm->addRow(QStringLiteral("&Username"), m_pgUser);
@@ -278,9 +288,41 @@ ConnectionDialog::ConnectionDialog(QWidget *parent)
     pgHint->setEnabled(false);
     pgHint->setWordWrap(true);
     pgForm->addRow(QString(), pgHint);
+    pgForm->addRow(QString(), pgCompress);
+
+    m_pgIdleDefault = new QRadioButton(QStringLiteral("De&fault"), this);
+    m_pgIdleDefault->setChecked(true);
+    m_pgIdleSecs = new QSpinBox(this);
+    m_pgIdleSecs->setRange(0, 2147483);
+    m_pgIdleSecs->setValue(28800);
+    m_pgIdleSecs->setEnabled(false);
+    auto *pgIdleCustom = new QRadioButton(this);
+    connect(pgIdleCustom, &QRadioButton::toggled, m_pgIdleSecs, &QWidget::setEnabled);
+    auto *pgIdleBox = new QGroupBox(QStringLiteral("Session Idle Timeout"), this);
+    auto *pgIdleL = new QHBoxLayout(pgIdleBox);
+    pgIdleL->addWidget(m_pgIdleDefault);
+    pgIdleL->addWidget(pgIdleCustom);
+    pgIdleL->addWidget(m_pgIdleSecs);
+    pgIdleL->addWidget(new QLabel(QStringLiteral("(seconds)"), this));
+    pgIdleL->addStretch(1);
+    m_pgIdleCustom = pgIdleCustom;
+
+    m_pgKeepAlive = new QSpinBox(this);
+    m_pgKeepAlive->setRange(0, 2147483);
+    auto *pgKaBox = new QGroupBox(QStringLiteral("&Keep-Alive Interval"), this);
+    auto *pgKaL = new QHBoxLayout(pgKaBox);
+    pgKaL->addWidget(m_pgKeepAlive);
+    pgKaL->addWidget(new QLabel(QStringLiteral("(seconds)"), this));
+    pgKaL->addStretch(1);
+
+    auto *pgGroups = new QHBoxLayout;
+    pgGroups->addWidget(pgIdleBox, 3);
+    pgGroups->addWidget(pgKaBox, 2);
+
     m_postgresTab = new QWidget(this);
     auto *pgLayout = new QVBoxLayout(m_postgresTab);
     pgLayout->addLayout(pgForm);
+    pgLayout->addLayout(pgGroups);
     pgLayout->addStretch(1);
 
     /* ---- SSL tab: client-cert TLS, wired to mysql_ssl_set()/libpq ---- */
@@ -554,10 +596,14 @@ void ConnectionDialog::setParams(const ConnectionParams &p)
     if(p.idleTimeoutSecs > 0) {
         m_idleCustom->setChecked(true);
         m_idleSecs->setValue(p.idleTimeoutSecs);
+        m_pgIdleCustom->setChecked(true);
+        m_pgIdleSecs->setValue(p.idleTimeoutSecs);
     } else {
         m_idleDefault->setChecked(true);
+        m_pgIdleDefault->setChecked(true);
     }
     m_keepAlive->setValue(p.keepAliveSecs);
+    m_pgKeepAlive->setValue(p.keepAliveSecs);
 }
 
 ConnectionParams ConnectionDialog::params() const
@@ -587,6 +633,8 @@ ConnectionParams ConnectionDialog::params() const
         p.sslCa    = m_sslCa->text().trimmed();
         p.sslCert  = m_sslCert->text().trimmed();
         p.sslKey   = m_sslKey->text().trimmed();
+        p.idleTimeoutSecs = m_pgIdleCustom->isChecked() ? m_pgIdleSecs->value() : 0;
+        p.keepAliveSecs   = m_pgKeepAlive->value();
         p.name = hasSavedName ? sel
                               : QStringLiteral("%1@%2:%3").arg(p.user, p.host).arg(p.port);
         return p;
