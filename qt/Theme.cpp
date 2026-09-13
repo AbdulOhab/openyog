@@ -16,9 +16,10 @@
  *   toolbar bg    #F5F5F5   menu/conn-tab bg #FFFFFF
  *   menu text     #424242 active / #A2A2A2 disabled
  * Object names set by the widgets so one sheet can style each strip:
- *   QTabWidget#connTabs   connection tabs  — white strip, blue underline
- *   QTabWidget#editorTabs Query/History    — white strip
- *   QTabWidget#resultTabs Messages/Data/…  — solid blue strip
+ *   QTabWidget#connTabs          connection tabs  — white strip, blue underline
+ *   QTabWidget#editorTabs        Query/History    — white strip
+ *   QTabWidget#resultTabs        Messages/Data/…  — solid blue strip
+ *   QTabWidget#connectDialogTabs ConnectionDialog's driver tabs — same as #connTabs
  *   QLabel#infoStrip      nag-bar replacement — solid blue
  *   QFrame#limitStrip     bottom LIMIT combo row — solid blue          */
 
@@ -62,6 +63,20 @@ QTabWidget#connTabs > QTabBar::tab { background: #F0F0F0; color: #3B7DBB;
     padding: 3px 10px; }
 QTabWidget#connTabs > QTabBar::tab:selected { background: #FFFFFF;
     color: #1E1E1E; }
+
+/* ConnectionDialog's own driver tabs (MySQL/SQLite/PostgreSQL/HTTP/SSH/
+ * SSL/Advanced) — same treatment as #connTabs above; without a name of
+ * its own this QTabWidget fell through to the bare border:0 rule a few
+ * lines up with no selected-state color at all, so which tab was active
+ * (or that these were clickable tabs rather than plain text) wasn't
+ * visible on the light theme */
+QTabWidget#connectDialogTabs > QTabBar { background: #FFFFFF; qproperty-drawBase: 0;
+    border-bottom: 2px solid #3B7DBB; }
+QTabWidget#connectDialogTabs > QTabBar::tab { background: #F0F0F0; color: #3B7DBB;
+    border: 1px solid #C8C8C8; border-bottom: 0; margin-right: 2px;
+    padding: 3px 10px; }
+QTabWidget#connectDialogTabs > QTabBar::tab:selected { background: #FFFFFF;
+    color: #1E1E1E; font-weight: bold; }
 
 /* editor tabs (Query N / History) — white strip */
 QTabWidget#editorTabs > QTabBar { background: #FFFFFF; qproperty-drawBase: 0;

@@ -113,7 +113,7 @@ ConnectionDialog::ConnectionDialog(QWidget *parent)
     : QDialog(parent)
 {
     setWindowTitle(QStringLiteral("Connect to MySQL Host"));
-    setMinimumWidth(620);
+    setMinimumWidth(660);   /* fits all 7 driver tabs' now-visible borders without a scroll arrow */
     /* keep port / seconds fields as plain ASCII digits, like SQLyog */
     setLocale(QLocale::c());
 
@@ -264,6 +264,8 @@ ConnectionDialog::ConnectionDialog(QWidget *parent)
     m_pgUser     = new QLineEdit(QStringLiteral("postgres"), this);
     m_pgPassword = new QLineEdit(this);
     m_pgPassword->setEchoMode(QLineEdit::Password);
+    m_pgSavePw   = new QCheckBox(QStringLiteral("Save Pass&word"), this);
+    m_pgSavePw->setChecked(true);
     m_pgPort     = new QSpinBox(this);
     m_pgPort->setRange(1, 65535);
     m_pgPort->setValue(5432);
@@ -275,10 +277,17 @@ ConnectionDialog::ConnectionDialog(QWidget *parent)
     pgCompress->setToolTip(QStringLiteral(
         "Not available on PostgreSQL — libpq has no protocol compression "
         "for a plain TCP connection."));
+
+    auto *pgPwRow = new QHBoxLayout;
+    pgPwRow->addWidget(m_pgPassword, 1);
+    pgPwRow->addWidget(m_pgSavePw);
+    auto *pgPwLabel = new QLabel(QStringLiteral("Pass&word"), this);
+    pgPwLabel->setBuddy(m_pgPassword);
+
     auto *pgForm = new QFormLayout;
     pgForm->addRow(QStringLiteral("&Host Address"), m_pgHost);
     pgForm->addRow(QStringLiteral("&Username"), m_pgUser);
-    pgForm->addRow(QStringLiteral("Pass&word"), m_pgPassword);
+    pgForm->addRow(pgPwLabel, pgPwRow);
     pgForm->addRow(QStringLiteral("P&ort"), m_pgPort);
     pgForm->addRow(QStringLiteral("Data&base"), m_pgDatabase);
     auto *pgHint = new QLabel(QStringLiteral(
@@ -363,6 +372,7 @@ ConnectionDialog::ConnectionDialog(QWidget *parent)
     sslLayout->addStretch(1);
 
     m_tabs = new QTabWidget(this);
+    m_tabs->setObjectName(QStringLiteral("connectDialogTabs"));   /* Theme.cpp styling */
     m_tabs->addTab(m_mysqlTab, QStringLiteral("MySQL"));
     m_tabs->addTab(m_sqliteTab, QStringLiteral("SQLite"));
     m_tabs->addTab(m_postgresTab, QStringLiteral("PostgreSQL"));
@@ -445,15 +455,25 @@ void ConnectionDialog::loadSelected()
 void ConnectionDialog::newConnection()
 {
     setParams(ConnectionParams{});
+    /* setParams() unticks Save Password for an empty one, reading it as
+     * "this saved entry chose not to keep it" — right for a just-loaded
+     * connection, wrong for a blank-slate one that was never saved with
+     * that meaning; default a new connection to "yes, remember it" like
+     * the checkbox's own hardcoded initial state at construction */
+    m_savePw->setChecked(true);
+    m_pgSavePw->setChecked(true);
     m_host->setFocus();
     m_host->selectAll();
 }
 
 void ConnectionDialog::saveConnection()
 {
-    ConnectionStore::save(params());
+    ConnectionParams p = params();
+    if(!savePasswordChecked())
+        p.password.clear();
+    ConnectionStore::save(p);
     reloadSavedList();
-    const int i = m_saved->findText(params().name);
+    const int i = m_saved->findText(p.name);
     if(i >= 0)
         m_saved->setCurrentIndex(i);
 }
@@ -469,10 +489,21 @@ void ConnectionDialog::cloneConnection()
         return;
     ConnectionParams p = params();
     p.name = name.trimmed();
+    if(!savePasswordChecked())
+        p.password.clear();
     ConnectionStore::save(p);
     reloadSavedList();
     if(int i = m_saved->findText(p.name); i >= 0)
         m_saved->setCurrentIndex(i);
+}
+
+bool ConnectionDialog::savePasswordChecked() const
+{
+    if(m_tabs->currentWidget() == m_postgresTab)
+        return m_pgSavePw->isChecked();
+    if(m_tabs->currentWidget() == m_sqliteTab)
+        return true;   /* SQLite has no password field to begin with */
+    return m_savePw->isChecked();
 }
 
 void ConnectionDialog::renameConnection()
@@ -574,6 +605,13 @@ void ConnectionDialog::setParams(const ConnectionParams &p)
     m_port->setValue(p.port);
     m_user->setText(p.user);
     m_password->setText(p.password);
+    /* a saved entry with no password could mean "genuinely no password" or
+     * "Save Password was unticked" — can't tell which, so default the box
+     * to whichever guess needs less typing: checked (meaning "yes, keep
+     * remembering it") when a password IS on file, unchecked (so the very
+     * next Save doesn't silently re-add one the owner chose to leave out)
+     * when it's blank */
+    m_savePw->setChecked(!p.password.isEmpty());
     m_database->setText(p.database);
     m_sqlitePath->setText(p.filePath);
     /* Postgres shares the host/port/user/password/database shape with
@@ -585,6 +623,7 @@ void ConnectionDialog::setParams(const ConnectionParams &p)
     m_pgPort->setValue(p.driverType == DriverType::Postgres ? p.port : 5432);
     m_pgUser->setText(p.user);
     m_pgPassword->setText(p.password);
+    m_pgSavePw->setChecked(!p.password.isEmpty());
     m_pgDatabase->setText(p.database);
     m_driverCombo->setCurrentIndex(p.driverType == DriverType::Sqlite ? 1
                                   : p.driverType == DriverType::Postgres ? 2 : 0);
