@@ -31,13 +31,26 @@ QString htmlEsc(QString s)
             .replace('>', QStringLiteral("&gt;"));
 }
 
-/* a MySQL-safe single-quoted string literal */
-QString sqlLit(QString s)
+/* a single-quoted string literal. MySQL treats backslash as an escape
+ * character in string literals by default, so a literal backslash/newline/CR
+ * needs its own escape sequence to round-trip; Postgres and SQLite don't
+ * (standard_conforming_strings, on by default for decades now, means a
+ * backslash there is just a backslash) — escaping it there anyway would
+ * leave a literal two-character "\n" in the re-imported data instead of a
+ * real newline, and "\\'" would actually end the string early rather than
+ * escape the quote. ansi=true instead doubles the quote (the one escape
+ * ANSI SQL actually defines) and leaves backslash/newline/CR untouched, as
+ * a real newline embedded in a quoted literal spanning lines. */
+QString sqlLit(QString s, bool ansi)
 {
-    s.replace('\\', QStringLiteral("\\\\"));
-    s.replace('\'', QStringLiteral("\\'"));
-    s.replace('\n', QStringLiteral("\\n"));
-    s.replace('\r', QStringLiteral("\\r"));
+    if(!ansi) {
+        s.replace('\\', QStringLiteral("\\\\"));
+        s.replace('\'', QStringLiteral("\\'"));
+        s.replace('\n', QStringLiteral("\\n"));
+        s.replace('\r', QStringLiteral("\\r"));
+        return QLatin1Char('\'') + s + QLatin1Char('\'');
+    }
+    s.replace('\'', QStringLiteral("''"));
     return QLatin1Char('\'') + s + QLatin1Char('\'');
 }
 
@@ -164,10 +177,18 @@ QString render(Format fmt, const QStringList &headers,
     }
 
     case Format::Sql: {
+        /* matches opt.sqlCreate's own dialect (the caller fills that in via
+         * IDbConnection::showCreate(), already quoted correctly) rather
+         * than always assuming backticks */
+        const bool ansiQuote = opt.driver != DriverType::Mysql;
+        const auto qi = [&](const QString &s) {
+            return ansiQuote
+                ? QLatin1Char('"') + QString(s).replace('"', QStringLiteral("\"\"")) + QLatin1Char('"')
+                : QLatin1Char('`') + QString(s).replace('`', QStringLiteral("``")) + QLatin1Char('`');
+        };
         const QString tbl = opt.sqlTable;
         if(opt.sqlStructure && !opt.sqlCreate.trimmed().isEmpty()) {
-            out << "DROP TABLE IF EXISTS `"
-                << QString(tbl).replace('`', QStringLiteral("``")) << "`;\n"
+            out << "DROP TABLE IF EXISTS " << qi(tbl) << ";\n"
                 << opt.sqlCreate.trimmed();
             if(!opt.sqlCreate.trimmed().endsWith(QLatin1Char(';')))
                 out << ";";
@@ -175,11 +196,10 @@ QString render(Format fmt, const QStringList &headers,
         }
         QStringList colList;
         for(const QString &h : headers)
-            colList << QLatin1Char('`') + QString(h).replace('`', QStringLiteral("``"))
-                           + QLatin1Char('`');
+            colList << qi(h);
         const QString prefix =
-            QStringLiteral("INSERT INTO `%1` (%2) VALUES\n")
-                .arg(tbl, colList.join(QStringLiteral(", ")));
+            QStringLiteral("INSERT INTO %1 (%2) VALUES\n")
+                .arg(qi(tbl), colList.join(QStringLiteral(", ")));
         for(int r = 0; r < rows; ++r) {
             if(r % 200 == 0) {
                 if(r)
@@ -191,7 +211,7 @@ QString render(Format fmt, const QStringList &headers,
             QStringList vals;
             for(int c = 0; c < cols; ++c) {
                 const QString v = cell(r, c);
-                vals << (isNull(v, opt) ? QStringLiteral("NULL") : sqlLit(v));
+                vals << (isNull(v, opt) ? QStringLiteral("NULL") : sqlLit(v, ansiQuote));
             }
             out << "  (" << vals.join(QStringLiteral(", ")) << ")";
         }

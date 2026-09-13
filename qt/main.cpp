@@ -723,6 +723,33 @@ int main(int argc, char *argv[])
                                     << " marker=" << has
                                     << (w && has ? "  PASS\n" : "  FAIL\n");
             }
+            /* SQL, non-MySQL dialect: double-quoted identifiers, and the
+             * embedded single quote must be doubled (ANSI) rather than
+             * backslash-escaped (MySQL) — backslash isn't an escape
+             * character in a Postgres/SQLite string literal by default */
+            {
+                ResultExport::Options po;
+                po.driver = DriverType::Postgres;
+                po.sqlStructure = true;
+                po.sqlTable = QStringLiteral("t1");
+                po.sqlCreate = QStringLiteral("CREATE TABLE \"t1\" (\"id\" integer)");
+                const QString p = dir + QStringLiteral("/exporttest_pg.sql");
+                QString err;
+                bool w = ResultExport::write(p, ResultExport::Format::Sql, headers,
+                                             cell, 3, 3, po, &err);
+                QString body;
+                QFile fh(p);
+                if(w && fh.open(QIODevice::ReadOnly))
+                    body = QString::fromUtf8(fh.readAll());
+                const bool has = body.contains(QStringLiteral("DROP TABLE IF EXISTS \"t1\""))
+                              && body.contains(QStringLiteral("INSERT INTO \"t1\" (\"id\", \"name\", \"note\")"))
+                              && body.contains(QStringLiteral("'a''b'"))
+                              && !body.contains(QStringLiteral("\\'"));
+                ok = ok && w && has;
+                QTextStream(stdout) << "exporttest sql pg-dialect: wrote=" << w
+                                    << " marker=" << has
+                                    << (w && has ? "  PASS\n" : "  FAIL\n");
+            }
             return ok ? 0 : 1;
         }
         /* --shortcuttest — build the main window and check the menu accelerators
