@@ -9,11 +9,13 @@
 #include "ConnectionTab.h"
 #include "FavoritesStore.h"
 #include "Icons.h"
+#include "ObjectBrowser.h"
 #include "Theme.h"
 
 #include <QAction>
 #include <QActionGroup>
 #include <QApplication>
+#include <QColorDialog>
 #include <QComboBox>
 #include <QIcon>
 #include <QPixmap>
@@ -288,7 +290,18 @@ MainWindow::MainWindow(QWidget *parent)
     QMenu *edit = menuBar()->addMenu(QStringLiteral("&Edit"));
     QAction *refresh = edit->addAction(QStringLiteral("Refresh &Object Browser\tF5"));
     connect(refresh, &QAction::triggered, this, &MainWindow::refreshBrowser);
-    addDisabled(edit, QStringLiteral("Change Objec&t Browser Color"));
+    QAction *browserColor = edit->addAction(QStringLiteral("Change Objec&t Browser Color"));
+    connect(browserColor, &QAction::triggered, this, [this] {
+        const QColor cur = ObjectBrowserColor::load();
+        const QColor c = QColorDialog::getColor(
+            cur.isValid() ? cur : QColor(Qt::white), this,
+            QStringLiteral("Object Browser Selection Color"));
+        if(!c.isValid())
+            return;
+        ObjectBrowserColor::save(c);
+        QMessageBox::information(this, QStringLiteral("Object Browser Color"),
+            QStringLiteral("Saved — applies to connections opened from now on."));
+    });
     connect(edit->addAction(QStringLiteral("Collapse All in Object Browser")),
             &QAction::triggered, this,
             [this] { if(auto *t = currentTab()) t->collapseBrowser(); });

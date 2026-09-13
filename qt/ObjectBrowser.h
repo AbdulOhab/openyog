@@ -4,12 +4,22 @@
  * expand; folders other than Tables arrive in later phases. */
 #pragma once
 
+#include <QColor>
 #include <QLabel>
 #include <QLineEdit>
 #include <QTreeWidget>
 #include <QWidget>
 
 class IDbConnection;
+
+/* Edit > Change Object Browser Color: persisted in OpenYog.ini
+ * [UserInterface] browsercolor=#RRGGBB, same file Theme uses. An invalid
+ * (default-constructed) QColor means "use the theme's own color" — no
+ * override applied. */
+namespace ObjectBrowserColor {
+    QColor load();
+    void   save(const QColor &c);
+}
 
 class ObjectBrowser : public QWidget
 {
