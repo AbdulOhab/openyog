@@ -671,29 +671,105 @@ MainWindow::MainWindow(QWidget *parent)
 
     /* ================= Transactions ================================= */
     QMenu *transactions = menuBar()->addMenu(QStringLiteral("T&ransactions"));
-    addDisabled(transactions, QStringLiteral("Set Autocommit"));
+    const auto runTx = [this](const QString &sql) {
+        if(auto *t = currentTab())
+            t->runStatements(QStringList{ sql }, QStringLiteral("Transaction"));
+    };
+    /* isolation level / autocommit-as-a-SET / consistent-snapshot / chained
+     * commit are all InnoDB-transaction concepts with no SQLite equivalent
+     * (SQLite's own isolation is fixed by its locking mode, not settable
+     * per-session) — guarded the same way Flush guards itself. */
+    const auto mysqlOnlyTx = [this](const QString &sql) {
+        auto *t = currentTab();
+        if(!t) return;
+        if(t->driverType() == DriverType::Sqlite) {
+            QMessageBox::information(this, QStringLiteral("Transactions"),
+                QStringLiteral("Not supported on SQLite."));
+            return;
+        }
+        t->runStatements(QStringList{ sql }, QStringLiteral("Transaction"));
+    };
+
+    QAction *autocommit = transactions->addAction(QStringLiteral("Set Autocommit"));
+    autocommit->setCheckable(true);
+    autocommit->setChecked(true);
+    connect(autocommit, &QAction::toggled, this, [mysqlOnlyTx](bool on) {
+        mysqlOnlyTx(QStringLiteral("SET autocommit=%1").arg(on ? 1 : 0));
+    });
+
     QMenu *isolation = transactions->addMenu(QStringLiteral("Isolation Level"));
-    addDisabled(isolation, QStringLiteral("Repeatable Read"));
-    addDisabled(isolation, QStringLiteral("Read Committed"));
-    addDisabled(isolation, QStringLiteral("Read Uncommitted"));
-    addDisabled(isolation, QStringLiteral("Serializable"));
+    auto *isoGroup = new QActionGroup(this);
+    isoGroup->setExclusive(true);
+    for(const auto &[label, level] :
+        { std::pair{ QStringLiteral("Repeatable Read"), QStringLiteral("REPEATABLE READ") },
+          std::pair{ QStringLiteral("Read Committed"), QStringLiteral("READ COMMITTED") },
+          std::pair{ QStringLiteral("Read Uncommitted"), QStringLiteral("READ UNCOMMITTED") },
+          std::pair{ QStringLiteral("Serializable"), QStringLiteral("SERIALIZABLE") } }) {
+        QAction *a = isolation->addAction(label);
+        a->setCheckable(true);
+        isoGroup->addAction(a);
+        connect(a, &QAction::triggered, this, [mysqlOnlyTx, level] {
+            mysqlOnlyTx(QStringLiteral("SET SESSION TRANSACTION ISOLATION LEVEL %1")
+                            .arg(level));
+        });
+    }
     transactions->addSeparator();
+
     QMenu *startTrx = transactions->addMenu(QStringLiteral("Start Transaction"));
-    addDisabled(startTrx, QStringLiteral("With no modifier"));
+    QAction *startPlain = startTrx->addAction(QStringLiteral("With no modifier"));
+    connect(startPlain, &QAction::triggered, this, [this, runTx] {
+        auto *t = currentTab();
+        if(!t) return;
+        runTx(t->driverType() == DriverType::Sqlite
+                  ? QStringLiteral("BEGIN") : QStringLiteral("START TRANSACTION"));
+    });
     QMenu *snapshot = startTrx->addMenu(QStringLiteral("With Consistent Snapshot"));
-    addDisabled(snapshot, QStringLiteral("Read only"));
-    addDisabled(snapshot, QStringLiteral("Read Write"));
+    QAction *snapRO = snapshot->addAction(QStringLiteral("Read only"));
+    connect(snapRO, &QAction::triggered, this, [mysqlOnlyTx] {
+        mysqlOnlyTx(QStringLiteral(
+            "START TRANSACTION WITH CONSISTENT SNAPSHOT, READ ONLY")); });
+    QAction *snapRW = snapshot->addAction(QStringLiteral("Read Write"));
+    connect(snapRW, &QAction::triggered, this, [mysqlOnlyTx] {
+        mysqlOnlyTx(QStringLiteral(
+            "START TRANSACTION WITH CONSISTENT SNAPSHOT, READ WRITE")); });
+
     QMenu *commit = transactions->addMenu(QStringLiteral("Commit"));
-    addDisabled(commit, QStringLiteral("With no modifier"));
+    QAction *commitPlain = commit->addAction(QStringLiteral("With no modifier"));
+    connect(commitPlain, &QAction::triggered, this,
+            [runTx] { runTx(QStringLiteral("COMMIT")); });
     commit->addSeparator();
-    addDisabled(commit, QStringLiteral("And Chain"));
-    addDisabled(commit, QStringLiteral("And No Chain"));
+    QAction *commitChain = commit->addAction(QStringLiteral("And Chain"));
+    connect(commitChain, &QAction::triggered, this,
+            [mysqlOnlyTx] { mysqlOnlyTx(QStringLiteral("COMMIT AND CHAIN")); });
+    QAction *commitNoChain = commit->addAction(QStringLiteral("And No Chain"));
+    connect(commitNoChain, &QAction::triggered, this,
+            [mysqlOnlyTx] { mysqlOnlyTx(QStringLiteral("COMMIT AND NO CHAIN")); });
     commit->addSeparator();
-    addDisabled(commit, QStringLiteral("Release"));
-    addDisabled(commit, QStringLiteral("No Release"));
+    QAction *commitRelease = commit->addAction(QStringLiteral("Release"));
+    connect(commitRelease, &QAction::triggered, this,
+            [mysqlOnlyTx] { mysqlOnlyTx(QStringLiteral("COMMIT RELEASE")); });
+    QAction *commitNoRelease = commit->addAction(QStringLiteral("No Release"));
+    connect(commitNoRelease, &QAction::triggered, this,
+            [mysqlOnlyTx] { mysqlOnlyTx(QStringLiteral("COMMIT NO RELEASE")); });
+
     QMenu *rollback = transactions->addMenu(QStringLiteral("Rollback"));
-    addDisabled(rollback, QStringLiteral("To Savepoint"));
-    addDisabled(rollback, QStringLiteral("Transaction"));
+    QAction *rollToSave = rollback->addAction(QStringLiteral("To Savepoint"));
+    connect(rollToSave, &QAction::triggered, this, [this] {
+        auto *t = currentTab();
+        if(!t) return;
+        bool ok = false;
+        const QString name = QInputDialog::getText(
+            this, QStringLiteral("Rollback To Savepoint"),
+            QStringLiteral("Savepoint name:"), QLineEdit::Normal, QString(), &ok);
+        if(ok && !name.trimmed().isEmpty())
+            t->runStatements(
+                QStringList{ QStringLiteral("ROLLBACK TO SAVEPOINT %1")
+                                 .arg(name.trimmed()) },
+                QStringLiteral("Transaction"));
+    });
+    QAction *rollTrx = rollback->addAction(QStringLiteral("Transaction"));
+    connect(rollTrx, &QAction::triggered, this,
+            [runTx] { runTx(QStringLiteral("ROLLBACK")); });
 
     /* ================= Window ======================================= */
     QMenu *window = menuBar()->addMenu(QStringLiteral("&Window"));
