@@ -1,9 +1,15 @@
 /* OpenYog — Relationships / Foreign Keys dialog (Table > …/Foreign Keys, F10).
  * Lists a table's FKs; Add builds one from a local column → referenced
  * table.column + ON DELETE/UPDATE actions; Remove marks one for DROP.
- * buildSql() diffs against the opened set → one ALTER TABLE with
- * DROP FOREIGN KEY / ADD CONSTRAINT … FOREIGN KEY … REFERENCES … clauses. */
+ * buildSql() diffs against the opened set → one ALTER TABLE with DROP …/
+ * ADD CONSTRAINT … FOREIGN KEY … REFERENCES … clauses — "ADD CONSTRAINT …
+ * FOREIGN KEY" is standard SQL and needs no PostgreSQL branch at all; only
+ * the DROP side differs (MySQL's DROP FOREIGN KEY name vs standard SQL's
+ * DROP CONSTRAINT name, which Postgres uses since a foreign key there is
+ * just a constraint like any other) and identifier quoting. */
 #pragma once
+
+#include "ConnectionParams.h"
 
 #include <QDialog>
 #include <QList>
@@ -30,7 +36,8 @@ public:
 
     ForeignKeyDialog(QString database, QString table,
                      const QList<FkDef> &fks, QStringList tableColumns,
-                     QStringList dbTables, QWidget *parent = nullptr);
+                     QStringList dbTables, QWidget *parent = nullptr,
+                     DriverType driver = DriverType::Mysql);
 
     QString buildSql() const;   /* ALTER TABLE … or empty when unchanged */
 
@@ -42,6 +49,7 @@ private slots:
 private:
     void addRow(const FkDef &fk, bool isNew);
 
+    DriverType   m_driver = DriverType::Mysql;
     QString      m_database, m_table;
     QStringList  m_columns, m_dbTables;
     QStringList  m_originalNames;

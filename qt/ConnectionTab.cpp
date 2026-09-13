@@ -3092,7 +3092,7 @@ void ConnectionTab::promptManageForeignKeys(const QString &database,
         cols << row.value(0);
     tables = m_conn->listTables(db, QStringLiteral("BASE TABLE"));
 
-    ForeignKeyDialog dlg(db, table, fks, cols, tables, this);
+    ForeignKeyDialog dlg(db, table, fks, cols, tables, this, m_params.driverType);
     if(dlg.exec() != QDialog::Accepted)
         return;
     const QString sql = dlg.buildSql();
