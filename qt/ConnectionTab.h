@@ -139,6 +139,9 @@ public slots:
     void emptyDatabase(const QString &db);      /* TRUNCATE every base table */
     void promptAlterDatabase(const QString &db);
     void promptDumpDatabase(const QString &database = {});
+    void promptSchemaHtml(const QString &database = {});
+    /* non-interactive core, also used by the --schemahtmltest= selftest */
+    QString buildSchemaHtml(const QString &db);
     /* non-interactive core, also used by the --dumpdb selftest */
     bool dumpDatabaseToFile(const QString &database, const QString &path,
                             QString *error);
