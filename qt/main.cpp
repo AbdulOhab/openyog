@@ -22,6 +22,7 @@
 #include "ConnectionParams.h"
 #include "ConnectionStore.h"
 #include "CreateTableDialog.h"
+#include "ForeignKeyDialog.h"
 #include "IndexDialog.h"
 #include "ExportDialog.h"
 #include "ResultExport.h"
@@ -46,6 +47,7 @@
 #include <QFileInfo>
 #include <QIcon>
 #include <QPushButton>
+#include <QRegularExpression>
 #include <QTableWidget>
 #include <QTextStream>
 #include <QTimer>
@@ -530,6 +532,106 @@ int main(int argc, char *argv[])
                 names << row.value(0);
             check(names.contains(QStringLiteral("idx_city")) && !names.contains(QStringLiteral("idx_old")),
                   "final state: idx_city present, idx_old gone");
+
+            delete c;
+            return fails == 0 ? 0 : 1;
+        }
+        /* --sqlitemisctest=FILE.sqlite — three more Postgres-retrofit
+         * regressions caught by the same UI-gating audit: Rename Table
+         * (was MySQL-only RENAME TABLE syntax), Duplicate Table structure
+         * (was MySQL/SQLite "CREATE TABLE ... LIKE ...", but SQLite has no
+         * LIKE clause at all), and ForeignKeyDialog correctly refusing to
+         * emit SQL for an operation SQLite's ALTER TABLE can't do (add/drop
+         * a foreign key on an existing table needs a full rebuild). */
+        if(a.startsWith(QStringLiteral("--sqlitemisctest="))) {
+            qputenv("QT_QPA_PLATFORM", "offscreen");
+            QApplication app2(argc, argv);
+            const QString path = a.mid(QStringLiteral("--sqlitemisctest=").size());
+            QFile::remove(path);
+            ConnectionParams cp;
+            cp.driverType = DriverType::Sqlite;
+            cp.filePath = path;
+            QString connectError;
+            IDbConnection *c = dbDriverFor(cp.driverType)->connect(cp, &connectError);
+            if(!c) {
+                QTextStream(stdout) << "sqlitemisctest: connect failed: "
+                                    << connectError << '\n';
+                return 1;
+            }
+            int fails = 0;
+            const auto check = [&](bool ok, const QString &what) {
+                if(!ok) ++fails;
+                QTextStream(stdout) << "sqlitemisctest " << what
+                                    << (ok ? "  PASS\n" : "  FAIL\n");
+            };
+
+            QString stmtErr;
+            check(c->query(QStringLiteral(
+                      "CREATE TABLE \"employees\" (\"id\" INTEGER PRIMARY KEY "
+                      "AUTOINCREMENT, \"name\" TEXT NOT NULL, "
+                      "\"salary\" REAL DEFAULT 0)"), nullptr, &stmtErr),
+                  "setup: create table");
+            check(c->query(QStringLiteral(
+                      "INSERT INTO \"employees\" (\"name\") VALUES ('a')"),
+                      nullptr, &stmtErr),
+                  "setup: insert a row");
+
+            /* --- Rename Table: ALTER TABLE ... RENAME TO ... --- */
+            check(c->query(QStringLiteral("ALTER TABLE %1 RENAME TO %2")
+                                .arg(c->qualify(QString(), QStringLiteral("employees")),
+                                     c->quoteIdent(QStringLiteral("staff"))),
+                            nullptr, &stmtErr),
+                  "rename: ALTER TABLE ... RENAME TO applies");
+            DbResultSet trs;
+            c->query(QStringLiteral("SELECT name FROM sqlite_master WHERE type='table'"),
+                     &trs, nullptr);
+            QStringList tnames;
+            for(const QStringList &row : trs.rows) tnames << row.value(0);
+            check(tnames.contains(QStringLiteral("staff"))
+                  && !tnames.contains(QStringLiteral("employees")),
+                  "rename: staff exists, employees gone");
+
+            /* --- Duplicate Table (structure): retarget showCreate()'s own
+             * DDL text to the new name, since SQLite has no LIKE clause */
+            QString err;
+            QString ddl = c->showCreate(QStringLiteral("TABLE"), QString(),
+                                        QStringLiteral("staff"), &err);
+            static const QRegularExpression nameRe(
+                QStringLiteral("^(CREATE\\s+TABLE\\s+(?:IF\\s+NOT\\s+EXISTS\\s+)?)"
+                               "(?:\"[^\"]+\"|`[^`]+`|\\[[^\\]]+\\]|\\w+)"),
+                QRegularExpression::CaseInsensitiveOption);
+            const QString dst = c->qualify(QString(), QStringLiteral("staff_copy"));
+            ddl.replace(nameRe, QStringLiteral("\\1") + dst);
+            check(!ddl.isEmpty() && ddl.contains(QStringLiteral("staff_copy"))
+                  && !ddl.contains(QStringLiteral("\"staff\"")),
+                  "duplicate: DDL retargeted to staff_copy, no leftover staff reference");
+            check(c->query(ddl, nullptr, &stmtErr), "duplicate: retargeted DDL executes");
+            if(!stmtErr.isEmpty() && !stmtErr.startsWith(QStringLiteral("OK")))
+                QTextStream(stdout) << "  error: " << stmtErr << " ddl=" << ddl << '\n';
+            check(c->query(QStringLiteral(
+                      "INSERT INTO \"staff_copy\" (\"name\") SELECT \"name\" FROM \"staff\""),
+                      nullptr, &stmtErr),
+                  "duplicate: data copy into the new table works");
+            DbResultSet drs;
+            c->query(QStringLiteral("SELECT \"id\", \"name\", \"salary\" FROM \"staff_copy\""),
+                     &drs, nullptr);
+            check(drs.rows.size() == 1 && drs.rows.first().value(1) == QStringLiteral("a"),
+                  "duplicate: copy has the same column shape and data");
+
+            /* --- Foreign Keys: adding one to an existing SQLite table must
+             * be refused (via limitation()), not sent as broken SQL */
+            ForeignKeyDialog fkdlg(QString(), QStringLiteral("staff"), {},
+                                   { QStringLiteral("id"), QStringLiteral("name") },
+                                   { QStringLiteral("staff") }, nullptr, DriverType::Sqlite);
+            fkdlg.findChild<QComboBox *>(QStringLiteral("localCol"))
+                ->setCurrentText(QStringLiteral("name"));
+            fkdlg.findChild<QLineEdit *>(QStringLiteral("refCol"))
+                ->setText(QStringLiteral("name"));
+            fkdlg.findChild<QPushButton *>(QStringLiteral("addFkBtn"))->click();
+            const QString fkSql = fkdlg.buildSql();
+            check(fkSql.isEmpty(), "fk: SQLite add-FK produces no SQL");
+            check(!fkdlg.limitation().isEmpty(),
+                  "fk: SQLite add-FK flagged via limitation() instead");
 
             delete c;
             return fails == 0 ? 0 : 1;

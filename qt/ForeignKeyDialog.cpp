@@ -60,12 +60,15 @@ ForeignKeyDialog::ForeignKeyDialog(QString database, QString table,
     m_name = new QLineEdit(this);
     m_name->setPlaceholderText(QStringLiteral("constraint name (optional)"));
     m_localCol = new QComboBox(this);
+    m_localCol->setObjectName(QStringLiteral("localCol"));   /* test discoverability */
     m_localCol->setEditable(true);   /* type "a, b" for a composite FK */
     m_localCol->addItems(m_columns);
     m_localCol->setCurrentText(QString());
     m_refTable = new QComboBox(this);
+    m_refTable->setObjectName(QStringLiteral("refTable"));   /* test discoverability */
     m_refTable->addItems(m_dbTables);
     m_refCol = new QLineEdit(this);
+    m_refCol->setObjectName(QStringLiteral("refCol"));   /* test discoverability */
     m_refCol->setPlaceholderText(
         QStringLiteral("referenced column(s), comma-separated to match"));
     m_onDelete = new QComboBox(this);
@@ -73,6 +76,7 @@ ForeignKeyDialog::ForeignKeyDialog(QString database, QString table,
     m_onUpdate = new QComboBox(this);
     m_onUpdate->addItems(kActions);
     auto *addBtn = new QPushButton(QStringLiteral("&Add Foreign Key"), this);
+    addBtn->setObjectName(QStringLiteral("addFkBtn"));   /* test discoverability */
     connect(addBtn, &QPushButton::clicked, this, &ForeignKeyDialog::addPending);
 
     auto *form = new QFormLayout;
@@ -168,6 +172,34 @@ void ForeignKeyDialog::removeSelected()
 
 QString ForeignKeyDialog::buildSql() const
 {
+    m_limitation.clear();
+    if(m_driver == DriverType::Sqlite) {
+        /* neither adding nor dropping a foreign key constraint on an
+         * existing table is possible via SQLite's ALTER TABLE at all —
+         * both need a full create-new/copy-data/drop-old/rename rebuild,
+         * which this dialog doesn't attempt (see the header comment) */
+        QStringList changed;
+        for(int r = 0; r < m_grid->rowCount(); ++r) {
+            QTableWidgetItem *n = m_grid->item(r, 0);
+            if(n->data(Qt::UserRole).toBool())
+                changed << (n->text().isEmpty()
+                                ? QStringLiteral("(new foreign key)") : n->text());
+        }
+        for(const QString &orig : m_originalNames) {
+            bool stillPresent = false;
+            for(int r = 0; r < m_grid->rowCount(); ++r)
+                if(m_grid->item(r, 0)->text() == orig) { stillPresent = true; break; }
+            if(!stillPresent)
+                changed << orig;
+        }
+        if(!changed.isEmpty())
+            m_limitation = QStringLiteral(
+                "SQLite can't add or drop a foreign key on an existing "
+                "table without rebuilding it (not attempted here): %1.")
+                    .arg(changed.join(QStringLiteral(", ")));
+        return {};
+    }
+
     QStringList current, adds;
     for(int r = 0; r < m_grid->rowCount(); ++r) {
         QTableWidgetItem *n = m_grid->item(r, 0);

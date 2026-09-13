@@ -1833,11 +1833,11 @@ void ConnectionTab::promptRenameTable(const QString &database,
         QLineEdit::Normal, table, &ok);
     if(!ok || name.trimmed().isEmpty() || name == table)
         return;
-    /* MySQL/SQLite: RENAME TABLE db.old TO db.new. PostgreSQL has no such
-     * statement — ALTER TABLE ... RENAME TO new does the same job there,
-     * within the same schema (there's no cross-schema form to worry about
-     * since this function never changes db, only the table name). */
-    execDdl(m_params.driverType == DriverType::Postgres
+    /* MySQL: RENAME TABLE db.old TO db.new. Neither PostgreSQL nor SQLite
+     * has that statement — ALTER TABLE ... RENAME TO new does the same job
+     * on both, within the same schema (there's no cross-schema form to
+     * worry about since this function never changes db, only the name). */
+    execDdl(m_params.driverType != DriverType::Mysql
                 ? QStringLiteral("ALTER TABLE %1 RENAME TO %2")
                       .arg(m_conn->qualify(db, table), m_conn->quoteIdent(name.trimmed()))
                 : QStringLiteral("RENAME TABLE `%1`.`%2` TO `%1`.`%3`")
@@ -1887,15 +1887,37 @@ void ConnectionTab::promptCopyTable(const QString &database, const QString &tabl
     const QString dst = m_conn->qualify(tgtDb, tgt);
 
     if(wantStructure->isChecked()) {
-        /* MySQL/SQLite: CREATE TABLE new LIKE old (indexes/keys included by
-         * default). PostgreSQL needs the parenthesized LIKE-clause form,
-         * and INCLUDING ALL to get the same completeness — a bare LIKE
-         * there only copies column definitions, not indexes/defaults/
-         * constraints. */
-        const bool ok = m_params.driverType == DriverType::Postgres
-            ? execDdl(QStringLiteral("CREATE TABLE %1 (LIKE %2 INCLUDING ALL)")
-                          .arg(dst, src))
-            : execDdl(QStringLiteral("CREATE TABLE %1 LIKE %2").arg(dst, src));
+        bool ok;
+        if(m_params.driverType == DriverType::Postgres) {
+            /* PostgreSQL needs the parenthesized LIKE-clause form, and
+             * INCLUDING ALL to get the same completeness a bare MySQL LIKE
+             * gives by default (otherwise only column definitions copy,
+             * not indexes/defaults/constraints) */
+            ok = execDdl(QStringLiteral("CREATE TABLE %1 (LIKE %2 INCLUDING ALL)")
+                             .arg(dst, src));
+        } else if(m_params.driverType == DriverType::Sqlite) {
+            /* SQLite has no LIKE clause at all — showCreate("TABLE") for
+             * SQLite replays the table's own original CREATE TABLE text
+             * (sqlite_master.sql, byte-for-byte), so retarget just its
+             * table name to the destination and replay that. This copies
+             * every column/default/constraint/CHECK the original DDL had,
+             * but not secondary indexes — those are each their own
+             * separate CREATE INDEX statement in sqlite_master, not part
+             * of CREATE TABLE's own text, and aren't reconstructed here. */
+            QString err;
+            QString ddl = m_conn->showCreate(QStringLiteral("TABLE"), srcDb, table, &err);
+            static const QRegularExpression nameRe(
+                QStringLiteral("^(CREATE\\s+TABLE\\s+(?:IF\\s+NOT\\s+EXISTS\\s+)?)"
+                               "(?:\"[^\"]+\"|`[^`]+`|\\[[^\\]]+\\]|\\w+)"),
+                QRegularExpression::CaseInsensitiveOption);
+            ddl.replace(nameRe, QStringLiteral("\\1") + dst);
+            ok = !ddl.isEmpty() && execDdl(ddl);
+            if(!ok)
+                m_messages->appendPlainText(QStringLiteral("Duplicate Table failed: ")
+                                             + (err.isEmpty() ? ddl : err));
+        } else {
+            ok = execDdl(QStringLiteral("CREATE TABLE %1 LIKE %2").arg(dst, src));
+        }
         if(!ok)
             return;
     }
@@ -3451,11 +3473,14 @@ void ConnectionTab::promptManageForeignKeys(const QString &database,
     if(dlg.exec() != QDialog::Accepted)
         return;
     const QString sql = dlg.buildSql();
+    const QString limitation = dlg.limitation();
     if(sql.isEmpty()) {
         QMessageBox::information(this, QStringLiteral("Foreign Keys"),
-                                QStringLiteral("No changes to apply."));
+            limitation.isEmpty() ? QStringLiteral("No changes to apply.") : limitation);
         return;
     }
+    if(!limitation.isEmpty())
+        QMessageBox::warning(this, QStringLiteral("Foreign Keys"), limitation);
     execDdl(sql);
 }
 
