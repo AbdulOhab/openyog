@@ -325,7 +325,15 @@ MainWindow::MainWindow(QWidget *parent)
                QKeySequence(Qt::CTRL | Qt::Key_F12), 1);
     wireFormat(QStringLiteral("Format &All Queries\tShift+F12"),
                QKeySequence(Qt::SHIFT | Qt::Key_F12), 2);
-    addDisabled(edit, QStringLiteral("&Insert Templates…\tCtrl+Shift+T"));
+    QMenu *insertTpl = edit->addMenu(QStringLiteral("&Insert Templates…\tCtrl+Shift+T"));
+    for(const auto &[label, kind] :
+        { std::pair{ QStringLiteral("&INSERT INTO <tablename>…"), 0 },
+          std::pair{ QStringLiteral("&UPDATE <tablename> SET…"), 1 },
+          std::pair{ QStringLiteral("&DELETE FROM <tablename>…"), 2 },
+          std::pair{ QStringLiteral("&SELECT <col-1>…<col-n> FROM…"), 3 } }) {
+        connect(insertTpl->addAction(label), &QAction::triggered, this,
+                [this, kind] { if(auto *t = currentTab()) t->pasteSqlTemplate(kind); });
+    }
     edit->addSeparator();
     QAction *undo = edit->addAction(QStringLiteral("&Undo\tCtrl+Z"));
     connect(undo, &QAction::triggered, this,
@@ -378,7 +386,10 @@ MainWindow::MainWindow(QWidget *parent)
     /* no setShortcut — the editor handles Ctrl+Space itself */
     connect(listTags, &QAction::triggered, this,
             [this] { if(auto *t = currentTab()) t->listTags(); });
-    addDisabled(edit, QStringLiteral("List &Matching Tags\tCtrl+Enter"));
+    QAction *listMatching = edit->addAction(
+        QStringLiteral("List &Matching Tags\tCtrl+Enter"));
+    connect(listMatching, &QAction::triggered, this,
+            [this] { if(auto *t = currentTab()) t->listTags(); });
     edit->addSeparator();
     QAction *hideBrowser = edit->addAction(
         QStringLiteral("Hide Object &Browser\tCtrl+Shift+1"));
@@ -598,7 +609,9 @@ MainWindow::MainWindow(QWidget *parent)
         QStringLiteral("Duplicate Table &Structure/Data…"));
     connect(dupTbl, &QAction::triggered, this,
             [onSelectedTable] { onSelectedTable(&ConnectionTab::promptCopyTable); });
-    addDisabled(moreTable, QStringLiteral("View &Table Properties"));
+    QAction *tblProps = moreTable->addAction(QStringLiteral("View &Table Properties"));
+    connect(tblProps, &QAction::triggered, this,
+            [onSelectedTable] { onSelectedTable(&ConnectionTab::showTableProperties); });
     table->addSeparator();
     QMenu *tblBackup = table->addMenu(QStringLiteral("&Backup/Export"));
     addDisabled(tblBackup, QStringLiteral("&Scheduled Backups…\tCtrl+Alt+S"));
