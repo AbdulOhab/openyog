@@ -15,14 +15,26 @@ const QStringList kActions = {
     QStringLiteral("RESTRICT"), QStringLiteral("CASCADE"),
     QStringLiteral("SET NULL"), QStringLiteral("NO ACTION"),
 };
+
+QString qi(DriverType driver, const QString &ident)
+{
+    if(driver == DriverType::Postgres)
+        return QLatin1Char('"') + QString(ident).replace(QLatin1Char('"'),
+                                                          QStringLiteral("\"\""))
+             + QLatin1Char('"');
+    return QLatin1Char('`') + QString(ident).replace(QLatin1Char('`'),
+                                                      QStringLiteral("``"))
+         + QLatin1Char('`');
+}
 }
 
 ForeignKeyDialog::ForeignKeyDialog(QString database, QString table,
                                    const QList<FkDef> &fks,
                                    QStringList tableColumns, QStringList dbTables,
-                                   QWidget *parent)
-    : QDialog(parent), m_database(std::move(database)), m_table(std::move(table)),
-      m_columns(std::move(tableColumns)), m_dbTables(std::move(dbTables))
+                                   QWidget *parent, DriverType driver)
+    : QDialog(parent), m_driver(driver), m_database(std::move(database)),
+      m_table(std::move(table)), m_columns(std::move(tableColumns)),
+      m_dbTables(std::move(dbTables))
 {
     setWindowTitle(QStringLiteral("Foreign Keys — `%1`").arg(m_table));
     resize(640, 460);
@@ -162,33 +174,39 @@ QString ForeignKeyDialog::buildSql() const
         current << n->text();
         if(!n->data(Qt::UserRole).toBool())
             continue;                          /* existing, untouched */
-        const auto bt = [](const QString &csv) {
+        const auto bt = [this](const QString &csv) {
             QStringList q;
             for(const QString &c : csv.split(',', Qt::SkipEmptyParts))
-                q << QStringLiteral("`%1`").arg(c.trimmed());
+                q << qi(m_driver, c.trimmed());
             return q.join(QStringLiteral(", "));
         };
         adds << QStringLiteral(
-            "ADD CONSTRAINT `%1` FOREIGN KEY (%2) REFERENCES `%3` (%4) "
+            "ADD CONSTRAINT %1 FOREIGN KEY (%2) REFERENCES %3 (%4) "
             "ON DELETE %5 ON UPDATE %6")
-            .arg(n->text(),
+            .arg(qi(m_driver, n->text()),
                  bt(n->data(Qt::UserRole + 1).toString()),
-                 n->data(Qt::UserRole + 2).toString(),
+                 qi(m_driver, n->data(Qt::UserRole + 2).toString()),
                  bt(n->data(Qt::UserRole + 3).toString()),
                  n->data(Qt::UserRole + 4).toString(),
                  n->data(Qt::UserRole + 5).toString());
     }
 
+    /* MySQL: DROP FOREIGN KEY name. Standard SQL/PostgreSQL: a foreign key
+     * is just a constraint, dropped like any other — DROP CONSTRAINT name. */
+    const QString dropKw = m_driver == DriverType::Postgres
+        ? QStringLiteral("DROP CONSTRAINT") : QStringLiteral("DROP FOREIGN KEY");
     QStringList clauses;
     for(const QString &orig : m_originalNames)
         if(!current.contains(orig))
-            clauses << QStringLiteral("DROP FOREIGN KEY `%1`").arg(orig);
+            clauses << QStringLiteral("%1 %2").arg(dropKw, qi(m_driver, orig));
     clauses += adds;
 
     if(clauses.isEmpty())
         return {};
-    return QStringLiteral("ALTER TABLE `%1`.`%2`\n  %3")
-        .arg(m_database, m_table, clauses.join(QStringLiteral(",\n  ")));
+    const QString qualified = qi(m_driver, m_database) + QLatin1Char('.')
+                             + qi(m_driver, m_table);
+    return QStringLiteral("ALTER TABLE %1\n  %2")
+        .arg(qualified, clauses.join(QStringLiteral(",\n  ")));
 }
 
 void ForeignKeyDialog::updatePreview()
