@@ -6,7 +6,16 @@
  * FOREIGN KEY" is standard SQL and needs no PostgreSQL branch at all; only
  * the DROP side differs (MySQL's DROP FOREIGN KEY name vs standard SQL's
  * DROP CONSTRAINT name, which Postgres uses since a foreign key there is
- * just a constraint like any other) and identifier quoting. */
+ * just a constraint like any other) and identifier quoting.
+ *
+ * SQLite is a real exception, not just a quoting difference: its ALTER
+ * TABLE can't add OR drop a foreign key constraint on an existing table at
+ * all (both need the classic create-new/copy-data/drop-old/rename table
+ * rebuild, same limitation as CreateTableDialog's SQLite Alter path) — so
+ * for SQLite, buildSql() always returns empty and limitation() explains why,
+ * rather than emitting ALTER TABLE ADD/DROP CONSTRAINT that would just fail.
+ * The dialog still opens and lists existing FKs (read-only) — SQLite's
+ * `listForeignKeys()` works fine, only the ADD/DROP TABLE surgery doesn't. */
 #pragma once
 
 #include "ConnectionParams.h"
@@ -40,6 +49,9 @@ public:
                      DriverType driver = DriverType::Mysql);
 
     QString buildSql() const;   /* ALTER TABLE … or empty when unchanged */
+    /* SQLite only: non-empty when buildSql() left a requested add/drop
+     * undone because SQLite can't express it without a full table rebuild */
+    QString limitation() const { return m_limitation; }
 
 private slots:
     void addPending();
@@ -49,6 +61,7 @@ private slots:
 private:
     void addRow(const FkDef &fk, bool isNew);
 
+    mutable QString m_limitation;
     DriverType   m_driver = DriverType::Mysql;
     QString      m_database, m_table;
     QStringList  m_columns, m_dbTables;
