@@ -102,16 +102,17 @@ public slots:
     bool copySqliteFileTo(const QString &target, bool withData, QString *error);
     void promptImportCsv(const QString &database, const QString &table);
     void promptImportXml(const QString &database, const QString &table);
-    /* non-interactive core for the SQLite branch of promptImportCsv (no
-     * server-side LOAD DATA on SQLite — parses the file and runs batched
-     * INSERT OR IGNORE/REPLACE inside one transaction), also used by the
-     * --sqlitecsvimport= selftest */
-    bool importCsvIntoSqlite(const QString &db, const QString &table,
-                             const QString &file, const QString &sep,
-                             const QString &quote, const QString &escCh,
-                             bool hasHeader, int extraSkipLines,
-                             bool truncateFirst, const QString &onDup,
-                             int *rowsInserted, QString *error);
+    /* non-interactive core for the SQLite/PostgreSQL branch of
+     * promptImportCsv (neither has MySQL's LOAD DATA LOCAL INFILE — parses
+     * the file itself and runs batched INSERT inside one transaction: SQLite
+     * via INSERT OR IGNORE/REPLACE, PostgreSQL via INSERT ... ON CONFLICT),
+     * also used by the --sqlitecsvimport=/--pgcsvimport= selftests */
+    bool importCsvBatched(const QString &db, const QString &table,
+                          const QString &file, const QString &sep,
+                          const QString &quote, const QString &escCh,
+                          bool hasHeader, int extraSkipLines,
+                          bool truncateFirst, const QString &onDup,
+                          int *rowsInserted, QString *error);
     /* export every row of a table (re-queries — not just the loaded page) */
     void exportTableData(const QString &database, const QString &table);
     /* Tools ▸ Export All Rows… — picks table-data vs result grid by context */

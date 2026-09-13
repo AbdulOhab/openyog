@@ -1453,22 +1453,21 @@ bool MainWindow::selftestSchemaHtml(const QString &outFile)
     return true;
 }
 
-bool MainWindow::selftestCsvImportSqlite(const QString &file, const QString &table)
+bool MainWindow::selftestCsvImportBatched(const QString &db, const QString &file,
+                                          const QString &table, const QString &onDup)
 {
     auto *tab = currentTab();
     if(!tab)
         return false;
     int rows = 0;
     QString err;
-    const bool ok = tab->importCsvIntoSqlite(
-        {}, table, file, QStringLiteral(","), QStringLiteral("\""),
-        QStringLiteral("\\"), true, 0, false, QStringLiteral("IGNORE"),
-        &rows, &err);
+    const bool ok = tab->importCsvBatched(
+        db, table, file, QStringLiteral(","), QStringLiteral("\""),
+        QStringLiteral("\\"), true, 0, false, onDup, &rows, &err);
     if(!ok)
-        qWarning("sqlitecsvimport failed: %s", qPrintable(err));
+        qWarning("csvimport failed: %s", qPrintable(err));
     else
-        qInfo("sqlitecsvimport: %d row(s) inserted into %s", rows,
-              qPrintable(table));
+        qInfo("csvimport: %d row(s) inserted into %s", rows, qPrintable(table));
     return ok;
 }
 
