@@ -62,6 +62,7 @@ public:
     }
     /* [db, table] of the browser's selected table, or empty */
     QStringList selectedTableInfo() const;
+    DriverType driverType() const { return m_params.driverType; }
 
     /* Query timeout, persisted in OpenYog.ini [Query] (0 = disabled, the
      * default). Global, not per-tab — mirrors Theme::load()/save(). */
@@ -114,6 +115,8 @@ public slots:
     /* Tools ▸ Export All Rows… — picks table-data vs result grid by context */
     void exportCurrent();
     void promptUserManager();
+    void tableDiagnostics(const QString &database, const QString &table);
+    void showConnectionInfo();
     /* non-interactive core, also used by the --copydb selftest */
     bool copyDatabaseTo(const QString &srcDb, const QString &tgtDb,
                         bool withData, bool dropFirst, bool withRoutines,

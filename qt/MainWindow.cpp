@@ -553,14 +553,42 @@ MainWindow::MainWindow(QWidget *parent)
         }
     });
     tools->addSeparator();
-    addDisabled(tools, QStringLiteral("&Flush…\tCtrl+Alt+F"));
-    addDisabled(tools, QStringLiteral("&Table Diagnostics…\tCtrl+Alt+T"));
+    QMenu *flushMenu = tools->addMenu(QStringLiteral("&Flush…\tCtrl+Alt+F"));
+    const auto flushWith = [this](const QString &sql) {
+        auto *t = currentTab();
+        if(!t) return;
+        if(t->driverType() == DriverType::Sqlite) {
+            QMessageBox::information(this, QStringLiteral("Flush"),
+                QStringLiteral("FLUSH has no SQLite equivalent."));
+            return;
+        }
+        t->runStatements(QStringList{ sql }, QStringLiteral("Flush"));
+    };
+    for(const auto &[label, sql] :
+        { std::pair{ QStringLiteral("&Tables"), QStringLiteral("FLUSH TABLES") },
+          std::pair{ QStringLiteral("&Privileges"), QStringLiteral("FLUSH PRIVILEGES") },
+          std::pair{ QStringLiteral("&Logs"), QStringLiteral("FLUSH LOGS") },
+          std::pair{ QStringLiteral("&Hosts"), QStringLiteral("FLUSH HOSTS") },
+          std::pair{ QStringLiteral("&Status"), QStringLiteral("FLUSH STATUS") } }) {
+        QAction *a = flushMenu->addAction(label);
+        connect(a, &QAction::triggered, this, [flushWith, sql] { flushWith(sql); });
+    }
+    QAction *diag = tools->addAction(QStringLiteral("&Table Diagnostics…\tCtrl+Alt+T"));
+    connect(diag, &QAction::triggered, this,
+            [onSelectedTable] { onSelectedTable(&ConnectionTab::tableDiagnostics); });
     QAction *history = tools->addAction(QStringLiteral("&History\tCtrl+Shift+H"));
     connect(history, &QAction::triggered, this, [this] {
         if(auto *t = currentTab())
             t->showHistory();
     });
-    addDisabled(tools, QStringLiteral("&Info\tCtrl+Shift+I"));
+    QAction *info = tools->addAction(QStringLiteral("&Info\tCtrl+Shift+I"));
+    connect(info, &QAction::triggered, this, [this] {
+        if(auto *t = currentTab())
+            t->showConnectionInfo();
+        else
+            QMessageBox::information(this, QStringLiteral("Info"),
+                QStringLiteral("Open a connection first."));
+    });
     tools->addSeparator();
     QAction *userMgr = tools->addAction(QStringLiteral("&User Manager\tCtrl+U"));
     userMgr->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_U));
