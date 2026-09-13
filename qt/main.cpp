@@ -68,6 +68,7 @@ int main(int argc, char *argv[])
     bool doAutoConnect = false;
     QString dumpPath;
     QString copyDbArg;
+    QString pgCopyDbArg;
     QString sqliteCopyDbArg;
     QString sqliteCsvImportArg;
     QString pgCsvImportArg;
@@ -104,6 +105,8 @@ int main(int argc, char *argv[])
             dumpPath = a.mid(QStringLiteral("--dumpdb=").size());
         if(a.startsWith(QStringLiteral("--copydb=")))
             copyDbArg = a.mid(QStringLiteral("--copydb=").size());
+        if(a.startsWith(QStringLiteral("--pgcopydb=")))
+            pgCopyDbArg = a.mid(QStringLiteral("--pgcopydb=").size());
         if(a.startsWith(QStringLiteral("--sqlitecopydb=")))
             sqliteCopyDbArg = a.mid(QStringLiteral("--sqlitecopydb=").size());
         if(a.startsWith(QStringLiteral("--sqlitecsvimport=")))
@@ -925,6 +928,17 @@ int main(int argc, char *argv[])
         MainWindow w;
         rc = (p.size() == 2 && w.openAndRun(autoConnect)
               && w.selftestCopyDb(p[0], p[1])) ? 0 : 1;
+        dbDriverFor(DriverType::Mysql)->libraryShutdown();
+        return rc;
+    }
+
+    /* --pgcopydb=src:tgt selftest (headless): autoconnect (via
+     * --autoconnectpg=), schema-to-schema copy within the same connection, exit */
+    if(!pgCopyDbArg.isEmpty() && doAutoConnect) {
+        const QStringList p = pgCopyDbArg.split(':');
+        MainWindow w;
+        rc = (p.size() == 2 && w.openAndRun(autoConnect)
+              && w.selftestCopyDbPostgres(p[0], p[1])) ? 0 : 1;
         dbDriverFor(DriverType::Mysql)->libraryShutdown();
         return rc;
     }

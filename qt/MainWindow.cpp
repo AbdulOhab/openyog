@@ -1484,6 +1484,18 @@ bool MainWindow::selftestCopyDb(const QString &src, const QString &tgt)
     return ok;
 }
 
+bool MainWindow::selftestCopyDbPostgres(const QString &src, const QString &tgt)
+{
+    auto *tab = currentTab();
+    if(!tab)
+        return false;
+    QString err;
+    const bool ok = tab->copyDatabaseToPostgres(src, tgt, true, true, true, &err);
+    if(!ok)
+        qWarning("pgcopydb failed: %s", qPrintable(err));
+    return ok;
+}
+
 bool MainWindow::selftestCopySqliteFile(const QString &target, bool withData)
 {
     auto *tab = currentTab();

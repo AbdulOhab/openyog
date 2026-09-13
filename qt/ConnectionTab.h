@@ -125,6 +125,13 @@ public slots:
     bool copyDatabaseTo(const QString &srcDb, const QString &tgtDb,
                         bool withData, bool dropFirst, bool withRoutines,
                         QString *error);
+    /* PostgreSQL's same-connection analog of copyDatabaseTo() — "database"
+     * here means schema (a Postgres connection can't reach a sibling
+     * database at all), so this is schema-to-schema within the same
+     * connection, also used by the --pgcopydb selftest */
+    bool copyDatabaseToPostgres(const QString &srcSchema, const QString &tgtSchema,
+                                bool withData, bool dropFirst, bool withRoutines,
+                                QString *error);
     void promptManageIndexes(const QString &database, const QString &table);
     void promptDropColumn(const QString &database, const QString &table);
     void promptManageForeignKeys(const QString &database, const QString &table);

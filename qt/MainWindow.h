@@ -46,6 +46,8 @@ public:
     bool selftestDump(const QString &path);
     /* --copydb=src:tgt selftest */
     bool selftestCopyDb(const QString &src, const QString &tgt);
+    /* --pgcopydb=src:tgt selftest (schema-to-schema, same connection) */
+    bool selftestCopyDbPostgres(const QString &src, const QString &tgt);
     /* --sqlitecopydb=target[:nodata] selftest */
     bool selftestCopySqliteFile(const QString &target, bool withData);
     /* --sqlitecsvimport=file.csv:table / --pgcsvimport=file.csv:table[:onDup]
