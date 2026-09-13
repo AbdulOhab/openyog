@@ -177,7 +177,13 @@ ConnectionDialog::ConnectionDialog(QWidget *parent)
     auto *pathRow = new QHBoxLayout;
     pathRow->addWidget(m_sqlitePath, 1);
     pathRow->addWidget(sqliteBrowse);
-    sqliteForm->addRow(QStringLiteral("&Database File"), pathRow);
+    /* explicit label: addRow(QString, QLayout*) can't give the label a
+     * buddy (the field is a layout, not a widget), and a buddy-less QLabel
+     * shows its '&' literally instead of as a mnemonic. Alt+F, not Alt+D —
+     * that one is already the Delete button's. */
+    auto *sqlitePathLabel = new QLabel(QStringLiteral("Database &File"), m_sqliteTab);
+    sqlitePathLabel->setBuddy(m_sqlitePath);
+    sqliteForm->addRow(sqlitePathLabel, pathRow);
     auto *sqliteLayout = new QVBoxLayout(m_sqliteTab);
     sqliteLayout->addLayout(sqliteForm);
     sqliteLayout->addStretch(1);
@@ -286,9 +292,19 @@ ConnectionDialog::ConnectionDialog(QWidget *parent)
     };
     auto *sslForm = new QFormLayout;
     sslForm->addRow(QString(), m_useSsl);
-    sslForm->addRow(QStringLiteral("CA &Certificate"), sslRow(m_sslCa, sslCaBrowse));
-    sslForm->addRow(QStringLiteral("Client Cert&ificate"), sslRow(m_sslCert, sslCertBrowse));
-    sslForm->addRow(QStringLiteral("Client &Key"), sslRow(m_sslKey, sslKeyBrowse));
+    /* same buddy issue as the SQLite path row — each field here is a
+     * line-edit + Browse… layout. Alt+A for the CA row, not Alt+C (Connect). */
+    const auto sslLabel = [sslTab](const QString &text, QLineEdit *buddy) {
+        auto *l = new QLabel(text, sslTab);
+        l->setBuddy(buddy);
+        return l;
+    };
+    sslForm->addRow(sslLabel(QStringLiteral("C&A Certificate"), m_sslCa),
+                    sslRow(m_sslCa, sslCaBrowse));
+    sslForm->addRow(sslLabel(QStringLiteral("Client Cert&ificate"), m_sslCert),
+                    sslRow(m_sslCert, sslCertBrowse));
+    sslForm->addRow(sslLabel(QStringLiteral("Client &Key"), m_sslKey),
+                    sslRow(m_sslKey, sslKeyBrowse));
     const auto setSslFieldsEnabled = [this](bool on) {
         m_sslCa->setEnabled(on);
         m_sslCert->setEnabled(on);
