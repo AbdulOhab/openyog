@@ -2,12 +2,42 @@
 #include "Icons.h"
 #include "db/IDbConnection.h"
 
+#include "CommonHelper.h"   /* port shim: wyString */
+#include "wyIni.h"
+
 #include <QApplication>
 #include <QClipboard>
+#include <QDir>
 #include <QMenu>
+#include <QStandardPaths>
 #include <QVBoxLayout>
 
 #include <functional>
+
+namespace {
+QString settingsIniPath()
+{
+    QDir dir(QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation));
+    dir.mkpath(".");
+    return dir.filePath("OpenYog.ini");
+}
+} // namespace
+
+QColor ObjectBrowserColor::load()
+{
+    wyString value;
+    wyIni::IniGetString("UserInterface", "browsercolor", "", &value,
+                        settingsIniPath().toUtf8());
+    const QString v = QString::fromUtf8(value.GetString());
+    return v.isEmpty() ? QColor() : QColor(v);
+}
+
+void ObjectBrowserColor::save(const QColor &c)
+{
+    wyIni::IniWriteString("UserInterface", "browsercolor",
+                          c.isValid() ? c.name().toUtf8() : QByteArray(),
+                          settingsIniPath().toUtf8());
+}
 
 namespace {
 constexpr int KConnection = 1001;
@@ -68,6 +98,9 @@ ObjectBrowser::ObjectBrowser(QWidget *parent)
     m_tree->setIconSize(QSize(16, 16));    /* spec §4: 16x16 image list */
     m_tree->setUniformRowHeights(true);
     m_tree->setContextMenuPolicy(Qt::CustomContextMenu);
+    if(const QColor c = ObjectBrowserColor::load(); c.isValid())
+        m_tree->setStyleSheet(
+            QStringLiteral("QTreeWidget::item:selected{background:%1}").arg(c.name()));
     connect(m_tree, &QTreeWidget::itemExpanded, this, &ObjectBrowser::onItemExpanded);
     connect(m_tree, &QTreeWidget::customContextMenuRequested, this,
             [this](const QPoint &pos) {
