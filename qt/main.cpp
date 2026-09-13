@@ -67,6 +67,7 @@ int main(int argc, char *argv[])
     QString dumpPath;
     QString copyDbArg;
     QString sqliteCopyDbArg;
+    QString sqliteCsvImportArg;
     QString delConn;
     for(int i = 1; i < argc; ++i) {
         const QString a = QString::fromLocal8Bit(argv[i]);
@@ -101,6 +102,8 @@ int main(int argc, char *argv[])
             copyDbArg = a.mid(QStringLiteral("--copydb=").size());
         if(a.startsWith(QStringLiteral("--sqlitecopydb=")))
             sqliteCopyDbArg = a.mid(QStringLiteral("--sqlitecopydb=").size());
+        if(a.startsWith(QStringLiteral("--sqlitecsvimport=")))
+            sqliteCsvImportArg = a.mid(QStringLiteral("--sqlitecsvimport=").size());
         if(a.startsWith(QStringLiteral("--delconn=")))
             delConn = a.mid(QStringLiteral("--delconn=").size());
         if(a.startsWith(QStringLiteral("--fmtsql="))) {
@@ -616,6 +619,17 @@ int main(int argc, char *argv[])
         MainWindow w;
         rc = (w.openAndRun(autoConnect)
               && w.selftestCopySqliteFile(target, !nodata)) ? 0 : 1;
+        dbDriverFor(DriverType::Mysql)->libraryShutdown();
+        return rc;
+    }
+
+    /* --sqlitecsvimport=file.csv:table selftest (headless): autoconnect (via
+     * --autoconnectfile=), import the CSV, exit */
+    if(!sqliteCsvImportArg.isEmpty() && doAutoConnect) {
+        const QStringList p = sqliteCsvImportArg.split(':');
+        MainWindow w;
+        rc = (p.size() == 2 && w.openAndRun(autoConnect)
+              && w.selftestCsvImportSqlite(p[0], p[1])) ? 0 : 1;
         dbDriverFor(DriverType::Mysql)->libraryShutdown();
         return rc;
     }
