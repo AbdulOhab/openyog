@@ -43,6 +43,12 @@ private slots:
 
 private:
     void updateButtonState();
+    /* whether the current driver tab's "Save Password" box is checked
+     * (SQLite has no password field, so it's always "yes, nothing to
+     * hide") — read at Save/Clone time, not persisted itself: an unticked
+     * box means the *next* save writes an empty password, not that the
+     * connection remembers ever having been unticked */
+    bool savePasswordChecked() const;
 
 private:
     void setParams(const ConnectionParams &p);
@@ -63,6 +69,7 @@ private:
     QLineEdit    *m_pgHost     = nullptr;
     QLineEdit    *m_pgUser     = nullptr;
     QLineEdit    *m_pgPassword = nullptr;
+    QCheckBox    *m_pgSavePw   = nullptr;
     QSpinBox     *m_pgPort     = nullptr;
     QLineEdit    *m_pgDatabase = nullptr;
     QRadioButton *m_pgIdleDefault = nullptr;
