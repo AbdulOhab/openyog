@@ -69,6 +69,7 @@ private:
     QLineEdit    *m_database = nullptr;
     QCheckBox    *m_compress = nullptr;
     QRadioButton *m_idleDefault = nullptr;
+    QRadioButton *m_idleCustom = nullptr;
     QSpinBox     *m_idleSecs = nullptr;
     QSpinBox     *m_keepAlive = nullptr;
 

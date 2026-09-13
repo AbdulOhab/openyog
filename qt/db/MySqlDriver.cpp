@@ -12,6 +12,8 @@ IDbConnection *MySqlDriver::connect(const ConnectionParams &params, QString *err
         unsigned int on = 1;
         mysql_options(c, MYSQL_OPT_LOCAL_INFILE, &on);
     }
+    if(params.compress)
+        mysql_options(c, MYSQL_OPT_COMPRESS, nullptr);
     /* client-cert TLS: any of key/cert/ca may be empty (server-only cert
      * checking, e.g.) — mysql_ssl_set accepts nullptr for each. */
     if(params.useSsl) {
@@ -32,6 +34,17 @@ IDbConnection *MySqlDriver::connect(const ConnectionParams &params, QString *err
         if(error) *error = QString::fromUtf8(mysql_error(c));
         mysql_close(c);
         return nullptr;
+    }
+    /* "Session Idle Timeout" in the connect dialog: how long the *server*
+     * lets this connection sit idle before dropping it — set as a session
+     * variable post-connect, there's no mysql_real_connect() option for it.
+     * Best-effort: a server that rejects the SET (e.g. no SUPER for a very
+     * large value) just keeps its own default, not worth failing over. */
+    if(params.idleTimeoutSecs > 0) {
+        const QByteArray sql = QStringLiteral(
+            "SET SESSION wait_timeout=%1, SESSION interactive_timeout=%1")
+                .arg(params.idleTimeoutSecs).toUtf8();
+        mysql_query(c, sql.constData());
     }
     return new MySqlConnection(c, params.host, params.port, params.user, params.password);
 }

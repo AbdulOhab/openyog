@@ -209,12 +209,12 @@ ConnectionDialog::ConnectionDialog(QWidget *parent)
     m_idleSecs->setRange(0, 2147483);
     m_idleSecs->setValue(28800);
     m_idleSecs->setEnabled(false);
-    auto *idleCustom = new QRadioButton(this);
-    connect(idleCustom, &QRadioButton::toggled, m_idleSecs, &QWidget::setEnabled);
+    m_idleCustom = new QRadioButton(this);
+    connect(m_idleCustom, &QRadioButton::toggled, m_idleSecs, &QWidget::setEnabled);
     auto *idleBox = new QGroupBox(QStringLiteral("Session Idle Timeout"), this);
     auto *idleL = new QHBoxLayout(idleBox);
     idleL->addWidget(m_idleDefault);
-    idleL->addWidget(idleCustom);
+    idleL->addWidget(m_idleCustom);
     idleL->addWidget(m_idleSecs);
     idleL->addWidget(new QLabel(QStringLiteral("(seconds)"), this));
     idleL->addStretch(1);
@@ -500,6 +500,14 @@ void ConnectionDialog::setParams(const ConnectionParams &p)
     m_sslCa->setText(p.sslCa);
     m_sslCert->setText(p.sslCert);
     m_sslKey->setText(p.sslKey);
+    m_compress->setChecked(p.compress);
+    if(p.idleTimeoutSecs > 0) {
+        m_idleCustom->setChecked(true);
+        m_idleSecs->setValue(p.idleTimeoutSecs);
+    } else {
+        m_idleDefault->setChecked(true);
+    }
+    m_keepAlive->setValue(p.keepAliveSecs);
 }
 
 ConnectionParams ConnectionDialog::params() const
@@ -527,6 +535,9 @@ ConnectionParams ConnectionDialog::params() const
     p.sslCa    = m_sslCa->text().trimmed();
     p.sslCert  = m_sslCert->text().trimmed();
     p.sslKey   = m_sslKey->text().trimmed();
+    p.compress = m_compress->isChecked();
+    p.idleTimeoutSecs = m_idleCustom->isChecked() ? m_idleSecs->value() : 0;
+    p.keepAliveSecs   = m_keepAlive->value();
     p.name = hasSavedName ? sel
                           : QStringLiteral("%1@%2:%3").arg(p.user, p.host).arg(p.port);
     return p;

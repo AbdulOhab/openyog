@@ -211,6 +211,7 @@ private:
      * see cancelQuery() and runOnConnection() in the .cpp. */
     std::shared_ptr<LiveConnection> m_cancelState;
     int                 m_batchGen  = 0;   /* invalidates a stale timeout timer */
+    class QTimer       *m_keepAliveTimer = nullptr;   /* Connect dialog's keep-alive */
 
     QStringList         m_databases;
     QString             m_lastFind;       /* for Find Next / F3 */

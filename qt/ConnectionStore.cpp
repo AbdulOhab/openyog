@@ -70,6 +70,10 @@ bool ConnectionStore::load(const QString &name, ConnectionParams *out)
     out->sslCert = value.GetString();
     wyIni::IniGetString(n, "ssl_key", "", &value, iniPath().toUtf8());
     out->sslKey = value.GetString();
+
+    out->compress = wyIni::IniGetInt(n, "compress", 0, iniPath().toUtf8()) != 0;
+    out->idleTimeoutSecs = wyIni::IniGetInt(n, "idle_timeout_secs", 0, iniPath().toUtf8());
+    out->keepAliveSecs = wyIni::IniGetInt(n, "keepalive_secs", 0, iniPath().toUtf8());
     return true;
 }
 
@@ -100,6 +104,10 @@ void ConnectionStore::save(const ConnectionParams &params)
     wyIni::IniWriteString(n, "ssl_ca",   toUtf8(params.sslCa),   p);
     wyIni::IniWriteString(n, "ssl_cert", toUtf8(params.sslCert), p);
     wyIni::IniWriteString(n, "ssl_key",  toUtf8(params.sslKey),  p);
+
+    wyIni::IniWriteInt(n, "compress", params.compress ? 1 : 0, p);
+    wyIni::IniWriteInt(n, "idle_timeout_secs", params.idleTimeoutSecs, p);
+    wyIni::IniWriteInt(n, "keepalive_secs", params.keepAliveSecs, p);
 }
 
 void ConnectionStore::remove(const QString &name)
