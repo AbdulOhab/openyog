@@ -54,6 +54,14 @@ public:
     QString title() const { return m_params.name; }
     QStringList databases() const { return m_databases; }
     QString currentDatabase() const { return m_params.database; }
+    /* the schema/database actually being *browsed* right now — same as
+     * currentDatabase() for MySQL/SQLite, but for PostgreSQL that's the
+     * connected database (needed for the libpq conninfo on reconnect),
+     * not a schema; this is the toolbar-combo-selected schema instead
+     * (see the member doc comment below). MainWindow's toolbar sync uses
+     * this, not currentDatabase(), so the combo shows the right thing
+     * for Postgres when there's more than one schema. */
+    QString defaultDb() const;
     QString hostLabel() const
     {
         return m_params.driverType == DriverType::Sqlite
@@ -238,18 +246,14 @@ private:
     QStringList         m_tableNames;     /* offered after FROM / JOIN / INTO / UPDATE */
     QStringList         m_columnNames;    /* offered after SELECT / WHERE / ON / SET … */
     void updateCompletions();
-    /* the schema/database to operate on when nothing more specific was
-     * selected (no table chosen in the browser, no explicit db argument).
-     * For MySQL/SQLite this is exactly m_params.database — the database
-     * USE'd or attached at connect time. For PostgreSQL, m_params.database
-     * is the *connected* database (needed for the libpq conninfo, see
-     * PostgresConnection.h), not a schema — a schema-scoped call needs a
-     * different fallback: m_currentSchema (below), which useDatabase()
-     * changes via SET search_path when the user picks one from the
-     * toolbar's database combo; "public" (Postgres's own default schema)
-     * until then. */
-    QString defaultDb() const;
-    /* PostgreSQL only: the schema useDatabase()'s SET search_path last
+    /* defaultDb() (see public section above): the schema/database to
+     * operate on when nothing more specific was selected (no table chosen
+     * in the browser, no explicit db argument) — for MySQL/SQLite this is
+     * exactly m_params.database (the database USE'd or attached at connect
+     * time); for PostgreSQL it falls back to m_currentSchema instead,
+     * since m_params.database there is the *connected* database (needed
+     * for the libpq conninfo, see PostgresConnection.h), not a schema.
+     * PostgreSQL only: the schema useDatabase()'s SET search_path last
      * switched to — kept separate from m_params.database on purpose, since
      * that field must go on meaning "the connected database" for
      * reconnects/Copy Connection/Session save, not "the schema currently
