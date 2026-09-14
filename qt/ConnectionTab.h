@@ -109,6 +109,8 @@ public slots:
     void refreshBrowser();
     /* headless-test hook, forwards to ObjectBrowser::expandTopLevelDatabase() */
     void expandDatabaseNode(const QString &name);
+    /* headless-test hook, forwards to ObjectBrowser::selectTreeItem() */
+    void selectBrowserItem(const QString &path);
     bool execDdl(const QString &sql);
     void pasteSqlTemplate(int kind);   /* 0=INSERT 1=UPDATE 2=DELETE 3=SELECT */
     void toggleBrowserPane();

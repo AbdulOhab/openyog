@@ -1427,6 +1427,11 @@ void ConnectionTab::expandDatabaseNode(const QString &name)
     m_browser->expandTopLevelDatabase(name);
 }
 
+void ConnectionTab::selectBrowserItem(const QString &path)
+{
+    m_browser->selectTreeItem(path);
+}
+
 void ConnectionTab::promptFind()
 {
     m_findBar->activate();

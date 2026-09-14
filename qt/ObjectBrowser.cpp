@@ -353,13 +353,20 @@ void ObjectBrowser::loadDatabases(IDbConnection *conn, const QString &currentDb,
             pd->setIcon(0, Icons::get(QStringLiteral("database.ico")));
             root->addChild(pd);
             if(physDb == m_primaryDatabase) {
-                pd->setExpanded(true);
+                /* populate children BEFORE setExpanded(true) below — that
+                 * call emits itemExpanded synchronously (same thread,
+                 * direct connection), which would otherwise re-enter
+                 * onItemExpanded() while childCount() is still 0 and have
+                 * IT populate the schema list too, via the exact same
+                 * m_conn->listDatabases() call this loop already makes —
+                 * producing every schema twice */
                 for(const QString &schema : m_conn->listDatabases()) {
                     auto *db = makeItem(KDatabase, schema, schema, physDb);
                     db->setIcon(0, Icons::get(QStringLiteral("database.ico")));
                     pd->addChild(db);
                     populateSchema(db, schema, physDb);
                 }
+                pd->setExpanded(true);
             }
         }
     } else {
@@ -567,6 +574,24 @@ void ObjectBrowser::expandTopLevelDatabase(const QString &name)
             return;
         }
     }
+}
+
+void ObjectBrowser::selectTreeItem(const QString &path)
+{
+    QTreeWidgetItem *cur = m_tree->topLevelItem(0);
+    if(!cur)
+        return;
+    const QStringList parts = path.split(QLatin1Char('/'), Qt::SkipEmptyParts);
+    for(const QString &part : parts) {
+        QTreeWidgetItem *next = nullptr;
+        for(int i = 0; i < cur->childCount(); ++i)
+            if(cur->child(i)->text(0) == part) { next = cur->child(i); break; }
+        if(!next)
+            return;
+        cur = next;
+    }
+    m_tree->setCurrentItem(cur);
+    cur->setSelected(true);
 }
 
 void ObjectBrowser::copyCreateTable(const QString &db, const QString &table,

@@ -1675,6 +1675,12 @@ void MainWindow::selftestRunAgain()
     executeCurrentTab();
 }
 
+void MainWindow::selftestSelectBrowserItem(const QString &path)
+{
+    if(auto *tab = currentTab())
+        tab->selectBrowserItem(path);
+}
+
 void MainWindow::closeTab(int index)
 {
     QWidget *w = m_tabs->widget(index);

@@ -112,7 +112,16 @@ QSplitter::handle:vertical { height: 4px; }
 QTreeView { background: #FFFFFF; border: 0; outline: 0; }
 QTreeView::item { height: 18px; }
 QTreeView::item:selected { background: #89BCED; color: #1E1E1E; }
-QTreeView::branch:selected { background: #89BCED; }
+/* deliberately NOT styling QTreeView::branch:selected — as soon as any
+ * rule targets ::branch, Qt switches that whole sub-control to CSS-driven
+ * painting, and since no explicit closed/open images were ever defined,
+ * the expand/collapse arrow simply stopped being drawn for a selected,
+ * collapsed row (open rows still had a visible arrow, which is what made
+ * this easy to miss — https://.../ the classic Qt::branch pitfall).
+ * Leaving ::branch unstyled restores the native arrow in every state and
+ * still looks right: this style's branch area already renders transparent
+ * over the tree's own white background, so it reads as a clean edge next
+ * to the blue ::item:selected fill rather than a mismatched seam. */
 
 QLabel#obFilterLabel { color: #606060; padding: 2px 2px 0 2px; }
 

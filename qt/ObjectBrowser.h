@@ -62,6 +62,11 @@ public:
      * lets a screenshot selftest exercise the lazy side-connection load
      * without simulating mouse input. */
     void expandTopLevelDatabase(const QString &name);
+    /* headless-test hook: select (but don't expand) the tree item found by
+     * following `path` — a '/'-separated chain of item texts from the top
+     * level down (e.g. "postgres/public/Tables") — for reproducing/
+     * verifying selection-styling issues without simulating mouse input */
+    void selectTreeItem(const QString &path);
 
 signals:
     void databaseActivated(const QString &db);      /* double click → USE */
