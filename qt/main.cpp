@@ -82,6 +82,7 @@ int main(int argc, char *argv[])
     QString pgMultiDbArg;
     bool dumpCombo = false;   /* --dumpcombo selftest */
     QString switchDbArg;      /* --switchdb=NAME selftest: switch database like the tree does */
+    QString pickSchemaArg;    /* --pickschema=NAME selftest: pick a schema like a real combo click */
     QString sqliteCopyDbArg;
     QString sqliteCsvImportArg;
     QString pgCsvImportArg;
@@ -130,6 +131,8 @@ int main(int argc, char *argv[])
             dumpCombo = true;
         if(a.startsWith(QStringLiteral("--switchdb=")))
             switchDbArg = a.mid(QStringLiteral("--switchdb=").size());
+        if(a.startsWith(QStringLiteral("--pickschema=")))
+            pickSchemaArg = a.mid(QStringLiteral("--pickschema=").size());
         if(a.startsWith(QStringLiteral("--sqlitecopydb=")))
             sqliteCopyDbArg = a.mid(QStringLiteral("--sqlitecopydb=").size());
         if(a.startsWith(QStringLiteral("--sqlitecsvimport=")))
@@ -1374,6 +1377,18 @@ int main(int argc, char *argv[])
                 QTextStream(stdout) << "combo: "
                                     << w.selftestComboItems().join(QStringLiteral(", "))
                                     << " tabs=" << w.selftestTabCount() << '\n';
+                if(!pickSchemaArg.isEmpty()) {
+                    /* setCurrentText(), not useDatabaseFromCombo() directly
+                     * — the latter is the slot a real click's signal calls
+                     * *after* Qt has already updated the widget's own
+                     * displayed text/selection, so calling it standalone
+                     * wouldn't exercise that (a real pick already showing
+                     * the picked schema, not requiring a resync) */
+                    w.selftestPickDropdownSchema(pickSchemaArg);
+                    QTextStream(stdout) << "after pick: combo="
+                                        << w.selftestComboItems().join(QStringLiteral(", "))
+                                        << '\n';
+                }
                 if(switchDbArg.isEmpty()) {
                     QApplication::quit();
                     return;
