@@ -458,6 +458,13 @@ ConnectionTab::ConnectionTab(const ConnectionParams &params, QWidget *parent)
     m_resultTabs->setDocumentMode(true);
     m_resultTabs->setTabPosition(QTabWidget::North);
     m_resultTabs->tabBar()->setExpanding(false);   /* SQLyog left-aligns tabs */
+    /* the three fixed tabs below stay open always (no × of their own —
+     * hidden right after they're added); each query run instead adds its
+     * own new "Execute Query N" tab here, closable independently, so
+     * running another query never throws away the previous result */
+    m_resultTabs->setTabsClosable(true);
+    connect(m_resultTabs, &QTabWidget::tabCloseRequested,
+            this, &ConnectionTab::closeResultTab);
     m_tableData = new TableDataView(this);
 
     m_resultTabs->addTab(m_messages,   Icons::get(QStringLiteral("notification.ico")),
@@ -466,6 +473,8 @@ ConnectionTab::ConnectionTab(const ConnectionParams &params, QWidget *parent)
                         QStringLiteral("2 Table Data"));
     m_resultTabs->addTab(m_info,       Icons::get(QStringLiteral("info.ico")),
                         QStringLiteral("3 Info"));
+    for(int i = 0; i < 3; ++i)
+        m_resultTabs->tabBar()->setTabButton(i, QTabBar::RightSide, nullptr);
     m_resultTabs->setCurrentIndex(0);
 
     /* nag-bar replacement — solid blue strip above the editor (Flat theme) */
@@ -751,6 +760,22 @@ void ConnectionTab::closeEditorTab(int index)
         m_editor = currentEditor();
 }
 
+void ConnectionTab::closeResultTab(int index)
+{
+    QWidget *w = m_resultTabs->widget(index);
+    /* Messages/Table Data/Info never show a close button (see the
+     * setTabButton() calls in the constructor), so this should only ever
+     * be reached for a dynamic "Execute Query N" tab — the guard is
+     * defensive, not load-bearing */
+    if(!w || w == m_messages || w == m_tableData || w == m_info)
+        return;
+    m_resultTabs->removeTab(index);
+    m_dynamicResultTabs.removeOne(w);
+    if(w == m_lastGrid)
+        m_lastGrid = nullptr;
+    w->deleteLater();
+}
+
 void ConnectionTab::editorCopyNormalizedWhitespace()
 {
     if(CodeEditor *ed = currentEditor())
@@ -1017,14 +1042,14 @@ void ConnectionTab::runQuery()
     const QString sql = c.hasSelection()
         ? c.selectedText().replace(QChar(0x2029), QLatin1Char('\n'))
         : statementAt(ed->toPlainText(), c.position());
-    runStatements(splitStatements(sql), QStringLiteral("Result"));
+    runStatements(splitStatements(sql), QStringLiteral("Execute Query"));
 }
 
 /* Ctrl+F9 — run the whole editor */
 void ConnectionTab::runAll()
 {
     if(CodeEditor *ed = currentEditor())
-        runStatements(splitStatements(ed->toPlainText()), QStringLiteral("Result"));
+        runStatements(splitStatements(ed->toPlainText()), QStringLiteral("Execute Query"));
 }
 
 /* F8 — run the current statement, and if it's a single-table SELECT open that
@@ -1160,15 +1185,6 @@ void ConnectionTab::applyResults(const QVector<QueryResult> &results,
 {
     m_running = false;
 
-    /* drop the previous batch's result grids */
-    for(QWidget *w : std::as_const(m_dynamicResultTabs)) {
-        const int idx = m_resultTabs->indexOf(w);
-        if(idx >= 0)
-            m_resultTabs->removeTab(idx);
-        delete w;
-    }
-    m_dynamicResultTabs.clear();
-
     QString summary;
     int grids = 0;
     double total = 0.0;
@@ -1190,10 +1206,14 @@ void ConnectionTab::applyResults(const QVector<QueryResult> &results,
 
         if(!r.headers.isEmpty()) {
             ++grids;
+            /* ever-increasing counter, not "grids" (which restarts at 1
+             * every call) — old result tabs are never cleared anymore, so
+             * a per-call counter would produce duplicate titles ("Execute
+             * Query 1" appearing again on the next run) */
             addResultGrid(r, QStringLiteral("%1 %2")
-                                    .arg(tabPrefix).arg(grids));
+                                    .arg(tabPrefix).arg(++m_resultTabCounter));
             if(!firstGrid)
-                firstGrid = m_dynamicResultTabs.first();
+                firstGrid = m_dynamicResultTabs.last();
         }
     }
 
