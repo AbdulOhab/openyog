@@ -184,6 +184,7 @@ public slots:
                             QString *error);
     void addEditorTab();
     void closeEditorTab(int index);   /* × on a Query / schema-object tab */
+    void closeResultTab(int index);   /* × on an "Execute Query N" result tab */
     void wireResultGrid(QTableView *grid);   /* right-click menu on a result grid */
     /* new editor tab pre-filled with `sql` and titled `title` (schema-object
      * editors open here, like SQLyog, instead of a modal dialog) */
@@ -259,7 +260,8 @@ private:
     QLabel           * m_info       = nullptr;
     QTableView       * m_lastGrid   = nullptr;
 
-    QVector<QWidget*>   m_dynamicResultTabs;     /* cleared on each batch */
+    QVector<QWidget*>   m_dynamicResultTabs;     /* one per query run, closable; stay until the user closes them */
+    int                 m_resultTabCounter = 0;  /* ever-increasing, not reset per run — keeps titles unique */
     double              m_totalSecs = 0.0;
     bool                m_running   = false;
     /* shared (not owned outright): a detached worker thread launched by

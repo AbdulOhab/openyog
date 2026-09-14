@@ -42,6 +42,7 @@ public:
     void openSchemaObjectTab(const QString &objType);   /* selftest */
     void selftestUseDatabase(const QString &db);   /* --usedb= selftest */
     void selftestExpandDatabase(const QString &name);   /* --expandpgdb= selftest */
+    void selftestRunAgain();   /* --runagain selftest: F9 a second time */
     void editTableCell(int row, int col, const QString &value, bool stageOnly = false);
     /* --dumpdb=FILE selftest: dump the active connection's default db */
     bool selftestDump(const QString &path);

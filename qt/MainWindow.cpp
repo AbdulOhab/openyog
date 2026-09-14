@@ -1670,6 +1670,11 @@ void MainWindow::selftestExpandDatabase(const QString &name)
         tab->expandDatabaseNode(name);
 }
 
+void MainWindow::selftestRunAgain()
+{
+    executeCurrentTab();
+}
+
 void MainWindow::closeTab(int index)
 {
     QWidget *w = m_tabs->widget(index);

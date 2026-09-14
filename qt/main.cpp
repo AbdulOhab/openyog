@@ -69,6 +69,7 @@ int main(int argc, char *argv[])
     QString mkObj;          /* --mkobj=VIEW|PROCEDURE|… selftest */
     QString useDbArg;       /* --usedb=NAME selftest */
     QString expandPgDbArg;  /* --expandpgdb=NAME selftest */
+    bool runAgain = false;  /* --runagain selftest: F9 a second time before the screenshot */
     int editRow = -1, editCol = -1;
     bool stageOnly = false;
     QString editValue;
@@ -95,6 +96,8 @@ int main(int argc, char *argv[])
             shotCreateTable = true;
         if(a == QStringLiteral("--indexdlg"))
             shotIndexDlg = true;
+        if(a == QStringLiteral("--runagain"))
+            runAgain = true;
         if(a == QStringLiteral("--exportdlg"))
             shotExportDlg = true;
         /* --opentable=db:table (selftest: opens the editable data grid) */
@@ -1459,7 +1462,13 @@ int main(int argc, char *argv[])
                         w->selftestExpandDatabase(expandPgDbArg);
                     if(!mkObj.isEmpty())
                         w->openSchemaObjectTab(mkObj);
-                    QTimer::singleShot(600, [w, screenshot] {
+                    if(runAgain)
+                        w->selftestRunAgain();
+                    /* a re-run is also threaded — give it the same landing
+                     * time as the initial connect's own query before the
+                     * screenshot, instead of the other selftests' shorter
+                     * delay (their effects are all synchronous) */
+                    QTimer::singleShot(runAgain ? 1500 : 600, [w, screenshot] {
                         w->grab().save(screenshot);
                         QApplication::quit();
                     });
