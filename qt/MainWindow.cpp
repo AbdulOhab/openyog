@@ -793,6 +793,19 @@ MainWindow::MainWindow(QWidget *parent)
     editIdx->setIcon(Icons::get(QStringLiteral("indexedit.ico")));
     connect(editIdx, &QAction::triggered, this,
             [onSelectedTable] { onSelectedTable(&ConnectionTab::promptManageIndexes); });
+    /* upstream also has "&Drop Index...\tDel" here (its own dedicated
+     * command, ID_INDEXES_DROPINDEX) — like Create/Edit above, it opens
+     * the same unified list/add/drop dialog rather than a separate
+     * drop-only flow, since that's the only index-management entry point
+     * this port has. Manage Indexes\tF7 follows it, a separator between —
+     * exactly upstream's structure — reusing the Table menu's own action
+     * (manageIdx) rather than a second QAction for the identical command. */
+    QAction *dropIdx = indexes->addAction(QStringLiteral("&Drop Index…\tDel"));
+    dropIdx->setIcon(Icons::get(QStringLiteral("indexdelete.ico")));
+    connect(dropIdx, &QAction::triggered, this,
+            [onSelectedTable] { onSelectedTable(&ConnectionTab::promptManageIndexes); });
+    indexes->addSeparator();
+    indexes->addAction(manageIdx);
 
     /* ================= Tools ======================================== */
     QMenu *tools = menuBar()->addMenu(QStringLiteral("&Tools"));
