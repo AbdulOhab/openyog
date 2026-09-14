@@ -58,17 +58,6 @@
 
 int main(int argc, char *argv[])
 {
-    /* Several Linux desktop styles (GTK/XFCE among them — the platform
-     * theme plugin mirrors the desktop's "gtk-menu-images" setting) default
-     * to Qt::AA_DontShowIconsInMenus = true, which silently blanks every
-     * QAction::setIcon() in a QMenu unless the action opted in explicitly
-     * with setIconVisibleInMenu(true) — nothing in this app ever does, so
-     * on such a desktop the whole menu-icon pass (MainWindow.cpp) would
-     * render with icons present in the code but invisible on screen. Force
-     * it off before any QApplication/menu exists, matching every other
-     * platform's default rather than the current desktop's HIG preference. */
-    QApplication::setAttribute(Qt::AA_DontShowIconsInMenus, false);
-
     QString screenshot;
     bool shotDialog = false;
     QString dialogDriver;   /* --dialogdriver=sqlite : preselect a driver, --dialog selftest */
@@ -1309,6 +1298,19 @@ int main(int argc, char *argv[])
         qputenv("QT_QPA_PLATFORM", "offscreen");
 
     QApplication app(argc, argv);
+    /* Several Linux desktop styles (GTK among them — the platform theme
+     * plugin mirrors the desktop's "gtk-menu-images" setting) default this
+     * to true, which silently blanks every QAction::setIcon() in a QMenu
+     * unless the action opted in with setIconVisibleInMenu(true) — nothing
+     * in this app ever does, so on such a desktop the whole menu-icon pass
+     * (MainWindow.cpp) would have icons in the code but none on screen.
+     * Setting this attribute BEFORE the QApplication existed (this file's
+     * first attempt at this fix) did not actually stick — Qt's own docs
+     * for AA_DontShowIconsInMenus say to override the platform default
+     * "after QGuiApplication has been instantiated", the opposite of most
+     * AA_ attributes (usually set pre-construction) — so the platform
+     * theme's own value was winning regardless of that earlier call. */
+    app.setAttribute(Qt::AA_DontShowIconsInMenus, false);
     QApplication::setApplicationName(QStringLiteral("OpenYog"));
     QApplication::setOrganizationName(QStringLiteral("OpenYog"));
 
