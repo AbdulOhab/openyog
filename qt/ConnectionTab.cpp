@@ -66,10 +66,10 @@
 #include <QShortcut>
 #include <QSortFilterProxyModel>
 #include <QMutex>
+#include <QThreadPool>
 #include <QTimer>
 
 #include <algorithm>
-#include <thread>
 
 /* guards {live, mutex} below: the worker thread sets/clears `live` while
  * holding `mutex`, and ConnectionTab::cancelQuery() (GUI thread) reads it
@@ -1193,18 +1193,31 @@ void ConnectionTab::runStatements(const QStringList &statements,
 
     /* worker thread: fresh connection, plain-data results. Holds its own
      * shared_ptr to the cancel-state, so closing this tab mid-query (guard
-     * turning null) can't leave the thread holding a dangling pointer. */
+     * turning null) can't leave the thread holding a dangling pointer.
+     *
+     * Runs on the global QThreadPool rather than a detached std::thread —
+     * a detached thread can't be waited on by anything, which was a real,
+     * live bug (session 79/83): every exit path in main.cpp calls the MySQL/
+     * Postgres/SQLite driver's libraryShutdown() right after QApplication::
+     * exec() returns, and a detached query thread still inside a blocking
+     * mysql_real_query()/PQexec() call at that moment races the client
+     * library's own global teardown — the intermittent ~40% crash
+     * --dumpcombo hit and worked around with a delay-then-quit shape rather
+     * than fixing. QThreadPool::globalInstance()->waitForDone(), called
+     * once right before each libraryShutdown() site, blocks until every
+     * such task has genuinely returned — the fix belongs there, not here;
+     * this is just what makes that possible to wait for at all. */
     QPointer<ConnectionTab> guard(this);
     const ConnectionParams p = m_params;
     std::shared_ptr<LiveConnection> cancelState = m_cancelState;
-    std::thread([guard, p, statements, tabPrefix, cancelState] {
+    QThreadPool::globalInstance()->start([guard, p, statements, tabPrefix, cancelState] {
         const QVector<QueryResult> results =
             runOnConnection(p, statements, cancelState.get());
         QMetaObject::invokeMethod(guard, [guard, results, tabPrefix] {
             if(guard)
                 guard->applyResults(results, tabPrefix);
         }, Qt::QueuedConnection);
-    }).detach();
+    });
 
     /* the timeout re-checks m_batchGen before cancelling: without it, a
      * timer armed for a slow batch that finishes early (or is cancelled by

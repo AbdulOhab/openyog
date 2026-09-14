@@ -52,6 +52,7 @@
 #include <QRegularExpression>
 #include <QTableWidget>
 #include <QTextStream>
+#include <QThreadPool>
 #include <QTimer>
 
 #include <memory>
@@ -1344,6 +1345,7 @@ int main(int argc, char *argv[])
         const bool gone = !ConnectionStore::storedNames().contains(delConn);
         qInfo("delconn '%s': existed=%d removed=%d",
               qPrintable(delConn), existed, gone);
+        QThreadPool::globalInstance()->waitForDone();
         dbDriverFor(DriverType::Mysql)->libraryShutdown();
         return (existed && gone) ? 0 : 1;
     }
@@ -1352,6 +1354,7 @@ int main(int argc, char *argv[])
     if(!dumpPath.isEmpty() && doAutoConnect) {
         MainWindow w;
         rc = (w.openAndRun(autoConnect) && w.selftestDump(dumpPath)) ? 0 : 1;
+        QThreadPool::globalInstance()->waitForDone();
         dbDriverFor(DriverType::Mysql)->libraryShutdown();
         return rc;
     }
@@ -1362,6 +1365,7 @@ int main(int argc, char *argv[])
         MainWindow w;
         rc = (p.size() == 2 && w.openAndRun(autoConnect)
               && w.selftestCopyDb(p[0], p[1])) ? 0 : 1;
+        QThreadPool::globalInstance()->waitForDone();
         dbDriverFor(DriverType::Mysql)->libraryShutdown();
         return rc;
     }
@@ -1373,6 +1377,7 @@ int main(int argc, char *argv[])
         MainWindow w;
         rc = (p.size() == 2 && w.openAndRun(autoConnect)
               && w.selftestCopyDbPostgres(p[0], p[1])) ? 0 : 1;
+        QThreadPool::globalInstance()->waitForDone();
         dbDriverFor(DriverType::Mysql)->libraryShutdown();
         return rc;
     }
@@ -1383,6 +1388,7 @@ int main(int argc, char *argv[])
     if(!pgMultiDbArg.isEmpty() && doAutoConnect) {
         MainWindow w;
         rc = (w.openAndRun(autoConnect) && w.selftestMultiDb(pgMultiDbArg)) ? 0 : 1;
+        QThreadPool::globalInstance()->waitForDone();
         dbDriverFor(DriverType::Mysql)->libraryShutdown();
         return rc;
     }
@@ -1468,6 +1474,7 @@ int main(int argc, char *argv[])
             });
         });
         QApplication::exec();
+        QThreadPool::globalInstance()->waitForDone();
         dbDriverFor(DriverType::Mysql)->libraryShutdown();
         return ok ? 0 : 1;
     }
@@ -1481,6 +1488,7 @@ int main(int argc, char *argv[])
         MainWindow w;
         rc = (w.openAndRun(autoConnect)
               && w.selftestCopySqliteFile(target, !nodata)) ? 0 : 1;
+        QThreadPool::globalInstance()->waitForDone();
         dbDriverFor(DriverType::Mysql)->libraryShutdown();
         return rc;
     }
@@ -1493,6 +1501,7 @@ int main(int argc, char *argv[])
         rc = (p.size() == 2 && w.openAndRun(autoConnect)
               && w.selftestCsvImportBatched({}, p[0], p[1], QStringLiteral("IGNORE")))
              ? 0 : 1;
+        QThreadPool::globalInstance()->waitForDone();
         dbDriverFor(DriverType::Mysql)->libraryShutdown();
         return rc;
     }
@@ -1506,6 +1515,7 @@ int main(int argc, char *argv[])
               && w.selftestCsvImportBatched(QStringLiteral("public"), p[0], p[1],
                                             p.size() > 2 ? p[2] : QStringLiteral("IGNORE")))
              ? 0 : 1;
+        QThreadPool::globalInstance()->waitForDone();
         dbDriverFor(DriverType::Mysql)->libraryShutdown();
         return rc;
     }
@@ -1516,6 +1526,7 @@ int main(int argc, char *argv[])
         MainWindow w;
         rc = (w.openAndRun(autoConnect)
               && w.selftestSchemaHtml(schemaHtmlArg)) ? 0 : 1;
+        QThreadPool::globalInstance()->waitForDone();
         dbDriverFor(DriverType::Mysql)->libraryShutdown();
         return rc;
     }
@@ -1560,6 +1571,7 @@ int main(int argc, char *argv[])
                 QApplication::quit();
             });
             QApplication::exec();
+            QThreadPool::globalInstance()->waitForDone();
             dbDriverFor(DriverType::Mysql)->libraryShutdown();
             return rc;
         }
@@ -1602,6 +1614,7 @@ int main(int argc, char *argv[])
                 QApplication::quit();
             });
             QApplication::exec();
+            QThreadPool::globalInstance()->waitForDone();
             dbDriverFor(DriverType::Mysql)->libraryShutdown();
             return rc;
         }
@@ -1666,6 +1679,7 @@ int main(int argc, char *argv[])
         rc = QApplication::exec();
     }
 
+    QThreadPool::globalInstance()->waitForDone();
     dbDriverFor(DriverType::Mysql)->libraryShutdown();
     return rc;
 }
