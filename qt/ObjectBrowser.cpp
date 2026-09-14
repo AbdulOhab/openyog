@@ -9,6 +9,7 @@
 #include <QClipboard>
 #include <QDir>
 #include <QMenu>
+#include <QMouseEvent>
 #include <QStandardPaths>
 #include <QVBoxLayout>
 
@@ -268,6 +269,25 @@ ObjectBrowser::ObjectBrowser(QWidget *parent)
         if(!menu.isEmpty())
             menu.exec(m_tree->viewport()->mapToGlobal(pos));
     });
+    /* single click on a schema/database node makes it current too (same
+     * databaseActivated the double-click below emits) — the owner's ask:
+     * after switching databases the tree stops at the schema list, and
+     * clicking "public" there should show up in the toolbar combo right
+     * away instead of waiting for a double-click. Skipped for a schema
+     * under a *different* physical database (can't SET search_path to it
+     * from this tab's connection — expanding it via its side connection
+     * is browsing only) and for SQLite, whose single "main" node has
+     * nothing switchable and would just surface a USE syntax error. */
+    connect(m_tree, &QTreeWidget::itemClicked, this,
+            [this](QTreeWidgetItem *item, int) {
+                if(item->data(0, Qt::UserRole).toInt() != KDatabase
+                   || m_conn->driverType() == DriverType::Sqlite)
+                    return;
+                const QString physDb = item->data(0, RolePhysDb).toString();
+                if(!physDb.isEmpty() && physDb != m_primaryDatabase)
+                    return;
+                emit databaseActivated(item->data(0, Qt::UserRole + 1).toString());
+            });
     connect(m_tree, &QTreeWidget::itemDoubleClicked, this,
             [this](QTreeWidgetItem *item, int) {
                 const int kind = item->data(0, Qt::UserRole).toInt();
@@ -610,6 +630,36 @@ void ObjectBrowser::selectTreeItem(const QString &path)
     }
     m_tree->setCurrentItem(cur);
     cur->setSelected(true);
+}
+
+void ObjectBrowser::clickTreeItem(const QString &path)
+{
+    QTreeWidgetItem *cur = m_tree->topLevelItem(0);
+    if(!cur)
+        return;
+    const QStringList parts = path.split(QLatin1Char('/'), Qt::SkipEmptyParts);
+    for(const QString &part : parts) {
+        QTreeWidgetItem *next = nullptr;
+        for(int i = 0; i < cur->childCount(); ++i)
+            if(cur->child(i)->text(0) == part) { next = cur->child(i); break; }
+        if(!next)
+            return;
+        cur = next;
+    }
+    m_tree->setCurrentItem(cur);
+    /* bring the row into view first — a click synthesized at a point that
+     * lies outside the (possibly scrolled or not-yet-laid-out) viewport is
+     * silently dropped by Qt, with no itemClicked to show for it */
+    m_tree->scrollToItem(cur, QAbstractItemView::PositionAtCenter);
+    const QRect r = m_tree->visualItemRect(cur);
+    const QPoint p = r.center();
+    const QPoint global = m_tree->viewport()->mapToGlobal(p);
+    QMouseEvent press(QEvent::MouseButtonPress, p, global,
+                      Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+    QMouseEvent release(QEvent::MouseButtonRelease, p, global,
+                        Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
+    QApplication::sendEvent(m_tree->viewport(), &press);
+    QApplication::sendEvent(m_tree->viewport(), &release);
 }
 
 void ObjectBrowser::copyCreateTable(const QString &db, const QString &table,

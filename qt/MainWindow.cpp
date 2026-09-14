@@ -1713,6 +1713,12 @@ void MainWindow::selftestSelectBrowserItem(const QString &path)
         tab->selectBrowserItem(path);
 }
 
+void MainWindow::selftestClickBrowserItem(const QString &path)
+{
+    if(auto *tab = currentTab())
+        tab->clickBrowserItem(path);
+}
+
 QStringList MainWindow::selftestComboItems() const
 {
     /* [0] is the combo's current selection — "(none)" when

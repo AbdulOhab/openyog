@@ -73,6 +73,12 @@ public:
      * level down (e.g. "postgres/public/Tables") — for reproducing/
      * verifying selection-styling issues without simulating mouse input */
     void selectTreeItem(const QString &path);
+    /* headless-test hook: same path walk as selectTreeItem(), but then
+     * synthesizes a real mouse press+release on the item — exercises the
+     * itemClicked handlers (e.g. single-click-activates-a-schema) exactly
+     * as a user click would, which a programmatic setCurrentItem() does
+     * not (no itemClicked signal fires for it). */
+    void clickTreeItem(const QString &path);
 
 signals:
     void databaseActivated(const QString &db);      /* double click → USE */

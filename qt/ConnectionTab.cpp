@@ -552,6 +552,8 @@ ConnectionTab::ConnectionTab(const ConnectionParams &params, QWidget *parent)
         m_keepAliveTimer->start();
     }
 
+    connect(m_browser, &ObjectBrowser::databaseActivated, this,
+            &ConnectionTab::useDatabase);
     connect(m_browser, &ObjectBrowser::tableActivated, this,
             [this](const QString &db, const QString &table) {
         if(m_conn) {
@@ -1490,6 +1492,11 @@ void ConnectionTab::expandDatabaseNode(const QString &name)
 void ConnectionTab::selectBrowserItem(const QString &path)
 {
     m_browser->selectTreeItem(path);
+}
+
+void ConnectionTab::clickBrowserItem(const QString &path)
+{
+    m_browser->clickTreeItem(path);
 }
 
 void ConnectionTab::promptFind()
@@ -3934,26 +3941,35 @@ void ConnectionTab::useDatabase(const QString &db)
      * either way, so it's left on the MySQL-shaped USE below, same as
      * before — that surfaces a clear syntax-error message there rather
      * than silently doing nothing. */
-    if(m_params.driverType == DriverType::Postgres) {
+    /* already current: nothing to run, but still emit below — the toolbar
+     * combo can be stale (e.g. blank after switchDatabase()) even though
+     * this schema was picked before; also keeps the click+double-click
+     * pair on one tree node from issuing the same SET/USE twice */
+    const QString alreadyCurrent = m_params.driverType == DriverType::Postgres
+        ? m_currentSchema : m_params.database;
+    if(db != alreadyCurrent) {
         QString error;
-        if(m_conn->query(QStringLiteral("SET search_path TO %1")
-                              .arg(m_conn->quoteIdent(db)), nullptr, &error)) {
-            m_currentSchema = db;
-            m_messages->setPlainText(QStringLiteral("Schema changed to %1").arg(db));
-            m_resultTabs->setCurrentWidget(m_messages);
-            updateCompletions();
-        } else {
+        const bool ok = m_params.driverType == DriverType::Postgres
+            ? m_conn->query(QStringLiteral("SET search_path TO %1")
+                                .arg(m_conn->quoteIdent(db)), nullptr, &error)
+            : m_conn->query(QStringLiteral("USE `%1`").arg(db), nullptr, &error);
+        if(!ok) {
             m_messages->setPlainText(error);
+            m_resultTabs->setCurrentWidget(m_messages);
+            return;
         }
-        return;
-    }
-    QString error;
-    if(m_conn->query(QStringLiteral("USE `%1`").arg(db), nullptr, &error)) {
-        m_params.database = db;
-        m_messages->setPlainText(QStringLiteral("Database changed to %1").arg(db));
+        if(m_params.driverType == DriverType::Postgres)
+            m_currentSchema = db;
+        else
+            m_params.database = db;
+        m_messages->setPlainText(m_params.driverType == DriverType::Postgres
+            ? QStringLiteral("Schema changed to %1").arg(db)
+            : QStringLiteral("Database changed to %1").arg(db));
         m_resultTabs->setCurrentWidget(m_messages);
         updateCompletions();
-    } else {
-        m_messages->setPlainText(error);
     }
+    /* MainWindow re-syncs its toolbar combo off this signal — without it,
+     * picking a schema from the tree left the combo showing the previous
+     * (or blank) selection until the user happened to switch tabs */
+    emit databasesChanged(m_databases, defaultDb());
 }
