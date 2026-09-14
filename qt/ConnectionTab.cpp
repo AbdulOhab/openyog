@@ -460,9 +460,12 @@ ConnectionTab::ConnectionTab(const ConnectionParams &params, QWidget *parent)
     m_resultTabs->tabBar()->setExpanding(false);   /* SQLyog left-aligns tabs */
     m_tableData = new TableDataView(this);
 
-    m_resultTabs->addTab(m_messages,   QStringLiteral("1 Messages"));
-    m_resultTabs->addTab(m_tableData,  QStringLiteral("2 Table Data"));
-    m_resultTabs->addTab(m_info,       QStringLiteral("3 Info"));
+    m_resultTabs->addTab(m_messages,   Icons::get(QStringLiteral("notification.ico")),
+                        QStringLiteral("1 Messages"));
+    m_resultTabs->addTab(m_tableData,  Icons::get(QStringLiteral("grid_view.ico")),
+                        QStringLiteral("2 Table Data"));
+    m_resultTabs->addTab(m_info,       Icons::get(QStringLiteral("info.ico")),
+                        QStringLiteral("3 Info"));
     m_resultTabs->setCurrentIndex(0);
 
     /* nag-bar replacement — solid blue strip above the editor (Flat theme) */
