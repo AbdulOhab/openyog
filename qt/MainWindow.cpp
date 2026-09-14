@@ -1859,6 +1859,24 @@ void MainWindow::selftestClickBrowserItem(const QString &path)
         tab->clickBrowserItem(path);
 }
 
+void MainWindow::selftestCollapseBrowserItem(const QString &path)
+{
+    if(auto *tab = currentTab())
+        tab->collapseBrowserItem(path);
+}
+
+void MainWindow::selftestExpandBrowserItem(const QString &path)
+{
+    if(auto *tab = currentTab())
+        tab->expandBrowserItem(path);
+}
+
+void MainWindow::selftestDoubleClickBrowserItem(const QString &path)
+{
+    if(auto *tab = currentTab())
+        tab->doubleClickBrowserItem(path);
+}
+
 QStringList MainWindow::selftestComboItems() const
 {
     /* [0] is the combo's current selection — "(none)" when
