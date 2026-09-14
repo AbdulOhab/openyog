@@ -700,9 +700,21 @@ bool ConnectionTab::switchDatabase(const QString &database)
 {
     if(!m_conn || database.isEmpty() || database == m_params.database)
         return false;
+    /* connectionFor() below opens a brand-new network connection when
+     * `database` isn't already cached — a real, blocking round trip on
+     * the GUI thread, with nothing to show for it otherwise (this is
+     * PostgreSQL-only: MySQL/SQLite never reach this branch at all, since
+     * databases()/physicalDatabases() are identical there and
+     * useDatabase()'s SET/USE path handles every pick already) */
+    QApplication::setOverrideCursor(Qt::WaitCursor);
+    m_messages->setPlainText(QStringLiteral("Connecting to %1…").arg(database));
+    m_resultTabs->setCurrentWidget(m_messages);
+    QApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
+
     QString error;
     IDbConnection *newConn = connectionFor(database, &error);
     if(!newConn) {
+        QApplication::restoreOverrideCursor();
         m_messages->setPlainText(
             QStringLiteral("Could not switch to %1: %2").arg(database, error));
         m_resultTabs->setCurrentWidget(m_messages);
@@ -732,6 +744,7 @@ bool ConnectionTab::switchDatabase(const QString &database)
     const QStringList dbs = m_conn->listDatabases();
     m_databases = dbs;
     emit databasesChanged(dbs, defaultDb());
+    QApplication::restoreOverrideCursor();
     return true;
 }
 
