@@ -278,6 +278,24 @@ DbResultSet PostgresConnection::listColumns(const QString &db, const QString &ta
     return out;
 }
 
+/* one query for every distinct column name in the schema, instead of the
+ * default's listColumns() round trip per table — the difference between
+ * O(1) and O(N) network round trips is what made switchDatabase() feel
+ * slow on a schema with many tables */
+QStringList PostgresConnection::listAllColumnNames(const QString &db)
+{
+    const QString schema = effectiveSchema(db);
+    DbResultSet rs;
+    QStringList out;
+    if(runBuffered(QStringLiteral(
+           "SELECT DISTINCT column_name FROM information_schema.columns "
+           "WHERE table_schema='%1' ORDER BY column_name")
+               .arg(schema), &rs, nullptr))
+        for(const QStringList &row : rs.rows)
+            out << row.value(0);
+    return out;
+}
+
 /* SHOW INDEX shape from pg_index — a LATERAL unnest(indkey) WITH ORDINALITY
  * walks each index's columns in their real (possibly non-declaration) order. */
 DbResultSet PostgresConnection::listIndexes(const QString &db, const QString &table)

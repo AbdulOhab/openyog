@@ -8,6 +8,7 @@
 #include "../ConnectionParams.h"
 
 #include <QByteArray>
+#include <QSet>
 #include <QString>
 #include <QStringList>
 #include <QVector>
@@ -120,6 +121,24 @@ public:
     virtual QStringList listPhysicalDatabases() { return listDatabases(); }
     virtual QStringList listTables(const QString &db, const QString &typeFilter = {}) = 0;
     virtual DbResultSet listColumns(const QString &db, const QString &table) = 0;
+    /* every distinct column name across every table/view in `db`, for
+     * autocomplete only (no type/key info, so callers needing that still
+     * go through listColumns() per table) — a backend with a system
+     * catalog it can filter by schema in one query (Postgres, MySQL) should
+     * override this instead of falling through to the default, which is a
+     * blocking listColumns() call *per table* and was measured to dominate
+     * ConnectionTab::switchDatabase()'s latency on any schema with more
+     * than a handful of tables. */
+    virtual QStringList listAllColumnNames(const QString &db)
+    {
+        QSet<QString> columns;
+        for(const QString &t : listTables(db, QStringLiteral("BASE TABLE"))
+                                    + listTables(db, QStringLiteral("VIEW")))
+            for(const QStringList &row : listColumns(db, t).rows)
+                if(!row.value(0).isEmpty())
+                    columns.insert(row.value(0));
+        return QStringList(columns.cbegin(), columns.cend());
+    }
     virtual DbResultSet listIndexes(const QString &db, const QString &table) = 0;
     virtual DbResultSet listForeignKeys(const QString &db, const QString &table) = 0;
     virtual QStringList listTriggers(const QString &db) = 0;

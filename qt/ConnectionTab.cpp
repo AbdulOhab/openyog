@@ -759,18 +759,18 @@ void ConnectionTab::updateCompletions()
     m_columnNames.clear();
     const QString db = defaultDb();
     if(m_conn && !db.isEmpty()) {
-        QSet<QString> tables, columns;
+        QSet<QString> tables;
         QStringList tbls = m_conn->listTables(db, QStringLiteral("BASE TABLE"));
         tbls += m_conn->listTables(db, QStringLiteral("VIEW"));
-        for(const QString &t : tbls) {
+        for(const QString &t : tbls)
             if(!t.isEmpty()) tables.insert(t);
-            for(const QStringList &row : m_conn->listColumns(db, t).rows)
-                if(!row.value(0).isEmpty()) columns.insert(row.value(0));
-        }
         m_tableNames  = QStringList(tables.cbegin(), tables.cend());
-        m_columnNames = QStringList(columns.cbegin(), columns.cend());
+        /* one bulk query instead of a listColumns() round trip per table —
+         * see IDbConnection::listAllColumnNames() */
+        m_columnNames = m_conn->listAllColumnNames(db);
         QSet<QString> all = tables;
-        all.unite(columns);
+        for(const QString &c : m_columnNames)
+            all.insert(c);
         m_completions = QStringList(all.cbegin(), all.cend());
     }
     for(int i = 0; i < m_editorTabs->count(); ++i)
