@@ -417,9 +417,18 @@ void ObjectBrowser::onItemExpanded(QTreeWidgetItem *item)
         /* only reached for a database OTHER than the primary one — that
          * one's schemas are already populated by loadDatabases() itself,
          * so childCount() > 0 short-circuits above before we get here.
-         * physDb == this item's own name (see loadDatabases()). */
+         * physDb == this item's own name (see loadDatabases()). connFor()
+         * opens a brand-new network connection when physDb isn't already
+         * cached from earlier browsing — a real, blocking round trip on
+         * the GUI thread with nothing to show for it otherwise, hence the
+         * wait cursor (matches switchDatabaseRequested()'s own connect,
+         * which this can lead into right after if the user then clicks
+         * "Switch" — that one will already be instant, reusing this
+         * connection instead of opening a second one). */
+        QApplication::setOverrideCursor(Qt::WaitCursor);
         QString error;
         IDbConnection *c = connFor(physDb, &error);
+        QApplication::restoreOverrideCursor();
         if(!c) {
             auto *l = makeItem(KLeaf, QStringLiteral("(connection failed: %1)")
                                           .arg(error));
