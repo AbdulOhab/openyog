@@ -671,11 +671,6 @@ QString ConnectionTab::defaultDb() const
     return m_params.database;
 }
 
-QStringList ConnectionTab::physicalDatabases() const
-{
-    return m_conn ? m_conn->listPhysicalDatabases() : QStringList();
-}
-
 ConnectionParams ConnectionTab::paramsFor(const QString &database) const
 {
     ConnectionParams p = m_params;
@@ -703,9 +698,10 @@ bool ConnectionTab::switchDatabase(const QString &database)
     /* connectionFor() below opens a brand-new network connection when
      * `database` isn't already cached — a real, blocking round trip on
      * the GUI thread, with nothing to show for it otherwise (this is
-     * PostgreSQL-only: MySQL/SQLite never reach this branch at all, since
-     * databases()/physicalDatabases() are identical there and
-     * useDatabase()'s SET/USE path handles every pick already) */
+     * PostgreSQL-only in practice: the Object Browser's tree is the only
+     * caller, and it only ever emits switchDatabaseRequested for a
+     * Postgres database node — MySQL/SQLite have no such node at all,
+     * useDatabase()'s SET/USE path handles every one of their picks) */
     QApplication::setOverrideCursor(Qt::WaitCursor);
     m_messages->setPlainText(QStringLiteral("Connecting to %1…").arg(database));
     m_resultTabs->setCurrentWidget(m_messages);

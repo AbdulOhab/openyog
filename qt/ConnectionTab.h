@@ -54,14 +54,6 @@ public:
     bool isConnected() const { return m_conn != nullptr; }
     QString title() const { return m_params.name; }
     QStringList databases() const { return m_databases; }
-    /* every real database on the server (see IDbConnection::
-     * listPhysicalDatabases()'s doc comment) — identical to databases()
-     * for MySQL/SQLite (one connection already sees every database), but
-     * for PostgreSQL this is the sibling databases databases() itself
-     * can't include (that's schemas of the one connected database).
-     * MainWindow's toolbar combo uses this to list every database, not
-     * just the current one's schemas. */
-    QStringList physicalDatabases() const;
     QString currentDatabase() const { return m_params.database; }
     /* the schema/database actually being *browsed* right now — same as
      * currentDatabase() for MySQL/SQLite, but for PostgreSQL that's the
@@ -92,11 +84,14 @@ public:
      * schema tracking (m_currentSchema) since it belonged to the old
      * database, and updates the tab's own name/title. Returns false (with
      * a message left in the Messages pane) if the new connection fails.
-     * This is what "Switch to `db`" and picking a sibling database from
-     * the toolbar combo both do — the default, since staying in one tab
-     * is normally what's wanted; openDatabaseInNewTabRequested's "Connect
-     * in New Tab" is the explicit alternative for comparing two databases
-     * side by side. */
+     * This is what double-clicking a database node (or its "Switch to
+     * `db`" menu entry) does in the Object Browser's tree — the default
+     * there, since staying in one tab is normally what's wanted;
+     * openDatabaseInNewTabRequested's "Connect in New Tab" is the explicit
+     * alternative for comparing two databases side by side. The toolbar
+     * combo itself only ever lists the current database's schemas (see
+     * MainWindow::syncToolbarToCurrentTab()) — switching databases is the
+     * tree's job, not the combo's. */
     bool switchDatabase(const QString &database);
     QString hostLabel() const
     {

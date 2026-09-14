@@ -45,7 +45,7 @@ public:
     void selftestSelectBrowserItem(const QString &path);   /* --selecttreepath= selftest */
     void selftestRunAgain();   /* --runagain selftest: F9 a second time */
     QStringList selftestComboItems() const;   /* --dumpcombo selftest */
-    void selftestPickCombo(const QString &db);   /* --dumpcombo selftest: pick an item */
+    void selftestSwitchDatabase(const QString &db);   /* --switchdb= selftest */
     int selftestTabCount() const;   /* --dumpcombo selftest */
     void editTableCell(int row, int col, const QString &value, bool stageOnly = false);
     /* --dumpdb=FILE selftest: dump the active connection's default db */

@@ -103,10 +103,12 @@ signals:
      * connection can't switch databases in place at the protocol level,
      * so ConnectionTab::switchDatabase() actually opens a fresh connection
      * underneath and swaps it in, keeping the *previous* one cached as a
-     * side connection so switching back doesn't reconnect). Double-click
-     * and picking a sibling database from the toolbar combo both use this;
-     * it's the default because staying in one tab is what's normally
-     * wanted, not a second tab to compare two databases side by side. */
+     * side connection so switching back doesn't reconnect). Emitted by
+     * double-click and by this same node's own "Switch to `db`" menu
+     * entry; it's the default because staying in one tab is what's
+     * normally wanted, not a second tab to compare two databases side by
+     * side. The toolbar combo plays no part in switching databases — it
+     * only ever lists the current one's schemas. */
     void switchDatabaseRequested(const QString &database);
     /* explicit alternative to the above, still offered from the right-click
      * menu: open `database` as a genuinely separate tab instead of taking

@@ -81,7 +81,7 @@ int main(int argc, char *argv[])
     QString pgCopyDbArg;
     QString pgMultiDbArg;
     bool dumpCombo = false;   /* --dumpcombo selftest */
-    QString pickComboArg;     /* --pickcombo=NAME selftest: also pick a combo item */
+    QString switchDbArg;      /* --switchdb=NAME selftest: switch database like the tree does */
     QString sqliteCopyDbArg;
     QString sqliteCsvImportArg;
     QString pgCsvImportArg;
@@ -128,8 +128,8 @@ int main(int argc, char *argv[])
             pgMultiDbArg = a.mid(QStringLiteral("--pgmultidbtest=").size());
         if(a == QStringLiteral("--dumpcombo"))
             dumpCombo = true;
-        if(a.startsWith(QStringLiteral("--pickcombo=")))
-            pickComboArg = a.mid(QStringLiteral("--pickcombo=").size());
+        if(a.startsWith(QStringLiteral("--switchdb=")))
+            switchDbArg = a.mid(QStringLiteral("--switchdb=").size());
         if(a.startsWith(QStringLiteral("--sqlitecopydb=")))
             sqliteCopyDbArg = a.mid(QStringLiteral("--sqlitecopydb=").size());
         if(a.startsWith(QStringLiteral("--sqlitecsvimport=")))
@@ -1355,7 +1355,10 @@ int main(int argc, char *argv[])
     }
 
     /* --dumpcombo selftest (headless): autoconnect, print the toolbar
-     * database combo's items, exit. Goes through the same QTimer +
+     * database combo's items, exit; --switchdb=NAME optionally switches
+     * databases first (the way the tree's double-click/"Switch to `db`"
+     * does) and reprints, to verify the tab stays the same (count
+     * unchanged) while its title/combo update. Goes through the same QTimer +
      * QApplication::exec() shape the --screenshot= flow uses rather than
      * returning immediately after openAndRun() — connecting kicks off the
      * seed query on a worker thread, and exiting before it lands is an
@@ -1371,18 +1374,22 @@ int main(int argc, char *argv[])
                 QTextStream(stdout) << "combo: "
                                     << w.selftestComboItems().join(QStringLiteral(", "))
                                     << " tabs=" << w.selftestTabCount() << '\n';
-                if(pickComboArg.isEmpty()) {
+                if(switchDbArg.isEmpty()) {
                     QApplication::quit();
                     return;
                 }
-                w.selftestPickCombo(pickComboArg);
+                /* switching databases is the tree's job now, not the
+                 * combo's (which only ever lists schemas) — this calls
+                 * ConnectionTab::switchDatabase() directly, the same
+                 * method a real double-click/"Switch to `db`" reaches */
+                w.selftestSwitchDatabase(switchDbArg);
                 QTimer::singleShot(600, [&] {
                     /* the window title encodes [tab/schema - host] — a
                      * switch-in-place changes the title's database segment
                      * but leaves tab count unchanged (still the same tab);
                      * "Connect in New Tab" would instead leave the title
                      * alone and increase the tab count */
-                    QTextStream(stdout) << "after pick: title=" << w.windowTitle()
+                    QTextStream(stdout) << "after switch: title=" << w.windowTitle()
                                         << " combo="
                                         << w.selftestComboItems().join(QStringLiteral(", "))
                                         << " tabs=" << w.selftestTabCount() << '\n';
@@ -1512,8 +1519,8 @@ int main(int argc, char *argv[])
                         w->selftestExpandDatabase(expandPgDbArg);
                     if(!selectTreePath.isEmpty())
                         w->selftestSelectBrowserItem(selectTreePath);
-                    if(!pickComboArg.isEmpty())
-                        w->selftestPickCombo(pickComboArg);
+                    if(!switchDbArg.isEmpty())
+                        w->selftestSwitchDatabase(switchDbArg);
                     if(!mkObj.isEmpty())
                         w->openSchemaObjectTab(mkObj);
                     if(runAgain)
