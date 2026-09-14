@@ -70,6 +70,7 @@ int main(int argc, char *argv[])
     QString useDbArg;       /* --usedb=NAME selftest */
     QString expandPgDbArg;  /* --expandpgdb=NAME selftest */
     bool runAgain = false;  /* --runagain selftest: F9 a second time before the screenshot */
+    QString selectTreePath;  /* --selecttreepath=a/b/c selftest */
     int editRow = -1, editCol = -1;
     bool stageOnly = false;
     QString editValue;
@@ -98,6 +99,8 @@ int main(int argc, char *argv[])
             shotIndexDlg = true;
         if(a == QStringLiteral("--runagain"))
             runAgain = true;
+        if(a.startsWith(QStringLiteral("--selecttreepath=")))
+            selectTreePath = a.mid(QStringLiteral("--selecttreepath=").size());
         if(a == QStringLiteral("--exportdlg"))
             shotExportDlg = true;
         /* --opentable=db:table (selftest: opens the editable data grid) */
@@ -1460,6 +1463,8 @@ int main(int argc, char *argv[])
                         w->selftestUseDatabase(useDbArg);
                     if(!expandPgDbArg.isEmpty())
                         w->selftestExpandDatabase(expandPgDbArg);
+                    if(!selectTreePath.isEmpty())
+                        w->selftestSelectBrowserItem(selectTreePath);
                     if(!mkObj.isEmpty())
                         w->openSchemaObjectTab(mkObj);
                     if(runAgain)
