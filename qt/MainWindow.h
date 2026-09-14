@@ -43,6 +43,7 @@ public:
     void selftestUseDatabase(const QString &db);   /* --usedb= selftest */
     void selftestExpandDatabase(const QString &name);   /* --expandpgdb= selftest */
     void selftestSelectBrowserItem(const QString &path);   /* --selecttreepath= selftest */
+    void selftestClickBrowserItem(const QString &path);    /* --clicktreepath= selftest */
     void selftestRunAgain();   /* --runagain selftest: F9 a second time */
     QStringList selftestComboItems() const;   /* --dumpcombo selftest */
     void selftestSwitchDatabase(const QString &db);   /* --switchdb= selftest */

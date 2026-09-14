@@ -71,6 +71,7 @@ int main(int argc, char *argv[])
     QString expandPgDbArg;  /* --expandpgdb=NAME selftest */
     bool runAgain = false;  /* --runagain selftest: F9 a second time before the screenshot */
     QString selectTreePath;  /* --selecttreepath=a/b/c selftest */
+    QString clickTreePath;   /* --clicktreepath=a/b/c selftest (synthesized mouse click) */
     int editRow = -1, editCol = -1;
     bool stageOnly = false;
     QString editValue;
@@ -104,6 +105,8 @@ int main(int argc, char *argv[])
             runAgain = true;
         if(a.startsWith(QStringLiteral("--selecttreepath=")))
             selectTreePath = a.mid(QStringLiteral("--selecttreepath=").size());
+        if(a.startsWith(QStringLiteral("--clicktreepath=")))
+            clickTreePath = a.mid(QStringLiteral("--clicktreepath=").size());
         if(a == QStringLiteral("--exportdlg"))
             shotExportDlg = true;
         /* --opentable=db:table (selftest: opens the editable data grid) */
@@ -1371,6 +1374,9 @@ int main(int argc, char *argv[])
     if(dumpCombo && doAutoConnect) {
         MainWindow w;
         bool ok = false;
+        w.show();   /* lay out the real window — a synthesized click on a
+                      * never-shown, zero-sized tree viewport is silently
+                      * dropped by Qt (see ObjectBrowser::clickTreeItem) */
         QTimer::singleShot(1500, [&] {
             ok = w.openAndRun(autoConnect);
             QTimer::singleShot(600, [&] {
@@ -1390,6 +1396,17 @@ int main(int argc, char *argv[])
                                         << '\n';
                 }
                 if(switchDbArg.isEmpty()) {
+                    /* --clicktreepath works without --switchdb too: a real
+                     * (synthesized) mouse click on that tree node — single-
+                     * clicking a schema should make it the combo's selection
+                     * right away */
+                    if(!clickTreePath.isEmpty()) {
+                        w.selftestClickBrowserItem(clickTreePath);
+                        QTextStream(stdout) << "after click " << clickTreePath
+                                            << ": combo="
+                                            << w.selftestComboItems().join(QStringLiteral(", "))
+                                            << " title=" << w.windowTitle() << '\n';
+                    }
                     QApplication::quit();
                     return;
                 }
@@ -1408,6 +1425,17 @@ int main(int argc, char *argv[])
                                         << " combo="
                                         << w.selftestComboItems().join(QStringLiteral(", "))
                                         << " tabs=" << w.selftestTabCount() << '\n';
+                    /* --clicktreepath=db/schema: a real (synthesized) mouse
+                     * click on that tree node — single-clicking a schema
+                     * after a switch should make it the combo's selection
+                     * right away */
+                    if(!clickTreePath.isEmpty()) {
+                        w.selftestClickBrowserItem(clickTreePath);
+                        QTextStream(stdout) << "after click " << clickTreePath
+                                            << ": combo="
+                                            << w.selftestComboItems().join(QStringLiteral(", "))
+                                            << " title=" << w.windowTitle() << '\n';
+                    }
                     QApplication::quit();
                 });
             });
@@ -1536,6 +1564,8 @@ int main(int argc, char *argv[])
                         w->selftestSelectBrowserItem(selectTreePath);
                     if(!switchDbArg.isEmpty())
                         w->selftestSwitchDatabase(switchDbArg);
+                    if(!clickTreePath.isEmpty())
+                        w->selftestClickBrowserItem(clickTreePath);
                     if(!mkObj.isEmpty())
                         w->openSchemaObjectTab(mkObj);
                     if(runAgain)
