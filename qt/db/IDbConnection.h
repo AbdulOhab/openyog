@@ -5,6 +5,8 @@
  * already does today. */
 #pragma once
 
+#include "../ConnectionParams.h"
+
 #include <QByteArray>
 #include <QString>
 #include <QStringList>
@@ -23,6 +25,12 @@ class IDbConnection
 {
 public:
     virtual ~IDbConnection() = default;
+
+    /* Which backend this is. Mostly for UI-level branching that has no
+     * cheaper way to ask (e.g. the Object Browser's multi-database
+     * Postgres support) — most dialect differences should still go through
+     * the abstracted methods below, not a driverType() switch in caller code. */
+    virtual DriverType driverType() const = 0;
 
     /* Best-effort: ask a query currently running on this connection, from
      * ANOTHER thread, to stop. This is the one concurrent use this class
@@ -101,6 +109,15 @@ public:
      * A backend that has no such objects returns an empty result (SQLite:
      * routines, events). `typeFilter`: "BASE TABLE" / "VIEW" / "" (= base). */
     virtual QStringList listDatabases() = 0;
+    /* the physical databases reachable from this *server* (not just the one
+     * this connection is attached to) — for MySQL/SQLite, identical to
+     * listDatabases() (one connection already sees every database/the one
+     * file); PostgreSQL overrides this, since listDatabases() there means
+     * "this connection's own schemas" (a Postgres connection can't query
+     * another database at all) while this means "every database on the
+     * server," used by the Object Browser to show them all and lazily open
+     * a side connection to any one the user actually expands. */
+    virtual QStringList listPhysicalDatabases() { return listDatabases(); }
     virtual QStringList listTables(const QString &db, const QString &typeFilter = {}) = 0;
     virtual DbResultSet listColumns(const QString &db, const QString &table) = 0;
     virtual DbResultSet listIndexes(const QString &db, const QString &table) = 0;

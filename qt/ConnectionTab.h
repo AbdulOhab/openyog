@@ -14,6 +14,7 @@
 #include "QueryModel.h"
 
 #include <QComboBox>
+#include <QHash>
 #include <QLabel>
 #include <QPointer>
 #include <QTableView>
@@ -62,6 +63,19 @@ public:
      * this, not currentDatabase(), so the combo shows the right thing
      * for Postgres when there's more than one schema. */
     QString defaultDb() const;
+    /* PostgreSQL only: an already-open connection to `database` on this
+     * same server, opening and caching one on first request (see
+     * m_sideConnections' doc comment). `database` empty or equal to this
+     * tab's own connected database just returns m_conn. Returns nullptr
+     * (with *error set) if opening a new connection fails — a permissions
+     * issue or a database dropped out from under the browser, not
+     * something to crash over. Used by ObjectBrowser's multi-database view. */
+    IDbConnection *connectionFor(const QString &database, QString *error);
+    /* ConnectionParams for a fresh connection to `database` on this same
+     * server (same host/port/user/password/driver as this tab) — used both
+     * by connectionFor() above and by "open this database in its own tab"
+     * from the Object Browser's multi-database view. */
+    ConnectionParams paramsFor(const QString &database) const;
     QString hostLabel() const
     {
         return m_params.driverType == DriverType::Sqlite
@@ -93,6 +107,8 @@ public slots:
     void openTable(const QString &db, const QString &table);
     void useDatabase(const QString &db);
     void refreshBrowser();
+    /* headless-test hook, forwards to ObjectBrowser::expandTopLevelDatabase() */
+    void expandDatabaseNode(const QString &name);
     bool execDdl(const QString &sql);
     void pasteSqlTemplate(int kind);   /* 0=INSERT 1=UPDATE 2=DELETE 3=SELECT */
     void toggleBrowserPane();
@@ -200,6 +216,11 @@ signals:
     void databasesChanged(const QStringList &dbs, const QString &current);
     void executed(const QString &info);      /* "Exec: 0.01 sec" etc. */
     void cursorMoved(const QString &posText);/* "Ln 1, Col 1"        */
+    /* PostgreSQL multi-database tree only: user asked to open a different
+     * physical database as its own tab (see ObjectBrowser::
+     * openDatabaseInNewTabRequested()'s doc comment) — MainWindow actually
+     * owns the tab widget, so this bubbles the request up to it. */
+    void newTabRequested(const ConnectionParams &params);
 
 private:
     void applyResults(const QVector<QueryResult> &results, const QString &tabPrefix);
@@ -208,6 +229,15 @@ private:
 
     ConnectionParams   m_params;
     IDbConnection    * m_conn       = nullptr;   /* browsing (GUI thread) */
+    /* PostgreSQL only: side connections to *other* physical databases on
+     * the same server, opened lazily the first time the Object Browser's
+     * multi-database view expands one, keyed by database name. A Postgres
+     * connection can't query another database at all (see
+     * PostgresConnection.h), so seeing "every database" from one tab means
+     * quietly holding one live connection per database the user has
+     * actually looked at — reused after the first open, closed with the
+     * rest of the tab in the destructor. */
+    QHash<QString, IDbConnection *> m_sideConnections;
 
     ObjectBrowser    * m_browser    = nullptr;
     TableDataView    * m_tableData  = nullptr;

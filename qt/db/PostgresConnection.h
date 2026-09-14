@@ -35,6 +35,8 @@ public:
     explicit PostgresConnection(PGconn *conn);
     ~PostgresConnection() override;
 
+    DriverType driverType() const override { return DriverType::Postgres; }
+
     void cancel() override;
     bool query(const QString &sql, DbResultSet *result, QString *message) override;
 
@@ -43,6 +45,9 @@ public:
         const std::function<void(const QStringList &headers)> &onHeaders,
         const std::function<bool(const QVector<QByteArray> &fields,
                                   const QVector<bool> &isNull)> &onRow) override;
+    /* every real database on the server, not just this connection's own
+     * schemas (see IDbConnection::listPhysicalDatabases()'s doc comment) */
+    QStringList listPhysicalDatabases() override;
 
     QByteArray escape(const QByteArray &raw) override;
     QString    quoteIdent(const QString &ident) override;

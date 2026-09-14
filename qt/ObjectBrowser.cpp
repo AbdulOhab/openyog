@@ -45,6 +45,19 @@ constexpr int KDatabase   = 1002;
 constexpr int KFolder     = 1003;
 constexpr int KTable      = 1004;
 constexpr int KLeaf       = 1005;   /* view / proc / func / trigger / event / column */
+/* PostgreSQL only: a physical database on the server (parent of KDatabase,
+ * which for Postgres means a *schema* — see PostgresConnection.h). Never
+ * created for MySQL/SQLite, where KDatabase already means a real database
+ * and one connection already sees every one of them. */
+constexpr int KPgDatabase = 1006;
+
+/* which physical database a tree item's own subtree belongs to — empty
+ * everywhere for MySQL/SQLite (meaning "the tab's one connection"); for
+ * Postgres, sets which side connection (see ObjectBrowser::connFor())
+ * every descendant of a KPgDatabase node should use. Kept as its own role
+ * rather than folded into UserRole+1 ("extra") since KDatabase/KFolder/
+ * KTable already use that slot for the schema name / table name. */
+constexpr int RolePhysDb = Qt::UserRole + 3;
 
 /* schema-object folder name → the SQL keyword for CREATE/ALTER/DROP … , or
  * empty if the folder isn't a routine/view/trigger/event folder */
@@ -59,23 +72,28 @@ QString folderObjType(const QString &folder)
 }
 
 /* extra = db name for KDatabase/KFolder/KTable; the folder's leaf query lives
- * on the KFolder item's text(0) */
-QTreeWidgetItem *makeItem(int kind, const QString &name, const QString &extra = {})
+ * on the KFolder item's text(0). physDb propagates RolePhysDb down from the
+ * parent — pass the parent's own physDb (or its own name, for a
+ * KPgDatabase item, whose "physDb" is itself). */
+QTreeWidgetItem *makeItem(int kind, const QString &name, const QString &extra = {},
+                          const QString &physDb = {})
 {
     auto *item = new QTreeWidgetItem;
     item->setText(0, name);
     item->setData(0, Qt::UserRole, kind);
     item->setData(0, Qt::UserRole + 1, extra);
-    if(kind == KDatabase || kind == KFolder || kind == KTable)
+    item->setData(0, RolePhysDb, physDb);
+    if(kind == KPgDatabase || kind == KDatabase || kind == KFolder || kind == KTable)
         item->setChildIndicatorPolicy(QTreeWidgetItem::ShowIndicator);
     return item;
 }
 
 /* append each name as a KLeaf child */
-void fillLeaves(QTreeWidgetItem *parent, const QStringList &names, const QString &icon)
+void fillLeaves(QTreeWidgetItem *parent, const QStringList &names, const QString &icon,
+                const QString &physDb = {})
 {
     for(const QString &name : names) {
-        auto *leaf = makeItem(KLeaf, name);
+        auto *leaf = makeItem(KLeaf, name, {}, physDb);
         leaf->setIcon(0, Icons::get(icon));
         parent->addChild(leaf);
     }
@@ -108,9 +126,43 @@ ObjectBrowser::ObjectBrowser(QWidget *parent)
         if(!item)
             return;
         const int kind = item->data(0, Qt::UserRole).toInt();
+        const QString physDb = item->data(0, RolePhysDb).toString();
+        /* an item under a *different* physical database than this tab's
+         * own connection (PostgreSQL's multi-database tree only) — its
+         * structure can be browsed (connFor() opens/reuses a side
+         * connection for that), but every mutating action below assumes
+         * m_conn, the tab's own connection, so those stay unavailable
+         * here; "Connect in New Tab" is the way to actually work with it. */
+        const bool foreign = !physDb.isEmpty() && physDb != m_primaryDatabase;
         QMenu menu(this);
 
-        if(kind == KDatabase) {
+        if(kind == KPgDatabase) {
+            const QString database = item->text(0);
+            menu.addAction(QStringLiteral("Connect to `%1` in New &Tab…").arg(database),
+                           this, [this, database] {
+                emit openDatabaseInNewTabRequested(database);
+            });
+            menu.addAction(QStringLiteral("Re&fresh Node"), this, [this, item] {
+                item->takeChildren();
+                onItemExpanded(item);
+                item->setExpanded(true);
+            });
+        } else if(foreign) {
+            /* reduced menu for anything under a non-primary database:
+             * browsing already works (the tree got here via connFor()),
+             * but no action below this point is safe to route through
+             * m_conn, so only offer what doesn't need it */
+            menu.addAction(QStringLiteral("Connect to `%1` in New &Tab…").arg(physDb),
+                           this, [this, physDb] {
+                emit openDatabaseInNewTabRequested(physDb);
+            });
+            if(kind == KDatabase || kind == KFolder || kind == KTable)
+                menu.addAction(QStringLiteral("Re&fresh Node"), this, [this, item] {
+                    item->takeChildren();
+                    onItemExpanded(item);
+                    item->setExpanded(true);
+                });
+        } else if(kind == KDatabase) {
             const QString db = item->text(0);
             menu.addAction(QStringLiteral("Create &Table…"), this,
                            [this, db] { emit createTableRequested(db); });
@@ -187,7 +239,7 @@ ObjectBrowser::ObjectBrowser(QWidget *parent)
                            [this, db, table] { emit truncateTableRequested(db, table); });
             menu.addSeparator();
             menu.addAction(QStringLiteral("&Copy CREATE Statement"), this,
-                           [this, db, table] { copyCreateTable(db, table); });
+                           [this, db, table, physDb] { copyCreateTable(db, table, physDb); });
             menu.addAction(QStringLiteral("Copy Column &Names"), this,
                            [this, item] { copyColumnNames(item); });
             menu.addAction(QStringLiteral("Re&fresh Node"), this,
@@ -210,7 +262,13 @@ ObjectBrowser::ObjectBrowser(QWidget *parent)
     connect(m_tree, &QTreeWidget::itemDoubleClicked, this,
             [this](QTreeWidgetItem *item, int) {
                 const int kind = item->data(0, Qt::UserRole).toInt();
-                if(kind == KDatabase)
+                const QString physDb = item->data(0, RolePhysDb).toString();
+                const bool foreign = !physDb.isEmpty() && physDb != m_primaryDatabase;
+                if(kind == KPgDatabase)
+                    emit openDatabaseInNewTabRequested(item->text(0));
+                else if(foreign)
+                    emit openDatabaseInNewTabRequested(physDb);
+                else if(kind == KDatabase)
                     emit databaseActivated(item->data(0, Qt::UserRole + 1).toString());
                 else if(kind == KTable)
                     emit tableActivated(item->data(0, Qt::UserRole + 1).toString(),
@@ -239,9 +297,24 @@ void ObjectBrowser::setConnectionLabel(const QString &label)
     m_tree->expandItem(root);
 }
 
-void ObjectBrowser::loadDatabases(IDbConnection *conn, const QString &currentDb)
+void ObjectBrowser::setConnectionResolver(
+    std::function<IDbConnection *(const QString &, QString *)> resolver)
+{
+    m_resolveConn = std::move(resolver);
+}
+
+IDbConnection *ObjectBrowser::connFor(const QString &physDb, QString *error) const
+{
+    if(physDb.isEmpty() || physDb == m_primaryDatabase)
+        return m_conn;
+    return m_resolveConn ? m_resolveConn(physDb, error) : nullptr;
+}
+
+void ObjectBrowser::loadDatabases(IDbConnection *conn, const QString &currentDb,
+                                  const QString &primaryDb)
 {
     m_conn = conn;
+    m_primaryDatabase = primaryDb;
     m_filterLabel->setText(QStringLiteral("Filter tables in %1")
                                .arg(currentDb.isEmpty() ? QStringLiteral("*")
                                                         : currentDb));
@@ -250,20 +323,51 @@ void ObjectBrowser::loadDatabases(IDbConnection *conn, const QString &currentDb)
         return;
 
     root->takeChildren();
-    for(const QString &dbName : m_conn->listDatabases()) {
-        auto *db = makeItem(KDatabase, dbName, dbName);  /* carry db name */
-        db->setIcon(0, Icons::get(QStringLiteral("database.ico")));
-        root->addChild(db);
+
+    /* schema-level population, shared by both branches below: fills `dbItem`
+     * (a KDatabase node) with the standard six folders, then — if it's the
+     * one matching currentDb — selects/expands it and opens its Tables
+     * folder straight away, like SQLyog. `physDb` is what every descendant
+     * inherits (empty for MySQL/SQLite, the owning physical database for
+     * Postgres). */
+    const auto populateSchema = [&](QTreeWidgetItem *dbItem, const QString &dbName,
+                                    const QString &physDb) {
         if(currentDb == dbName) {
-            db->setSelected(true);
-            db->setExpanded(true);
-            onItemExpanded(db);
-            /* open the Tables folder straight away, like SQLyog */
-            if(db->childCount() > 0) {
-                QTreeWidgetItem *tablesFolder = db->child(0);
+            dbItem->setSelected(true);
+            dbItem->setExpanded(true);
+            onItemExpanded(dbItem);
+            if(dbItem->childCount() > 0) {
+                QTreeWidgetItem *tablesFolder = dbItem->child(0);
                 tablesFolder->setExpanded(true);
                 onItemExpanded(tablesFolder);
             }
+        }
+    };
+
+    if(m_conn->driverType() == DriverType::Postgres) {
+        /* one physical-database level, then schemas under the one that's
+         * already connected (via m_conn) — others stay unpopulated until
+         * the user actually expands them (onItemExpanded(KPgDatabase)) */
+        for(const QString &physDb : m_conn->listPhysicalDatabases()) {
+            auto *pd = makeItem(KPgDatabase, physDb, {}, physDb);
+            pd->setIcon(0, Icons::get(QStringLiteral("database.ico")));
+            root->addChild(pd);
+            if(physDb == m_primaryDatabase) {
+                pd->setExpanded(true);
+                for(const QString &schema : m_conn->listDatabases()) {
+                    auto *db = makeItem(KDatabase, schema, schema, physDb);
+                    db->setIcon(0, Icons::get(QStringLiteral("database.ico")));
+                    pd->addChild(db);
+                    populateSchema(db, schema, physDb);
+                }
+            }
+        }
+    } else {
+        for(const QString &dbName : m_conn->listDatabases()) {
+            auto *db = makeItem(KDatabase, dbName, dbName);  /* carry db name */
+            db->setIcon(0, Icons::get(QStringLiteral("database.ico")));
+            root->addChild(db);
+            populateSchema(db, dbName, {});
         }
     }
     m_tree->expandItem(root);
@@ -273,6 +377,13 @@ QStringList ObjectBrowser::currentTableInfo() const
 {
     QTreeWidgetItem *item = m_tree->currentItem();
     if(!item || item->data(0, Qt::UserRole).toInt() != KTable)
+        return {};
+    /* a table under a different physical database than this tab's own
+     * connection (PostgreSQL's multi-database tree) — main-menu Table
+     * actions all route through m_conn, so pretend nothing is selected
+     * rather than let them act on the wrong database */
+    const QString physDb = item->data(0, RolePhysDb).toString();
+    if(!physDb.isEmpty() && physDb != m_primaryDatabase)
         return {};
     return { item->data(0, Qt::UserRole + 1).toString(), item->text(0) };
 }
@@ -284,6 +395,34 @@ void ObjectBrowser::onItemExpanded(QTreeWidgetItem *item)
         return;                       /* already populated, or not connected */
 
     const QString db = item->data(0, Qt::UserRole + 1).toString();
+    const QString physDb = item->data(0, RolePhysDb).toString();
+
+    if(kind == KPgDatabase) {
+        /* only reached for a database OTHER than the primary one — that
+         * one's schemas are already populated by loadDatabases() itself,
+         * so childCount() > 0 short-circuits above before we get here.
+         * physDb == this item's own name (see loadDatabases()). */
+        QString error;
+        IDbConnection *c = connFor(physDb, &error);
+        if(!c) {
+            auto *l = makeItem(KLeaf, QStringLiteral("(connection failed: %1)")
+                                          .arg(error));
+            l->setDisabled(true);
+            item->addChild(l);
+            return;
+        }
+        for(const QString &schema : c->listDatabases()) {
+            auto *dbItem = makeItem(KDatabase, schema, schema, physDb);
+            dbItem->setIcon(0, Icons::get(QStringLiteral("database.ico")));
+            item->addChild(dbItem);
+        }
+        if(item->childCount() == 0) {
+            auto *l = makeItem(KLeaf, QStringLiteral("(no schemas)"));
+            l->setDisabled(true);
+            item->addChild(l);
+        }
+        return;
+    }
 
     if(kind == KDatabase) {
         /* SQLyog shows these six folders under every database, each with
@@ -297,7 +436,7 @@ void ObjectBrowser::onItemExpanded(QTreeWidgetItem *item)
             { QStringLiteral("Events"),       QStringLiteral("event.ico") },
         };
         for(const auto &[f, icon] : kFolders) {
-            auto *folder = makeItem(KFolder, f, db);
+            auto *folder = makeItem(KFolder, f, db, physDb);
             folder->setIcon(0, Icons::get(icon));
             item->addChild(folder);
         }
@@ -317,7 +456,7 @@ void ObjectBrowser::onItemExpanded(QTreeWidgetItem *item)
             { QStringLiteral("Indexes"), QStringLiteral("index.ico") },
         };
         for(const auto &[sub, icon] : kSubFolders) {
-            auto *f = makeItem(KFolder, sub, db);
+            auto *f = makeItem(KFolder, sub, db, physDb);
             f->setData(0, Qt::UserRole + 2, item->text(0));
             f->setIcon(0, Icons::get(icon));
             item->addChild(f);
@@ -328,22 +467,32 @@ void ObjectBrowser::onItemExpanded(QTreeWidgetItem *item)
     if(kind != KFolder)
         return;
 
+    QString connError;
+    IDbConnection *c = connFor(physDb, &connError);
+    if(!c) {
+        auto *l = makeItem(KLeaf, QStringLiteral("(connection failed: %1)")
+                                      .arg(connError));
+        l->setDisabled(true);
+        item->addChild(l);
+        return;
+    }
+
     const QString folder = item->text(0);
 
     /* table-scoped Columns / Indexes folder */
     if(const QString tbl = item->data(0, Qt::UserRole + 2).toString();
        !tbl.isEmpty()) {
         const auto add = [&](const QString &text, const QString &icon) {
-            auto *l = makeItem(KLeaf, text);
+            auto *l = makeItem(KLeaf, text, {}, physDb);
             l->setIcon(0, Icons::get(icon));
             item->addChild(l);
         };
         if(folder == QStringLiteral("Columns")) {
-            for(const QStringList &row : m_conn->listColumns(db, tbl).rows)
+            for(const QStringList &row : c->listColumns(db, tbl).rows)
                 add(QStringLiteral("%1  :  %2").arg(row.value(0), row.value(1)),
                     QStringLiteral("column.ico"));
         } else if(folder == QStringLiteral("Indexes")) {
-            const DbResultSet rs = m_conn->listIndexes(db, tbl);
+            const DbResultSet rs = c->listIndexes(db, tbl);
             QString curName;
             QStringList curCols;
             bool curUnique = false;
@@ -370,32 +519,32 @@ void ObjectBrowser::onItemExpanded(QTreeWidgetItem *item)
         return;
     }
     if(folder == QStringLiteral("Tables")) {
-        for(const QString &t : m_conn->listTables(db, QStringLiteral("BASE TABLE"))) {
-            auto *ti = makeItem(KTable, t, db);
+        for(const QString &t : c->listTables(db, QStringLiteral("BASE TABLE"))) {
+            auto *ti = makeItem(KTable, t, db, physDb);
             ti->setIcon(0, Icons::get(QStringLiteral("table.ico")));
             item->addChild(ti);
         }
     } else if(folder == QStringLiteral("Views")) {
-        fillLeaves(item, m_conn->listTables(db, QStringLiteral("VIEW")),
-                   QStringLiteral("alterview.ico"));
+        fillLeaves(item, c->listTables(db, QStringLiteral("VIEW")),
+                   QStringLiteral("alterview.ico"), physDb);
     } else if(folder == QStringLiteral("Stored Procs")) {
         QStringList names;
-        for(const QStringList &row : m_conn->listRoutines(db).rows)
+        for(const QStringList &row : c->listRoutines(db).rows)
             if(row.value(1) == QStringLiteral("PROCEDURE"))
                 names << row.value(0);
-        fillLeaves(item, names, QStringLiteral("altersp.ico"));
+        fillLeaves(item, names, QStringLiteral("altersp.ico"), physDb);
     } else if(folder == QStringLiteral("Functions")) {
         QStringList names;
-        for(const QStringList &row : m_conn->listRoutines(db).rows)
+        for(const QStringList &row : c->listRoutines(db).rows)
             if(row.value(1) == QStringLiteral("FUNCTION"))
                 names << row.value(0);
-        fillLeaves(item, names, QStringLiteral("alterfunction.ico"));
+        fillLeaves(item, names, QStringLiteral("alterfunction.ico"), physDb);
     } else if(folder == QStringLiteral("Triggers")) {
-        fillLeaves(item, m_conn->listTriggers(db),
-                   QStringLiteral("altertrigger.ico"));
+        fillLeaves(item, c->listTriggers(db),
+                   QStringLiteral("altertrigger.ico"), physDb);
     } else if(folder == QStringLiteral("Events")) {
-        fillLeaves(item, m_conn->listEvents(db),
-                   QStringLiteral("alterevent.ico"));
+        fillLeaves(item, c->listEvents(db),
+                   QStringLiteral("alterevent.ico"), physDb);
     }
 }
 
@@ -406,12 +555,30 @@ void ObjectBrowser::collapseTree()
         root->setExpanded(true);   /* keep the connection node open */
 }
 
-void ObjectBrowser::copyCreateTable(const QString &db, const QString &table)
+void ObjectBrowser::expandTopLevelDatabase(const QString &name)
 {
-    if(!m_conn)
+    QTreeWidgetItem *root = m_tree->topLevelItem(0);
+    if(!root)
         return;
+    for(int i = 0; i < root->childCount(); ++i) {
+        QTreeWidgetItem *child = root->child(i);
+        if(child->text(0) == name) {
+            m_tree->expandItem(child);
+            return;
+        }
+    }
+}
+
+void ObjectBrowser::copyCreateTable(const QString &db, const QString &table,
+                                    const QString &physDb)
+{
     QString error;
-    const QString ddl = m_conn->showCreate(QStringLiteral("TABLE"), db, table, &error);
+    IDbConnection *c = connFor(physDb, &error);
+    if(!c) {
+        emit statusMessage(QStringLiteral("SHOW CREATE failed: %1").arg(error));
+        return;
+    }
+    const QString ddl = c->showCreate(QStringLiteral("TABLE"), db, table, &error);
     if(ddl.isEmpty()) {
         if(!error.isEmpty())
             emit statusMessage(QStringLiteral("SHOW CREATE failed: %1").arg(error));

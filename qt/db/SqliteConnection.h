@@ -15,6 +15,8 @@ public:
     explicit SqliteConnection(sqlite3 *db);
     ~SqliteConnection() override;
 
+    DriverType driverType() const override { return DriverType::Sqlite; }
+
     void cancel() override;
     bool query(const QString &sql, DbResultSet *result, QString *message) override;
 
