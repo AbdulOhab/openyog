@@ -44,6 +44,9 @@ public:
     void selftestExpandDatabase(const QString &name);   /* --expandpgdb= selftest */
     void selftestSelectBrowserItem(const QString &path);   /* --selecttreepath= selftest */
     void selftestClickBrowserItem(const QString &path);    /* --clicktreepath= selftest */
+    void selftestCollapseBrowserItem(const QString &path); /* --collapsetreepath= selftest */
+    void selftestExpandBrowserItem(const QString &path);   /* --expandtreepath= selftest */
+    void selftestDoubleClickBrowserItem(const QString &path); /* --dblclicktreepath= selftest */
     void selftestRunAgain();   /* --runagain selftest: F9 a second time */
     QStringList selftestComboItems() const;   /* --dumpcombo selftest */
     void selftestSwitchDatabase(const QString &db);   /* --switchdb= selftest */

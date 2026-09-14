@@ -1499,6 +1499,21 @@ void ConnectionTab::clickBrowserItem(const QString &path)
     m_browser->clickTreeItem(path);
 }
 
+void ConnectionTab::collapseBrowserItem(const QString &path)
+{
+    m_browser->collapseTreeItem(path);
+}
+
+void ConnectionTab::expandBrowserItem(const QString &path)
+{
+    m_browser->expandTreeItem(path);
+}
+
+void ConnectionTab::doubleClickBrowserItem(const QString &path)
+{
+    m_browser->doubleClickTreeItem(path);
+}
+
 void ConnectionTab::promptFind()
 {
     m_findBar->activate();

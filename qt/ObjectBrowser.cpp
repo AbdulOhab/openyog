@@ -662,6 +662,73 @@ void ObjectBrowser::clickTreeItem(const QString &path)
     QApplication::sendEvent(m_tree->viewport(), &release);
 }
 
+void ObjectBrowser::collapseTreeItem(const QString &path)
+{
+    QTreeWidgetItem *cur = m_tree->topLevelItem(0);
+    if(!cur)
+        return;
+    const QStringList parts = path.split(QLatin1Char('/'), Qt::SkipEmptyParts);
+    for(const QString &part : parts) {
+        QTreeWidgetItem *next = nullptr;
+        for(int i = 0; i < cur->childCount(); ++i)
+            if(cur->child(i)->text(0) == part) { next = cur->child(i); break; }
+        if(!next)
+            return;
+        cur = next;
+    }
+    cur->setExpanded(false);
+}
+
+void ObjectBrowser::doubleClickTreeItem(const QString &path)
+{
+    QTreeWidgetItem *cur = m_tree->topLevelItem(0);
+    if(!cur)
+        return;
+    const QStringList parts = path.split(QLatin1Char('/'), Qt::SkipEmptyParts);
+    for(const QString &part : parts) {
+        QTreeWidgetItem *next = nullptr;
+        for(int i = 0; i < cur->childCount(); ++i)
+            if(cur->child(i)->text(0) == part) { next = cur->child(i); break; }
+        if(!next)
+            return;
+        cur = next;
+    }
+    m_tree->setCurrentItem(cur);
+    m_tree->scrollToItem(cur, QAbstractItemView::PositionAtCenter);
+    const QRect r = m_tree->visualItemRect(cur);
+    const QPoint p = r.center();
+    const QPoint global = m_tree->viewport()->mapToGlobal(p);
+    QMouseEvent press1(QEvent::MouseButtonPress, p, global,
+                       Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+    QMouseEvent release1(QEvent::MouseButtonRelease, p, global,
+                         Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
+    QMouseEvent dblClick(QEvent::MouseButtonDblClick, p, global,
+                         Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+    QMouseEvent release2(QEvent::MouseButtonRelease, p, global,
+                         Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
+    QApplication::sendEvent(m_tree->viewport(), &press1);
+    QApplication::sendEvent(m_tree->viewport(), &release1);
+    QApplication::sendEvent(m_tree->viewport(), &dblClick);
+    QApplication::sendEvent(m_tree->viewport(), &release2);
+}
+
+void ObjectBrowser::expandTreeItem(const QString &path)
+{
+    QTreeWidgetItem *cur = m_tree->topLevelItem(0);
+    if(!cur)
+        return;
+    const QStringList parts = path.split(QLatin1Char('/'), Qt::SkipEmptyParts);
+    for(const QString &part : parts) {
+        QTreeWidgetItem *next = nullptr;
+        for(int i = 0; i < cur->childCount(); ++i)
+            if(cur->child(i)->text(0) == part) { next = cur->child(i); break; }
+        if(!next)
+            return;
+        cur = next;
+    }
+    cur->setExpanded(true);
+}
+
 void ObjectBrowser::copyCreateTable(const QString &db, const QString &table,
                                     const QString &physDb)
 {

@@ -79,6 +79,20 @@ public:
      * as a user click would, which a programmatic setCurrentItem() does
      * not (no itemClicked signal fires for it). */
     void clickTreeItem(const QString &path);
+    /* same path walk, synthesizing a real double-click (press+release+
+     * doubleclick+release) — the only way this app currently opens a
+     * table's data from the tree, so a single-click test hook alone can't
+     * exercise it */
+    void doubleClickTreeItem(const QString &path);
+    /* headless-test hook: same path walk, but collapses the found item
+     * (QTreeWidgetItem::setExpanded(false)) — for reproducing collapse/
+     * re-click interaction bugs without simulating mouse input on the
+     * (possibly invisible, see the Theme.cpp ::branch comment) arrow */
+    void collapseTreeItem(const QString &path);
+    /* same path walk, expanding instead (QTreeWidgetItem::setExpanded(true),
+     * which — unlike a real arrow click — does trigger itemExpanded, so
+     * lazy children populate exactly as they would for a user) */
+    void expandTreeItem(const QString &path);
 
 signals:
     void databaseActivated(const QString &db);      /* double click → USE */

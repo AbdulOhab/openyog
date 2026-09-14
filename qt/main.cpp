@@ -74,6 +74,9 @@ int main(int argc, char *argv[])
     bool runAgain = false;  /* --runagain selftest: F9 a second time before the screenshot */
     QString selectTreePath;  /* --selecttreepath=a/b/c selftest */
     QString clickTreePath;   /* --clicktreepath=a/b/c selftest (synthesized mouse click) */
+    QString dblClickTreePath; /* --dblclicktreepath=a/b/c selftest (synthesized double-click) */
+    QString collapseTreePath; /* --collapsetreepath=a/b/c selftest */
+    QString expandTreePath;   /* --expandtreepath=a/b/c selftest (setExpanded(true), not a click) */
     int editRow = -1, editCol = -1;
     bool stageOnly = false;
     QString editValue;
@@ -110,6 +113,12 @@ int main(int argc, char *argv[])
             selectTreePath = a.mid(QStringLiteral("--selecttreepath=").size());
         if(a.startsWith(QStringLiteral("--clicktreepath=")))
             clickTreePath = a.mid(QStringLiteral("--clicktreepath=").size());
+        if(a.startsWith(QStringLiteral("--dblclicktreepath=")))
+            dblClickTreePath = a.mid(QStringLiteral("--dblclicktreepath=").size());
+        if(a.startsWith(QStringLiteral("--collapsetreepath=")))
+            collapseTreePath = a.mid(QStringLiteral("--collapsetreepath=").size());
+        if(a.startsWith(QStringLiteral("--expandtreepath=")))
+            expandTreePath = a.mid(QStringLiteral("--expandtreepath=").size());
         if(a == QStringLiteral("--exportdlg"))
             shotExportDlg = true;
         /* --opentable=db:table (selftest: opens the editable data grid) */
@@ -1624,8 +1633,14 @@ int main(int argc, char *argv[])
                         w->selftestSelectBrowserItem(selectTreePath);
                     if(!switchDbArg.isEmpty())
                         w->selftestSwitchDatabase(switchDbArg);
+                    if(!expandTreePath.isEmpty())
+                        w->selftestExpandBrowserItem(expandTreePath);
+                    if(!collapseTreePath.isEmpty())
+                        w->selftestCollapseBrowserItem(collapseTreePath);
                     if(!clickTreePath.isEmpty())
                         w->selftestClickBrowserItem(clickTreePath);
+                    if(!dblClickTreePath.isEmpty())
+                        w->selftestDoubleClickBrowserItem(dblClickTreePath);
                     if(!mkObj.isEmpty())
                         w->openSchemaObjectTab(mkObj);
                     if(runAgain)
