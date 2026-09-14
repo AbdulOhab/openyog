@@ -58,6 +58,17 @@
 
 int main(int argc, char *argv[])
 {
+    /* Several Linux desktop styles (GTK/XFCE among them — the platform
+     * theme plugin mirrors the desktop's "gtk-menu-images" setting) default
+     * to Qt::AA_DontShowIconsInMenus = true, which silently blanks every
+     * QAction::setIcon() in a QMenu unless the action opted in explicitly
+     * with setIconVisibleInMenu(true) — nothing in this app ever does, so
+     * on such a desktop the whole menu-icon pass (MainWindow.cpp) would
+     * render with icons present in the code but invisible on screen. Force
+     * it off before any QApplication/menu exists, matching every other
+     * platform's default rather than the current desktop's HIG preference. */
+    QApplication::setAttribute(Qt::AA_DontShowIconsInMenus, false);
+
     QString screenshot;
     bool shotDialog = false;
     QString dialogDriver;   /* --dialogdriver=sqlite : preselect a driver, --dialog selftest */
@@ -1542,23 +1553,34 @@ int main(int argc, char *argv[])
             return rc;
         }
         if(!shotMenuArg.isEmpty()) {
-            /* find the top-level menu by title (mnemonic '&' stripped, case-
-             * insensitive — "File", "Database", "Transactions", …) and grab
-             * just that open popup, for checking menu icons/labels/shortcuts
-             * without eyeballing the whole window */
+            /* find a menu by title path (mnemonic '&' stripped, case-
+             * insensitive — "File", "Database>Create", "Table>Backup/Export",
+             * …) and grab just that open popup, for checking menu icons/
+             * labels/shortcuts without eyeballing the whole window */
             auto *w = new MainWindow;
             w->show();
+            const QStringList path = shotMenuArg.split(QLatin1Char('>'));
             QMenu *target = nullptr;
-            for(QAction *a : w->menuBar()->actions()) {
-                QString t = a->text();
-                t.remove(QLatin1Char('&'));
-                if(t.compare(shotMenuArg, Qt::CaseInsensitive) == 0) {
-                    target = a->menu();
+            QList<QAction *> level = w->menuBar()->actions();
+            for(const QString &step : path) {
+                QAction *found = nullptr;
+                for(QAction *a : level) {
+                    QString t = a->text();
+                    t.remove(QLatin1Char('&'));
+                    if(t.compare(step, Qt::CaseInsensitive) == 0) {
+                        found = a;
+                        break;
+                    }
+                }
+                if(!found || !found->menu()) {
+                    target = nullptr;
                     break;
                 }
+                target = found->menu();
+                level = target->actions();
             }
             if(!target) {
-                QTextStream(stdout) << "shotmenu: no top-level menu named \""
+                QTextStream(stdout) << "shotmenu: no menu at path \""
                                     << shotMenuArg << "\"\n";
                 return 1;
             }
