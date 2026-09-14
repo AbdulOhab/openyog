@@ -1284,7 +1284,16 @@ void MainWindow::syncToolbarToCurrentTab()
     m_dbCombo->blockSignals(true);
     m_dbCombo->clear();
     if(tab) {
-        m_dbCombo->addItems(tab->databases());
+        const QStringList schemas = tab->databases();
+        m_dbCombo->addItems(schemas);
+        /* PostgreSQL only in practice (identical lists everywhere else, so
+         * nothing new gets appended): every *other* database on the
+         * server, so the combo can jump straight to one instead of only
+         * being reachable via the tree's "Connect in New Tab" — picking
+         * one here does exactly that, see useDatabaseFromCombo() */
+        for(const QString &db : tab->physicalDatabases())
+            if(!schemas.contains(db) && db != tab->currentDatabase())
+                m_dbCombo->addItem(db);
         /* defaultDb(), not currentDatabase(): for Postgres the latter is
          * the *connected* database (e.g. "postgres"), which generally
          * isn't even one of the schema names tab->databases() just
@@ -1308,8 +1317,19 @@ void MainWindow::syncToolbarToCurrentTab()
 
 void MainWindow::useDatabaseFromCombo(const QString &db)
 {
-    if(auto *tab = currentTab())
+    auto *tab = currentTab();
+    if(!tab)
+        return;
+    /* a name from the schema list (always true for MySQL/SQLite, since
+     * databases()/physicalDatabases() are identical there) switches
+     * schema in place; anything else is one of the *other* databases the
+     * combo now also lists for PostgreSQL — same "Connect in New Tab"
+     * this database's tree node itself offers, since a Postgres
+     * connection can't switch to a different database in place at all */
+    if(tab->databases().contains(db))
         tab->useDatabase(db);
+    else
+        openAndRun(tab->paramsFor(db));
 }
 
 void MainWindow::executeCurrentTab()
@@ -1679,6 +1699,22 @@ void MainWindow::selftestSelectBrowserItem(const QString &path)
 {
     if(auto *tab = currentTab())
         tab->selectBrowserItem(path);
+}
+
+QStringList MainWindow::selftestComboItems() const
+{
+    QStringList out;
+    for(int i = 0; i < m_dbCombo->count(); ++i)
+        out << m_dbCombo->itemText(i);
+    return out;
+}
+
+void MainWindow::selftestPickCombo(const QString &db)
+{
+    /* calls the same slot the combo's currentIndexChanged signal does,
+     * rather than driving the QComboBox widget itself (which would also
+     * work, but this is the exact call a real pick makes either way) */
+    useDatabaseFromCombo(db);
 }
 
 void MainWindow::closeTab(int index)
