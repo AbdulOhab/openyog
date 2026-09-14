@@ -187,6 +187,21 @@ DbResultSet MySqlConnection::listColumns(const QString &db, const QString &table
     return rs;
 }
 
+/* one information_schema query for every distinct column name in `db`,
+ * instead of the default's SHOW FULL COLUMNS round trip per table */
+QStringList MySqlConnection::listAllColumnNames(const QString &db)
+{
+    DbResultSet rs;
+    QStringList out;
+    if(runBuffered(QStringLiteral(
+           "SELECT DISTINCT column_name FROM information_schema.columns "
+           "WHERE table_schema='%1' ORDER BY column_name")
+               .arg(db), &rs, nullptr))
+        for(const QStringList &row : rs.rows)
+            out << row.value(0);
+    return out;
+}
+
 DbResultSet MySqlConnection::listIndexes(const QString &db, const QString &table)
 {
     DbResultSet rs;
