@@ -669,6 +669,11 @@ QString ConnectionTab::defaultDb() const
     return m_params.database;
 }
 
+QStringList ConnectionTab::physicalDatabases() const
+{
+    return m_conn ? m_conn->listPhysicalDatabases() : QStringList();
+}
+
 ConnectionParams ConnectionTab::paramsFor(const QString &database) const
 {
     ConnectionParams p = m_params;

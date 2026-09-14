@@ -54,6 +54,14 @@ public:
     bool isConnected() const { return m_conn != nullptr; }
     QString title() const { return m_params.name; }
     QStringList databases() const { return m_databases; }
+    /* every real database on the server (see IDbConnection::
+     * listPhysicalDatabases()'s doc comment) — identical to databases()
+     * for MySQL/SQLite (one connection already sees every database), but
+     * for PostgreSQL this is the sibling databases databases() itself
+     * can't include (that's schemas of the one connected database).
+     * MainWindow's toolbar combo uses this to list every database, not
+     * just the current one's schemas. */
+    QStringList physicalDatabases() const;
     QString currentDatabase() const { return m_params.database; }
     /* the schema/database actually being *browsed* right now — same as
      * currentDatabase() for MySQL/SQLite, but for PostgreSQL that's the

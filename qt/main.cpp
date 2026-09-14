@@ -80,6 +80,8 @@ int main(int argc, char *argv[])
     QString copyDbArg;
     QString pgCopyDbArg;
     QString pgMultiDbArg;
+    bool dumpCombo = false;   /* --dumpcombo selftest */
+    QString pickComboArg;     /* --pickcombo=NAME selftest: also pick a combo item */
     QString sqliteCopyDbArg;
     QString sqliteCsvImportArg;
     QString pgCsvImportArg;
@@ -124,6 +126,10 @@ int main(int argc, char *argv[])
             pgCopyDbArg = a.mid(QStringLiteral("--pgcopydb=").size());
         if(a.startsWith(QStringLiteral("--pgmultidbtest=")))
             pgMultiDbArg = a.mid(QStringLiteral("--pgmultidbtest=").size());
+        if(a == QStringLiteral("--dumpcombo"))
+            dumpCombo = true;
+        if(a.startsWith(QStringLiteral("--pickcombo=")))
+            pickComboArg = a.mid(QStringLiteral("--pickcombo=").size());
         if(a.startsWith(QStringLiteral("--sqlitecopydb=")))
             sqliteCopyDbArg = a.mid(QStringLiteral("--sqlitecopydb=").size());
         if(a.startsWith(QStringLiteral("--sqlitecsvimport=")))
@@ -1346,6 +1352,50 @@ int main(int argc, char *argv[])
         rc = (w.openAndRun(autoConnect) && w.selftestMultiDb(pgMultiDbArg)) ? 0 : 1;
         dbDriverFor(DriverType::Mysql)->libraryShutdown();
         return rc;
+    }
+
+    /* --dumpcombo selftest (headless): autoconnect, print the toolbar
+     * database combo's items, exit. Goes through the same QTimer +
+     * QApplication::exec() shape the --screenshot= flow uses rather than
+     * returning immediately after openAndRun() — connecting kicks off the
+     * seed query on a worker thread, and exiting before it lands is an
+     * intermittent use-after-free at shutdown (this flag does so little
+     * afterward it was the first one to reliably expose that race; not
+     * attempting a real fix for the race itself here, just not tripping it). */
+    if(dumpCombo && doAutoConnect) {
+        MainWindow w;
+        bool ok = false;
+        QTimer::singleShot(1500, [&] {
+            ok = w.openAndRun(autoConnect);
+            QTimer::singleShot(600, [&] {
+                QTextStream(stdout) << "combo: "
+                                    << w.selftestComboItems().join(QStringLiteral(", "))
+                                    << '\n';
+                if(pickComboArg.isEmpty()) {
+                    QApplication::quit();
+                    return;
+                }
+                w.selftestPickCombo(pickComboArg);
+                /* picking a sibling database opens a *new* tab (its own
+                 * openAndRun(), same async seed-query race as the initial
+                 * connect) — same delay-before-exit reasoning as above */
+                QTimer::singleShot(1500, [&] {
+                    /* the window title encodes [tab/schema - host] — if
+                     * picking a sibling database opened a new, correctly-
+                     * scoped tab (rather than, say, doing nothing, or
+                     * mis-switching schema on the *same* tab), the title's
+                     * database segment changes to match */
+                    QTextStream(stdout) << "after pick: title=" << w.windowTitle()
+                                        << " combo="
+                                        << w.selftestComboItems().join(QStringLiteral(", "))
+                                        << '\n';
+                    QApplication::quit();
+                });
+            });
+        });
+        QApplication::exec();
+        dbDriverFor(DriverType::Mysql)->libraryShutdown();
+        return ok ? 0 : 1;
     }
 
     /* --sqlitecopydb=target[:nodata] selftest (headless): autoconnect (via
