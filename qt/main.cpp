@@ -68,6 +68,7 @@ int main(int argc, char *argv[])
     QString hexCell;        /* --hexcell=row:col:hexdigits selftest */
     QString mkObj;          /* --mkobj=VIEW|PROCEDURE|… selftest */
     QString useDbArg;       /* --usedb=NAME selftest */
+    QString expandPgDbArg;  /* --expandpgdb=NAME selftest */
     int editRow = -1, editCol = -1;
     bool stageOnly = false;
     QString editValue;
@@ -76,6 +77,7 @@ int main(int argc, char *argv[])
     QString dumpPath;
     QString copyDbArg;
     QString pgCopyDbArg;
+    QString pgMultiDbArg;
     QString sqliteCopyDbArg;
     QString sqliteCsvImportArg;
     QString pgCsvImportArg;
@@ -114,6 +116,8 @@ int main(int argc, char *argv[])
             copyDbArg = a.mid(QStringLiteral("--copydb=").size());
         if(a.startsWith(QStringLiteral("--pgcopydb=")))
             pgCopyDbArg = a.mid(QStringLiteral("--pgcopydb=").size());
+        if(a.startsWith(QStringLiteral("--pgmultidbtest=")))
+            pgMultiDbArg = a.mid(QStringLiteral("--pgmultidbtest=").size());
         if(a.startsWith(QStringLiteral("--sqlitecopydb=")))
             sqliteCopyDbArg = a.mid(QStringLiteral("--sqlitecopydb=").size());
         if(a.startsWith(QStringLiteral("--sqlitecsvimport=")))
@@ -1220,6 +1224,8 @@ int main(int argc, char *argv[])
             mkObj = a.mid(QStringLiteral("--mkobj=").size());
         if(a.startsWith(QStringLiteral("--usedb=")))
             useDbArg = a.mid(QStringLiteral("--usedb=").size());
+        if(a.startsWith(QStringLiteral("--expandpgdb=")))
+            expandPgDbArg = a.mid(QStringLiteral("--expandpgdb=").size());
         /* --autoconnect=host:port:user:password:db */
         if(a.startsWith(QStringLiteral("--autoconnect="))) {
             const QStringList parts = a.mid(14).split(':');
@@ -1322,6 +1328,16 @@ int main(int argc, char *argv[])
         MainWindow w;
         rc = (p.size() == 2 && w.openAndRun(autoConnect)
               && w.selftestCopyDbPostgres(p[0], p[1])) ? 0 : 1;
+        dbDriverFor(DriverType::Mysql)->libraryShutdown();
+        return rc;
+    }
+
+    /* --pgmultidbtest=otherDb selftest (headless): autoconnect (via
+     * --autoconnectpg=), exercise the Object Browser's multi-database
+     * side-connection plumbing (ConnectionTab::connectionFor()/paramsFor()), exit */
+    if(!pgMultiDbArg.isEmpty() && doAutoConnect) {
+        MainWindow w;
+        rc = (w.openAndRun(autoConnect) && w.selftestMultiDb(pgMultiDbArg)) ? 0 : 1;
         dbDriverFor(DriverType::Mysql)->libraryShutdown();
         return rc;
     }
@@ -1439,6 +1455,8 @@ int main(int argc, char *argv[])
                         w->setDataViewMode(QStringLiteral("hex:") + hexCell);
                     if(!useDbArg.isEmpty())
                         w->selftestUseDatabase(useDbArg);
+                    if(!expandPgDbArg.isEmpty())
+                        w->selftestExpandDatabase(expandPgDbArg);
                     if(!mkObj.isEmpty())
                         w->openSchemaObjectTab(mkObj);
                     QTimer::singleShot(600, [w, screenshot] {

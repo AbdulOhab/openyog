@@ -23,6 +23,8 @@ public:
                     bool owns = true);
     ~MySqlConnection() override;
 
+    DriverType driverType() const override { return DriverType::Mysql; }
+
     void cancel() override;
     bool query(const QString &sql, DbResultSet *result, QString *message) override;
 

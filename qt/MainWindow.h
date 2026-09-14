@@ -41,6 +41,7 @@ public:
     void setDataViewMode(const QString &mode);   /* selftest: "text" | "grid" */
     void openSchemaObjectTab(const QString &objType);   /* selftest */
     void selftestUseDatabase(const QString &db);   /* --usedb= selftest */
+    void selftestExpandDatabase(const QString &name);   /* --expandpgdb= selftest */
     void editTableCell(int row, int col, const QString &value, bool stageOnly = false);
     /* --dumpdb=FILE selftest: dump the active connection's default db */
     bool selftestDump(const QString &path);
@@ -48,6 +49,10 @@ public:
     bool selftestCopyDb(const QString &src, const QString &tgt);
     /* --pgcopydb=src:tgt selftest (schema-to-schema, same connection) */
     bool selftestCopyDbPostgres(const QString &src, const QString &tgt);
+    /* --pgmultidbtest=otherDb selftest: exercises ConnectionTab::
+     * connectionFor()/paramsFor() — the side-connection plumbing behind
+     * the Object Browser's multi-database tree */
+    bool selftestMultiDb(const QString &otherDb);
     /* --sqlitecopydb=target[:nodata] selftest */
     bool selftestCopySqliteFile(const QString &target, bool withData);
     /* --sqlitecsvimport=file.csv:table / --pgcsvimport=file.csv:table[:onDup]

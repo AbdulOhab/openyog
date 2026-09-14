@@ -191,6 +191,24 @@ QStringList PostgresConnection::listDatabases()
     return out;
 }
 
+/* every real, connectable database on the server (excludes the two
+ * template databases and anything with datallowconn=false, e.g. a
+ * database mid-DROP or explicitly locked down) — used only by the Object
+ * Browser's multi-database support, not by anything that already has a
+ * live connection scoped to one database */
+QStringList PostgresConnection::listPhysicalDatabases()
+{
+    DbResultSet rs;
+    QStringList out;
+    if(runBuffered(QStringLiteral(
+           "SELECT datname FROM pg_database "
+           "WHERE NOT datistemplate AND datallowconn "
+           "ORDER BY datname"), &rs, nullptr))
+        for(const QStringList &row : rs.rows)
+            out << row.value(0);
+    return out;
+}
+
 QStringList PostgresConnection::listTables(const QString &db, const QString &typeFilter)
 {
     const QString type = typeFilter.compare(QStringLiteral("VIEW"), Qt::CaseInsensitive) == 0

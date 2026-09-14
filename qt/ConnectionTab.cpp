@@ -344,6 +344,11 @@ ConnectionTab::ConnectionTab(const ConnectionParams &params, QWidget *parent)
 {
     /* ---- left: object browser ------------------------------------ */
     m_browser = new ObjectBrowser(this);
+    m_browser->setConnectionResolver([this](const QString &database, QString *error) {
+        return connectionFor(database, error);
+    });
+    connect(m_browser, &ObjectBrowser::openDatabaseInNewTabRequested, this,
+            [this](const QString &database) { emit newTabRequested(paramsFor(database)); });
 
     /* ---- right-top: editor tabs (Query 1 / History) --------------- */
     m_editor = new CodeEditor(this);
@@ -599,7 +604,7 @@ ConnectionTab::ConnectionTab(const ConnectionParams &params, QWidget *parent)
     m_browser->setConnectionLabel(isSqlite
         ? QFileInfo(m_params.filePath).fileName()
         : QStringLiteral("%1@%2").arg(m_params.user, m_params.host));
-    m_browser->loadDatabases(m_conn, defaultDb());
+    m_browser->loadDatabases(m_conn, defaultDb(), m_params.database);
     updateCompletions();
     m_messages->setPlainText(isSqlite
         ? QStringLiteral("Connected to %1\nSQLite version: %2")
@@ -617,6 +622,7 @@ ConnectionTab::ConnectionTab(const ConnectionParams &params, QWidget *parent)
 
 ConnectionTab::~ConnectionTab()
 {
+    qDeleteAll(m_sideConnections);
     delete m_conn;
 }
 
@@ -649,6 +655,26 @@ QString ConnectionTab::defaultDb() const
     if(m_params.driverType == DriverType::Postgres)
         return m_currentSchema.isEmpty() ? QStringLiteral("public") : m_currentSchema;
     return m_params.database;
+}
+
+ConnectionParams ConnectionTab::paramsFor(const QString &database) const
+{
+    ConnectionParams p = m_params;
+    p.database = database;
+    p.name = database;
+    return p;
+}
+
+IDbConnection *ConnectionTab::connectionFor(const QString &database, QString *error)
+{
+    if(database.isEmpty() || database == m_params.database)
+        return m_conn;
+    if(IDbConnection *cached = m_sideConnections.value(database))
+        return cached;
+    IDbConnection *c = dbDriverFor(m_params.driverType)->connect(paramsFor(database), error);
+    if(c)
+        m_sideConnections.insert(database, c);
+    return c;
 }
 
 /* schema identifiers (tables + columns of the current db) for autocomplete —
@@ -1368,9 +1394,14 @@ void ConnectionTab::exportResult()
 void ConnectionTab::refreshBrowser()
 {
     if(m_conn) {
-        m_browser->loadDatabases(m_conn, defaultDb());
+        m_browser->loadDatabases(m_conn, defaultDb(), m_params.database);
         updateCompletions();
     }
+}
+
+void ConnectionTab::expandDatabaseNode(const QString &name)
+{
+    m_browser->expandTopLevelDatabase(name);
 }
 
 void ConnectionTab::promptFind()

@@ -11,6 +11,7 @@
 #include "Icons.h"
 #include "ObjectBrowser.h"
 #include "Theme.h"
+#include "db/IDbConnection.h"
 
 #include <QAction>
 #include <QActionGroup>
@@ -41,6 +42,7 @@
 #include <QStatusBar>
 #include <QStackedWidget>
 #include <QTabWidget>
+#include <QTextStream>
 #include <QToolBar>
 #include <QVBoxLayout>
 
@@ -127,12 +129,20 @@ MainWindow::MainWindow(QWidget *parent)
         if(auto *t = currentTab())
             openAndRun([&] {
                 ConnectionParams p;
-                p.host     = t->property("host").toString();
-                p.port     = t->property("port").toInt();
-                p.user     = t->property("user").toString();
-                p.password = t->property("password").toString();
-                p.database = t->property("database").toString();
-                p.name     = t->title();
+                p.host       = t->property("host").toString();
+                p.port       = t->property("port").toInt();
+                p.user       = t->property("user").toString();
+                p.password   = t->property("password").toString();
+                p.database   = t->property("database").toString();
+                /* driverType/filePath: without these this always opened a
+                 * MySQL connection regardless of the current tab's actual
+                 * driver — harmless for a MySQL tab, but a SQLite tab has
+                 * no meaningful host/port/user at all and a Postgres tab
+                 * would get MySQL's wire protocol pointed at its host/port,
+                 * so this was silently broken for both until fixed here. */
+                p.driverType = static_cast<DriverType>(t->property("driverType").toInt());
+                p.filePath   = t->property("filePath").toString();
+                p.name       = t->title();
                 return p;
             }());
     });
@@ -1438,12 +1448,16 @@ bool MainWindow::openAndRun(const ConnectionParams &params)
     const int index = m_tabs->addTab(tab, tab->title());
     m_tabs->setCurrentIndex(index);
 
-    /* stash connection info for "New Connection Using Current Settings" */
+    /* stash connection info for "New Connection Using Current Settings" —
+     * driverType/filePath included so that action actually reconnects with
+     * the right driver instead of always assuming MySQL */
     tab->setProperty("host", params.host);
     tab->setProperty("port", params.port);
     tab->setProperty("user", params.user);
     tab->setProperty("password", params.password);
     tab->setProperty("database", params.database);
+    tab->setProperty("driverType", static_cast<int>(params.driverType));
+    tab->setProperty("filePath", params.filePath);
 
     connect(tab, &ConnectionTab::databasesChanged, this,
             [this, tab](const QStringList &, const QString &) {
@@ -1463,6 +1477,8 @@ bool MainWindow::openAndRun(const ConnectionParams &params)
         if(m_tabs->currentWidget() == tab)
             m_cursorLabel->setText(pos);
     });
+    connect(tab, &ConnectionTab::newTabRequested, this,
+            [this](const ConnectionParams &p) { openAndRun(p); });
 
     syncToolbarToCurrentTab();
     tab->runQuery();   /* run the editor's default query so the grid has data */
@@ -1509,6 +1525,72 @@ bool MainWindow::selftestCopyDbPostgres(const QString &src, const QString &tgt)
     if(!ok)
         qWarning("pgcopydb failed: %s", qPrintable(err));
     return ok;
+}
+
+bool MainWindow::selftestMultiDb(const QString &otherDb)
+{
+    auto *tab = currentTab();
+    if(!tab)
+        return false;
+    int fails = 0;
+    const auto check = [&](bool ok, const QString &what) {
+        if(!ok) ++fails;
+        QTextStream(stdout) << "pgmultidbtest " << what
+                            << (ok ? "  PASS\n" : "  FAIL\n");
+    };
+
+    const QString primary = tab->currentDatabase();
+    QString err1, err2, err3;
+    IDbConnection *primaryViaEmpty = tab->connectionFor(QString(), &err1);
+    IDbConnection *primaryViaName  = tab->connectionFor(primary, &err2);
+    check(primaryViaEmpty && primaryViaEmpty == primaryViaName,
+          QStringLiteral("connectionFor(\"\")/connectionFor(primary) both resolve to the same connection"));
+
+    IDbConnection *side1 = tab->connectionFor(otherDb, &err3);
+    check(side1 != nullptr, QStringLiteral("connectionFor(\"%1\") succeeds").arg(otherDb));
+    if(!side1) {
+        QTextStream(stdout) << "  error: " << err3 << '\n';
+        return fails == 0;
+    }
+    check(side1 != primaryViaEmpty, QStringLiteral("side connection differs from the primary one"));
+
+    QString err4;
+    IDbConnection *side2 = tab->connectionFor(otherDb, &err4);
+    check(side1 == side2, QStringLiteral("a second connectionFor() call for the same db reuses the cached one"));
+
+    /* the side connection must genuinely see the OTHER database's own
+     * catalog, not the primary's (the whole point of this feature) */
+    const QStringList tables = side1->listTables(QStringLiteral("public"),
+                                                 QStringLiteral("BASE TABLE"));
+    check(!tables.isEmpty(), QStringLiteral("side connection lists tables in %1.public")
+                                 .arg(otherDb));
+    QTextStream(stdout) << "  tables: " << tables.join(QStringLiteral(", ")) << '\n';
+
+    const ConnectionParams p = tab->paramsFor(otherDb);
+    check(p.database == otherDb && p.host == tab->params().host
+              && p.user == tab->params().user && p.driverType == tab->driverType(),
+          QStringLiteral("paramsFor() carries the right database with the same host/user/driver"));
+
+    /* end-to-end: this is what "Connect to <db> in New Tab" actually does
+     * (ObjectBrowser::openDatabaseInNewTabRequested -> ConnectionTab::
+     * newTabRequested -> this same openAndRun call, wired in openAndRun()
+     * itself) — verify it produces a second, correctly-scoped tab rather
+     * than just trusting the two already-tested halves compose correctly */
+    const int tabsBefore = m_tabs->count();
+    const bool opened = openAndRun(p);
+    check(opened && m_tabs->count() == tabsBefore + 1,
+          QStringLiteral("\"Connect in New Tab\" opens exactly one new tab"));
+    if(opened) {
+        /* currentDatabase(), not defaultDb() — the latter is the *schema*
+         * ("public" until the user picks another one), unrelated to which
+         * physical database the new tab actually connected to */
+        auto *newTab = qobject_cast<ConnectionTab *>(m_tabs->widget(m_tabs->count() - 1));
+        check(newTab && newTab->currentDatabase() == otherDb,
+              QStringLiteral("the new tab is scoped to %1, not the original database")
+                  .arg(otherDb));
+    }
+
+    return fails == 0;
 }
 
 bool MainWindow::selftestCopySqliteFile(const QString &target, bool withData)
@@ -1580,6 +1662,12 @@ void MainWindow::selftestUseDatabase(const QString &db)
 {
     if(auto *tab = currentTab())
         tab->useDatabase(db);
+}
+
+void MainWindow::selftestExpandDatabase(const QString &name)
+{
+    if(auto *tab = currentTab())
+        tab->expandDatabaseNode(name);
 }
 
 void MainWindow::closeTab(int index)
