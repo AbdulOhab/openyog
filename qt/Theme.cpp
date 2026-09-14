@@ -40,7 +40,14 @@ QMenuBar { border-bottom: 1px solid #D9D9D9; }
 QMenuBar::item { padding: 3px 8px; background: transparent; color: #424242; }
 QMenuBar::item:selected { background: #E8F2FA; }
 QMenu { background: #FFFFFF; border: 1px solid #B9B9B9; }
-QMenu::item { padding: 3px 24px; color: #424242; }
+/* padding-left used to be 24px, same as the right — a deliberate stand-in
+ * indent for where an icon would eventually go, back when every item was
+ * plain text. Session 83 gave most items a real ~16px QAction icon, which
+ * Qt draws *inside* that left padding box rather than before it — so the
+ * old 24px became a redundant blank strip in front of the icon itself
+ * (icon at x=24 instead of near x=6). Right stays generous: it's still
+ * genuinely empty space before the shortcut-key text, unaffected by icons. */
+QMenu::item { padding: 3px 24px 3px 6px; color: #424242; }
 QMenu::item:disabled { color: #A2A2A2; }
 QMenu::item:selected { background: #89BCED; color: #1E1E1E; }
 QMenu::separator { height: 1px; background: #E0E0E0; margin: 3px 0; }
