@@ -1284,16 +1284,14 @@ void MainWindow::syncToolbarToCurrentTab()
     m_dbCombo->blockSignals(true);
     m_dbCombo->clear();
     if(tab) {
-        const QStringList schemas = tab->databases();
-        m_dbCombo->addItems(schemas);
-        /* PostgreSQL only in practice (identical lists everywhere else, so
-         * nothing new gets appended): every *other* database on the
-         * server, so the combo can jump straight to one instead of only
-         * being reachable via the tree's "Connect in New Tab" — picking
-         * one here does exactly that, see useDatabaseFromCombo() */
-        for(const QString &db : tab->physicalDatabases())
-            if(!schemas.contains(db) && db != tab->currentDatabase())
-                m_dbCombo->addItem(db);
+        /* schemas of the *current* database only — switching to a
+         * different database is the tree's job (click/double-click a
+         * database node, or its right-click menu), not this combo's;
+         * briefly listing every database here too (session 79) turned
+         * out to just duplicate that with a confusing mixed list once
+         * switching from the tree already worked, so this stayed scoped
+         * to what it always did for MySQL/SQLite: schema selection. */
+        m_dbCombo->addItems(tab->databases());
         /* defaultDb(), not currentDatabase(): for Postgres the latter is
          * the *connected* database (e.g. "postgres"), which generally
          * isn't even one of the schema names tab->databases() just
@@ -1317,21 +1315,8 @@ void MainWindow::syncToolbarToCurrentTab()
 
 void MainWindow::useDatabaseFromCombo(const QString &db)
 {
-    auto *tab = currentTab();
-    if(!tab)
-        return;
-    /* a name from the schema list (always true for MySQL/SQLite, since
-     * databases()/physicalDatabases() are identical there) switches
-     * schema in place; anything else is one of the *other* databases the
-     * combo now also lists for PostgreSQL — switchDatabase() makes it
-     * this tab's own primary connection instead, same as the tree's
-     * "Switch to `db`" action (not a new tab: a Postgres connection can't
-     * reach a different database in place, but the tab itself can be
-     * pointed at a fresh connection to one without opening another). */
-    if(tab->databases().contains(db))
+    if(auto *tab = currentTab())
         tab->useDatabase(db);
-    else
-        tab->switchDatabase(db);
 }
 
 void MainWindow::executeCurrentTab()
@@ -1717,12 +1702,15 @@ QStringList MainWindow::selftestComboItems() const
     return out;
 }
 
-void MainWindow::selftestPickCombo(const QString &db)
+void MainWindow::selftestSwitchDatabase(const QString &db)
 {
-    /* calls the same slot the combo's currentIndexChanged signal does,
-     * rather than driving the QComboBox widget itself (which would also
-     * work, but this is the exact call a real pick makes either way) */
-    useDatabaseFromCombo(db);
+    /* switching databases is the Object Browser tree's job (double-click
+     * a database node, or its "Switch to `db`" menu entry) — the toolbar
+     * combo only ever lists schemas, so this calls ConnectionTab's own
+     * method directly rather than driving tree widget items, which is
+     * exactly what either of those real interactions ends up calling */
+    if(auto *tab = currentTab())
+        tab->switchDatabase(db);
 }
 
 int MainWindow::selftestTabCount() const
