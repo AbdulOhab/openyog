@@ -320,7 +320,7 @@ IDbConnection *ObjectBrowser::connFor(const QString &physDb, QString *error) con
 }
 
 void ObjectBrowser::loadDatabases(IDbConnection *conn, const QString &currentDb,
-                                  const QString &primaryDb)
+                                  const QString &primaryDb, bool autoDrill)
 {
     m_conn = conn;
     m_primaryDatabase = primaryDb;
@@ -341,7 +341,7 @@ void ObjectBrowser::loadDatabases(IDbConnection *conn, const QString &currentDb,
      * Postgres). */
     const auto populateSchema = [&](QTreeWidgetItem *dbItem, const QString &dbName,
                                     const QString &physDb) {
-        if(currentDb == dbName) {
+        if(autoDrill && currentDb == dbName) {
             dbItem->setSelected(true);
             dbItem->setExpanded(true);
             onItemExpanded(dbItem);

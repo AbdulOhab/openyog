@@ -733,7 +733,12 @@ bool ConnectionTab::switchDatabase(const QString &database)
         ? QStringLiteral("OpenYog — connected to %1").arg(m_params.filePath)
         : QStringLiteral("OpenYog — connected to %1@%2:%3/%4")
               .arg(m_params.user, m_params.host).arg(m_params.port).arg(database));
-    refreshBrowser();
+    /* false: this switch was triggered from an already-browsed tree (a
+     * double-click on a database node, or the toolbar combo) — just show
+     * the newly-primary database's schema list, matching what expanding
+     * its arrow would show, rather than also auto-diving into its Tables
+     * folder like a fresh connection does */
+    refreshBrowser(false);
     m_messages->setPlainText(QStringLiteral("Switched to %1").arg(database));
     m_resultTabs->setCurrentWidget(m_messages);
 
@@ -1469,10 +1474,10 @@ void ConnectionTab::exportResult()
     m_resultTabs->setCurrentWidget(m_messages);
 }
 
-void ConnectionTab::refreshBrowser()
+void ConnectionTab::refreshBrowser(bool autoDrill)
 {
     if(m_conn) {
-        m_browser->loadDatabases(m_conn, defaultDb(), m_params.database);
+        m_browser->loadDatabases(m_conn, defaultDb(), m_params.database, autoDrill);
         updateCompletions();
     }
 }
