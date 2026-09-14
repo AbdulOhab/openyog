@@ -46,6 +46,8 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QIcon>
+#include <QMenu>
+#include <QMenuBar>
 #include <QPushButton>
 #include <QRegularExpression>
 #include <QTableWidget>
@@ -89,6 +91,7 @@ int main(int argc, char *argv[])
     QString pgCsvImportArg;
     QString schemaHtmlArg;
     QString delConn;
+    QString shotMenuArg;     /* --shotmenu=Title selftest: screenshot one open top-level menu */
     for(int i = 1; i < argc; ++i) {
         const QString a = QString::fromLocal8Bit(argv[i]);
         if(a.startsWith(QStringLiteral("--screenshot=")))
@@ -146,6 +149,8 @@ int main(int argc, char *argv[])
             schemaHtmlArg = a.mid(QStringLiteral("--schemahtmltest=").size());
         if(a.startsWith(QStringLiteral("--delconn=")))
             delConn = a.mid(QStringLiteral("--delconn=").size());
+        if(a.startsWith(QStringLiteral("--shotmenu=")))
+            shotMenuArg = a.mid(QStringLiteral("--shotmenu=").size());
         if(a.startsWith(QStringLiteral("--fmtsql="))) {
             QTextStream(stdout) << SqlFormat::pretty(a.mid(9)) << '\n';
             return 0;
@@ -1530,6 +1535,37 @@ int main(int argc, char *argv[])
             dlg->show();
             QTimer::singleShot(200, [dlg, screenshot] {
                 dlg->grab().save(screenshot);
+                QApplication::quit();
+            });
+            QApplication::exec();
+            dbDriverFor(DriverType::Mysql)->libraryShutdown();
+            return rc;
+        }
+        if(!shotMenuArg.isEmpty()) {
+            /* find the top-level menu by title (mnemonic '&' stripped, case-
+             * insensitive — "File", "Database", "Transactions", …) and grab
+             * just that open popup, for checking menu icons/labels/shortcuts
+             * without eyeballing the whole window */
+            auto *w = new MainWindow;
+            w->show();
+            QMenu *target = nullptr;
+            for(QAction *a : w->menuBar()->actions()) {
+                QString t = a->text();
+                t.remove(QLatin1Char('&'));
+                if(t.compare(shotMenuArg, Qt::CaseInsensitive) == 0) {
+                    target = a->menu();
+                    break;
+                }
+            }
+            if(!target) {
+                QTextStream(stdout) << "shotmenu: no top-level menu named \""
+                                    << shotMenuArg << "\"\n";
+                return 1;
+            }
+            target->move(60, 60);
+            target->show();
+            QTimer::singleShot(300, [target, screenshot] {
+                target->grab().save(screenshot);
                 QApplication::quit();
             });
             QApplication::exec();
