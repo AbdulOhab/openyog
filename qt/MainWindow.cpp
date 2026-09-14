@@ -149,8 +149,8 @@ MainWindow::MainWindow(QWidget *parent)
     QAction *newConn = file->addAction(QStringLiteral("New &Connection…\tCtrl+M"));
     connect(newConn, &QAction::triggered, this, &MainWindow::newConnection);
     file->addSeparator();
-    connect(file->addAction(QStringLiteral("New &Query Editor\tCtrl+T")),
-            &QAction::triggered, this,
+    QAction *newEditor = file->addAction(QStringLiteral("New &Query Editor\tCtrl+T"));
+    connect(newEditor, &QAction::triggered, this,
             [this] { if(auto *t = currentTab()) t->addEditorTab(); });
     addDisabled(file, QStringLiteral("New Query &Builder\tCtrl+K"));
     addDisabled(file, QStringLiteral("Ne&w Schema Designer\tCtrl+Alt+D"));
@@ -1160,13 +1160,26 @@ MainWindow::MainWindow(QWidget *parent)
     });
 
     /* ================= toolbar + status bar ========================= */
-    /* button order + icons follow the SQLyog main toolbar (IDR_MAINFRAME) */
+    /* button order + icons follow SQLyog's two Win32 toolbars: the main
+     * one (FrameWindow::CreateToolButtons — connect, new editor, execute,
+     * execute-all, execute&edit, refresh) and the second one laid out to
+     * its right (ConnectionBase::CreateOtherToolButtons — user manager,
+     * export, execute script, copy database, export-as, manage indexes,
+     * manage relationships, format current, start transaction, commit,
+     * rollback). Upstream also puts Data Sync, Diff Tool, ODBC import,
+     * Notification, Scheduled Backup, Query Builder and Schema Designer
+     * buttons on that second toolbar — none of those features exist in
+     * this port yet, so their buttons come with the features. Where the
+     * action already exists as a menu item the menu's QAction is reused
+     * (one action = one shortcut, one enable-state, icon in both places). */
     auto *toolbar = addToolBar(QStringLiteral("main"));
     toolbar->setMovable(false);
     toolbar->setIconSize(QSize(16, 16));
 
     newConn->setIcon(Icons::get(QStringLiteral("connect_16.ico")));
     toolbar->addAction(newConn);
+    newEditor->setIcon(Icons::get(QStringLiteral("query_16.ico")));
+    toolbar->addAction(newEditor);
     toolbar->addSeparator();
 
     QAction *execTool = toolbar->addAction(
@@ -1181,7 +1194,8 @@ MainWindow::MainWindow(QWidget *parent)
     QAction *execEditTool = toolbar->addAction(
         Icons::get(QStringLiteral("execforupd_16.ico")),
         QStringLiteral("Execute Query & Edit Resultset\tF8"));
-    execEditTool->setEnabled(false);
+    connect(execEditTool, &QAction::triggered, this,
+            [this] { if(auto *t = currentTab()) t->runAndEdit(); });
     QAction *stopTool = toolbar->addAction(
         Icons::get(QStringLiteral("Stop_16.ico")),
         QStringLiteral("Cancel the running query"));
@@ -1196,8 +1210,9 @@ MainWindow::MainWindow(QWidget *parent)
     connect(refreshTool, &QAction::triggered, this, &MainWindow::refreshBrowser);
     QAction *formatTool = toolbar->addAction(
         Icons::get(QStringLiteral("formatall.ico")),
-        QStringLiteral("Format All Queries\tShift+F12"));
-    formatTool->setEnabled(false);
+        QStringLiteral("Format Current Query\tF12"));
+    connect(formatTool, &QAction::triggered, this,
+            [this] { if(auto *t = currentTab()) t->formatQuery(0); });
     toolbar->addSeparator();
 
     m_dbCombo = new QComboBox(toolbar);
@@ -1213,6 +1228,46 @@ MainWindow::MainWindow(QWidget *parent)
     connect(userMgrTool, &QAction::triggered, this, [this] {
         if(auto *t = currentTab()) t->promptUserManager();
     });
+    toolbar->addSeparator();
+
+    /* second-toolbar buttons reusing their menu actions, in upstream's
+     * order — manage indexes / relationships need a table selected in
+     * the browser and export-table-data reuses that same flow */
+    exportRows->setIcon(Icons::get(QStringLiteral("export_data_16.ico")));
+    toolbar->addAction(exportRows);
+    runScript->setIcon(Icons::get(QStringLiteral("execbatch_16.ico")));
+    toolbar->addAction(runScript);
+    copyDb->setIcon(Icons::get(QStringLiteral("copy_data_16.ico")));
+    toolbar->addAction(copyDb);
+    expTblData->setIcon(Icons::get(QStringLiteral("exportxmlhtml_16.ico")));
+    toolbar->addAction(expTblData);
+    manageIdx->setIcon(Icons::get(QStringLiteral("manage_index_16.ico")));
+    toolbar->addAction(manageIdx);
+    manageFk->setIcon(Icons::get(QStringLiteral("manrel_16.ico")));
+    toolbar->addAction(manageFk);
+    toolbar->addSeparator();
+
+    /* plain transaction controls, like upstream's last second-toolbar
+     * group (the menu keeps the modifier variants) */
+    QAction *startTrxTool = toolbar->addAction(
+        Icons::get(QStringLiteral("start_transaction_16.ico")),
+        QStringLiteral("Start Transaction"));
+    connect(startTrxTool, &QAction::triggered, this, [this, runTx] {
+        auto *t = currentTab();
+        if(!t) return;
+        runTx(t->driverType() == DriverType::Sqlite
+                  ? QStringLiteral("BEGIN") : QStringLiteral("START TRANSACTION"));
+    });
+    QAction *commitTool = toolbar->addAction(
+        Icons::get(QStringLiteral("commit_16.ico")),
+        QStringLiteral("Commit"));
+    connect(commitTool, &QAction::triggered, this,
+            [runTx] { runTx(QStringLiteral("COMMIT")); });
+    QAction *rollbackTool = toolbar->addAction(
+        Icons::get(QStringLiteral("rollback_16.ico")),
+        QStringLiteral("Rollback"));
+    connect(rollbackTool, &QAction::triggered, this,
+            [runTx] { runTx(QStringLiteral("ROLLBACK")); });
 
     m_statusMsg = new QLabel(QStringLiteral("Ready"), this);
     statusBar()->addWidget(m_statusMsg, 1);
@@ -1249,7 +1304,10 @@ MainWindow::MainWindow(QWidget *parent)
 
     /* Toolbar buttons duplicate a menu action's job; strip the "\t<keys>" from
      * their text (it would show literally in the tooltip) and fold it into a
-     * clean tooltip — the menu owns the actual shortcut. */
+     * clean tooltip — the menu owns the actual shortcut (wireShortcuts above
+     * already turned the hint into a real QKeySequence, and for actions
+     * shared between menu and toolbar the label must keep its "&" mnemonic,
+     * so only the tooltip loses it). */
     for(QAction *a : toolbar->actions()) {
         const int tab = a->text().indexOf(QLatin1Char('\t'));
         if(tab < 0)
@@ -1257,8 +1315,10 @@ MainWindow::MainWindow(QWidget *parent)
         const QString name = a->text().left(tab);
         const QString keys = a->text().mid(tab + 1).trimmed();
         a->setText(name);
-        a->setToolTip(keys.isEmpty() ? name
-                                     : QStringLiteral("%1 (%2)").arg(name, keys));
+        QString noAmp = name;
+        noAmp.remove(QLatin1Char('&'));
+        a->setToolTip(keys.isEmpty() ? noAmp
+                                     : QStringLiteral("%1 (%2)").arg(noAmp, keys));
     }
 
     syncToolbarToCurrentTab();
