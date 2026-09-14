@@ -1296,8 +1296,27 @@ void MainWindow::syncToolbarToCurrentTab()
          * the *connected* database (e.g. "postgres"), which generally
          * isn't even one of the schema names tab->databases() just
          * populated the combo with — defaultDb() is the schema actually
-         * being browsed (see ConnectionTab.h's doc comment on it) */
-        m_dbCombo->setCurrentText(tab->defaultDb());
+         * being browsed (see ConnectionTab.h's doc comment on it). Only
+         * shown once the user has actually picked one, though — right
+         * after connecting (or switching databases), defaultDb() would
+         * just be its own "public" fallback, not a real choice, and
+         * pre-filling that reads as the combo already having decided for
+         * the user rather than being ready for them to.
+         *
+         * setCurrentText(), not findText()+setCurrentIndex(), for the
+         * "true" branch: SQLite's defaultDb() is *always* empty (a SQLite
+         * ConnectionParams has no `database`, only a `filePath` — see
+         * ConnectionParams.h), which findText() would never match, and
+         * explicitly forcing index -1 on that mismatch would blank a
+         * SQLite tab's combo unconditionally. setCurrentText() on a
+         * non-editable combo just leaves the current (first-item-default)
+         * selection alone when nothing matches, so SQLite keeps showing
+         * "main" exactly as it always did — only the explicit "not
+         * chosen yet" Postgres case above should ever force a blank. */
+        if(tab->hasExplicitSchema())
+            m_dbCombo->setCurrentText(tab->defaultDb());
+        else
+            m_dbCombo->setCurrentIndex(-1);
     }
     m_dbCombo->blockSignals(false);
 
@@ -1696,7 +1715,12 @@ void MainWindow::selftestSelectBrowserItem(const QString &path)
 
 QStringList MainWindow::selftestComboItems() const
 {
+    /* [0] is the combo's current selection — "(none)" when
+     * currentIndex() is -1 (nothing picked yet), matching what the combo
+     * visually shows (blank) in that state — followed by every item */
     QStringList out;
+    out << (m_dbCombo->currentIndex() < 0 ? QStringLiteral("(none)")
+                                          : m_dbCombo->currentText());
     for(int i = 0; i < m_dbCombo->count(); ++i)
         out << m_dbCombo->itemText(i);
     return out;
@@ -1716,6 +1740,11 @@ void MainWindow::selftestSwitchDatabase(const QString &db)
 int MainWindow::selftestTabCount() const
 {
     return m_tabs->count();
+}
+
+void MainWindow::selftestPickDropdownSchema(const QString &schema)
+{
+    m_dbCombo->setCurrentText(schema);
 }
 
 void MainWindow::closeTab(int index)

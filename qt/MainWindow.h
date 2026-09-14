@@ -47,6 +47,10 @@ public:
     QStringList selftestComboItems() const;   /* --dumpcombo selftest */
     void selftestSwitchDatabase(const QString &db);   /* --switchdb= selftest */
     int selftestTabCount() const;   /* --dumpcombo selftest */
+    /* --dumpcombo selftest: simulates an actual combo click (not calling
+     * useDatabaseFromCombo() directly, which wouldn't first update the
+     * widget's own displayed text/selection the way a real click does) */
+    void selftestPickDropdownSchema(const QString &schema);
     void editTableCell(int row, int col, const QString &value, bool stageOnly = false);
     /* --dumpdb=FILE selftest: dump the active connection's default db */
     bool selftestDump(const QString &path);

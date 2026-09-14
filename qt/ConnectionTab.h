@@ -63,6 +63,20 @@ public:
      * this, not currentDatabase(), so the combo shows the right thing
      * for Postgres when there's more than one schema. */
     QString defaultDb() const;
+    /* has the user actually picked a schema for this tab yet (via the
+     * toolbar combo), as opposed to defaultDb() just falling back to
+     * "public" because m_currentSchema is still empty? Always true for
+     * MySQL/SQLite (currentDatabase() there was an explicit choice
+     * already, made in the Connect dialog, not an assumed default).
+     * MainWindow's toolbar combo uses this to decide whether to show
+     * defaultDb() or stay blank/unselected — pre-filling "public" as
+     * though it were chosen, when it's really just this class's own
+     * fallback, reads as the app deciding for the user rather than
+     * reflecting a real choice. */
+    bool hasExplicitSchema() const
+    {
+        return m_params.driverType != DriverType::Postgres || !m_currentSchema.isEmpty();
+    }
     /* PostgreSQL only: an already-open connection to `database` on this
      * same server, opening and caching one on first request (see
      * m_sideConnections' doc comment). `database` empty or equal to this
