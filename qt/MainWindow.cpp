@@ -1323,13 +1323,15 @@ void MainWindow::useDatabaseFromCombo(const QString &db)
     /* a name from the schema list (always true for MySQL/SQLite, since
      * databases()/physicalDatabases() are identical there) switches
      * schema in place; anything else is one of the *other* databases the
-     * combo now also lists for PostgreSQL — same "Connect in New Tab"
-     * this database's tree node itself offers, since a Postgres
-     * connection can't switch to a different database in place at all */
+     * combo now also lists for PostgreSQL — switchDatabase() makes it
+     * this tab's own primary connection instead, same as the tree's
+     * "Switch to `db`" action (not a new tab: a Postgres connection can't
+     * reach a different database in place, but the tab itself can be
+     * pointed at a fresh connection to one without opening another). */
     if(tab->databases().contains(db))
         tab->useDatabase(db);
     else
-        openAndRun(tab->paramsFor(db));
+        tab->switchDatabase(db);
 }
 
 void MainWindow::executeCurrentTab()
@@ -1481,6 +1483,12 @@ bool MainWindow::openAndRun(const ConnectionParams &params)
 
     connect(tab, &ConnectionTab::databasesChanged, this,
             [this, tab](const QStringList &, const QString &) {
+        /* also fires from switchDatabase() (PostgreSQL "Switch to `db`") —
+         * the tab's own name/title changed along with it, but its entry
+         * in the tab bar was only ever set once, at addTab() time below */
+        const int idx = m_tabs->indexOf(tab);
+        if(idx >= 0)
+            m_tabs->setTabText(idx, tab->title());
         if(m_tabs->currentWidget() == tab)
             syncToolbarToCurrentTab();
     });
@@ -1715,6 +1723,11 @@ void MainWindow::selftestPickCombo(const QString &db)
      * rather than driving the QComboBox widget itself (which would also
      * work, but this is the exact call a real pick makes either way) */
     useDatabaseFromCombo(db);
+}
+
+int MainWindow::selftestTabCount() const
+{
+    return m_tabs->count();
 }
 
 void MainWindow::closeTab(int index)

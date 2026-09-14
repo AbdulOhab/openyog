@@ -1370,25 +1370,22 @@ int main(int argc, char *argv[])
             QTimer::singleShot(600, [&] {
                 QTextStream(stdout) << "combo: "
                                     << w.selftestComboItems().join(QStringLiteral(", "))
-                                    << '\n';
+                                    << " tabs=" << w.selftestTabCount() << '\n';
                 if(pickComboArg.isEmpty()) {
                     QApplication::quit();
                     return;
                 }
                 w.selftestPickCombo(pickComboArg);
-                /* picking a sibling database opens a *new* tab (its own
-                 * openAndRun(), same async seed-query race as the initial
-                 * connect) — same delay-before-exit reasoning as above */
-                QTimer::singleShot(1500, [&] {
-                    /* the window title encodes [tab/schema - host] — if
-                     * picking a sibling database opened a new, correctly-
-                     * scoped tab (rather than, say, doing nothing, or
-                     * mis-switching schema on the *same* tab), the title's
-                     * database segment changes to match */
+                QTimer::singleShot(600, [&] {
+                    /* the window title encodes [tab/schema - host] — a
+                     * switch-in-place changes the title's database segment
+                     * but leaves tab count unchanged (still the same tab);
+                     * "Connect in New Tab" would instead leave the title
+                     * alone and increase the tab count */
                     QTextStream(stdout) << "after pick: title=" << w.windowTitle()
                                         << " combo="
                                         << w.selftestComboItems().join(QStringLiteral(", "))
-                                        << '\n';
+                                        << " tabs=" << w.selftestTabCount() << '\n';
                     QApplication::quit();
                 });
             });
@@ -1515,6 +1512,8 @@ int main(int argc, char *argv[])
                         w->selftestExpandDatabase(expandPgDbArg);
                     if(!selectTreePath.isEmpty())
                         w->selftestSelectBrowserItem(selectTreePath);
+                    if(!pickComboArg.isEmpty())
+                        w->selftestPickCombo(pickComboArg);
                     if(!mkObj.isEmpty())
                         w->openSchemaObjectTab(mkObj);
                     if(runAgain)

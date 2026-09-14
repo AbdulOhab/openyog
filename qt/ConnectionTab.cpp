@@ -349,6 +349,8 @@ ConnectionTab::ConnectionTab(const ConnectionParams &params, QWidget *parent)
     });
     connect(m_browser, &ObjectBrowser::openDatabaseInNewTabRequested, this,
             [this](const QString &database) { emit newTabRequested(paramsFor(database)); });
+    connect(m_browser, &ObjectBrowser::switchDatabaseRequested, this,
+            &ConnectionTab::switchDatabase);
 
     /* ---- right-top: editor tabs (Query 1 / History) --------------- */
     m_editor = new CodeEditor(this);
@@ -692,6 +694,45 @@ IDbConnection *ConnectionTab::connectionFor(const QString &database, QString *er
     if(c)
         m_sideConnections.insert(database, c);
     return c;
+}
+
+bool ConnectionTab::switchDatabase(const QString &database)
+{
+    if(!m_conn || database.isEmpty() || database == m_params.database)
+        return false;
+    QString error;
+    IDbConnection *newConn = connectionFor(database, &error);
+    if(!newConn) {
+        m_messages->setPlainText(
+            QStringLiteral("Could not switch to %1: %2").arg(database, error));
+        m_resultTabs->setCurrentWidget(m_messages);
+        return false;
+    }
+    /* newConn just came from the side-connection pool (freshly opened and
+     * cached there, or already cached from earlier browsing) — pull it out
+     * since it's becoming primary, and put the outgoing primary in under
+     * its own name instead, so switching back later is instant rather
+     * than reconnecting */
+    m_sideConnections.remove(database);
+    m_sideConnections.insert(m_params.database, m_conn);
+    m_conn = newConn;
+    m_params.database = database;
+    m_params.name = database;
+    m_currentSchema.clear();   /* belonged to the old database's search_path */
+
+    const bool isSqlite = m_params.driverType == DriverType::Sqlite;
+    m_infoBar->setText(isSqlite
+        ? QStringLiteral("OpenYog — connected to %1").arg(m_params.filePath)
+        : QStringLiteral("OpenYog — connected to %1@%2:%3/%4")
+              .arg(m_params.user, m_params.host).arg(m_params.port).arg(database));
+    refreshBrowser();
+    m_messages->setPlainText(QStringLiteral("Switched to %1").arg(database));
+    m_resultTabs->setCurrentWidget(m_messages);
+
+    const QStringList dbs = m_conn->listDatabases();
+    m_databases = dbs;
+    emit databasesChanged(dbs, defaultDb());
+    return true;
 }
 
 /* schema identifiers (tables + columns of the current db) for autocomplete —

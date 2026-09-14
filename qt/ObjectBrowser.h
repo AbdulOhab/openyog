@@ -96,11 +96,21 @@ signals:
     void emptyDatabaseRequested(const QString &db);
     void alterDatabaseRequested(const QString &db);
     void statusMessage(const QString &text);
-    /* PostgreSQL multi-database tree only: user asked to open a *different*
-     * physical database (not the one this tab is connected to) as its own
-     * connection tab — the browser can show any database's structure, but
-     * modifying/opening table data always goes through a tab whose own
-     * connection is scoped to the right database, not this one's. */
+    /* PostgreSQL multi-database tree only: user asked to make a *different*
+     * physical database this tab's own primary connection — this tab's
+     * whole tree, toolbar and every action then work on `database` exactly
+     * as if it had been the one connected to from the start (a Postgres
+     * connection can't switch databases in place at the protocol level,
+     * so ConnectionTab::switchDatabase() actually opens a fresh connection
+     * underneath and swaps it in, keeping the *previous* one cached as a
+     * side connection so switching back doesn't reconnect). Double-click
+     * and picking a sibling database from the toolbar combo both use this;
+     * it's the default because staying in one tab is what's normally
+     * wanted, not a second tab to compare two databases side by side. */
+    void switchDatabaseRequested(const QString &database);
+    /* explicit alternative to the above, still offered from the right-click
+     * menu: open `database` as a genuinely separate tab instead of taking
+     * over this one — for actually comparing two databases side by side. */
     void openDatabaseInNewTabRequested(const QString &database);
 
 private slots:
