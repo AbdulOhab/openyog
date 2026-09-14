@@ -84,6 +84,20 @@ public:
      * by connectionFor() above and by "open this database in its own tab"
      * from the Object Browser's multi-database view. */
     ConnectionParams paramsFor(const QString &database) const;
+    /* PostgreSQL only: makes `database` this tab's own primary connection
+     * in place — opens (or reuses a cached) connection to it via
+     * connectionFor(), swaps it in as m_conn, and stashes the outgoing
+     * primary as a side connection under its own name (so switching back
+     * is instant, not a reconnect). Rebuilds the browser tree, resets the
+     * schema tracking (m_currentSchema) since it belonged to the old
+     * database, and updates the tab's own name/title. Returns false (with
+     * a message left in the Messages pane) if the new connection fails.
+     * This is what "Switch to `db`" and picking a sibling database from
+     * the toolbar combo both do — the default, since staying in one tab
+     * is normally what's wanted; openDatabaseInNewTabRequested's "Connect
+     * in New Tab" is the explicit alternative for comparing two databases
+     * side by side. */
+    bool switchDatabase(const QString &database);
     QString hostLabel() const
     {
         return m_params.driverType == DriverType::Sqlite

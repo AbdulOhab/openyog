@@ -138,6 +138,10 @@ ObjectBrowser::ObjectBrowser(QWidget *parent)
 
         if(kind == KPgDatabase) {
             const QString database = item->text(0);
+            menu.addAction(QStringLiteral("&Switch to `%1`").arg(database),
+                           this, [this, database] {
+                emit switchDatabaseRequested(database);
+            });
             menu.addAction(QStringLiteral("Connect to `%1` in New &Tab…").arg(database),
                            this, [this, database] {
                 emit openDatabaseInNewTabRequested(database);
@@ -151,7 +155,12 @@ ObjectBrowser::ObjectBrowser(QWidget *parent)
             /* reduced menu for anything under a non-primary database:
              * browsing already works (the tree got here via connFor()),
              * but no action below this point is safe to route through
-             * m_conn, so only offer what doesn't need it */
+             * m_conn, so only offer what doesn't need it — Switch fixes
+             * that by making `physDb` the primary connection instead */
+            menu.addAction(QStringLiteral("&Switch to `%1`").arg(physDb),
+                           this, [this, physDb] {
+                emit switchDatabaseRequested(physDb);
+            });
             menu.addAction(QStringLiteral("Connect to `%1` in New &Tab…").arg(physDb),
                            this, [this, physDb] {
                 emit openDatabaseInNewTabRequested(physDb);
@@ -265,9 +274,9 @@ ObjectBrowser::ObjectBrowser(QWidget *parent)
                 const QString physDb = item->data(0, RolePhysDb).toString();
                 const bool foreign = !physDb.isEmpty() && physDb != m_primaryDatabase;
                 if(kind == KPgDatabase)
-                    emit openDatabaseInNewTabRequested(item->text(0));
+                    emit switchDatabaseRequested(item->text(0));
                 else if(foreign)
-                    emit openDatabaseInNewTabRequested(physDb);
+                    emit switchDatabaseRequested(physDb);
                 else if(kind == KDatabase)
                     emit databaseActivated(item->data(0, Qt::UserRole + 1).toString());
                 else if(kind == KTable)
