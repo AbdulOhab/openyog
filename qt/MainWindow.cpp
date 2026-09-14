@@ -21,6 +21,7 @@
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QFormLayout>
+#include <QHash>
 #include <QIcon>
 #include <QPixmap>
 #include <QFileDialog>
@@ -125,6 +126,7 @@ MainWindow::MainWindow(QWidget *parent)
     QMenu *file = menuBar()->addMenu(QStringLiteral("&File"));
     QAction *newSame = file->addAction(
         QStringLiteral("New Connection Using Current Settings\tCtrl+N"));
+    newSame->setIcon(Icons::get(QStringLiteral("first.ico")));
     connect(newSame, &QAction::triggered, this, [this] {
         if(auto *t = currentTab())
             openAndRun([&] {
@@ -159,25 +161,30 @@ MainWindow::MainWindow(QWidget *parent)
             [this] { if(auto *t = currentTab()) t->promptDataSearch({}); });
     file->addSeparator();
     QAction *closeTabAct = file->addAction(QStringLiteral("Close &Tab\tAlt+L"));
+    closeTabAct->setIcon(Icons::get(QStringLiteral("closetab.ico")));
     connect(closeTabAct, &QAction::triggered, this, [this] {
         if(m_tabs->currentIndex() >= 0)
             closeTab(m_tabs->currentIndex());
     });
-    connect(file->addAction(QStringLiteral("&Rename Tab\tAlt+F2")),
-            &QAction::triggered, this,
+    QAction *renameTabAct = file->addAction(QStringLiteral("&Rename Tab\tAlt+F2"));
+    renameTabAct->setIcon(Icons::get(QStringLiteral("renamequery_16.ico")));
+    connect(renameTabAct, &QAction::triggered, this,
             [this] { if(auto *t = currentTab()) t->renameCurrentEditorTab(); });
     QAction *disconnect = file->addAction(QStringLiteral("&Disconnect\tCtrl+F4"));
+    disconnect->setIcon(Icons::get(QStringLiteral("discon.ICO")));
     connect(disconnect, &QAction::triggered, this, [this] {
         if(m_tabs->currentIndex() >= 0)
             closeTab(m_tabs->currentIndex());
     });
     QAction *disconnectAll = file->addAction(QStringLiteral("Disconnect Al&l"));
+    disconnectAll->setIcon(Icons::get(QStringLiteral("disconall.ICO")));
     connect(disconnectAll, &QAction::triggered, this, [this] {
         while(m_tabs->count())
             closeTab(0);
     });
     file->addSeparator();
     QAction *openSql = file->addAction(QStringLiteral("Open…\tCtrl+O"));
+    openSql->setIcon(Icons::get(QStringLiteral("open_in_new_tab.ico")));
     connect(openSql, &QAction::triggered, this, [this] {
         if(auto *tab = currentTab()) {
             const QString f = QFileDialog::getOpenFileName(
@@ -188,11 +195,14 @@ MainWindow::MainWindow(QWidget *parent)
         }
     });
     QAction *saveSql = file->addAction(QStringLiteral("&Save…\tCtrl+S"));
+    saveSql->setIcon(Icons::get(QStringLiteral("save.ico")));
     connect(saveSql, &QAction::triggered, this, [this] {
         if(auto *tab = currentTab())
             tab->saveEditor();
     });
-    connect(file->addAction(QStringLiteral("S&ave As…")), &QAction::triggered,
+    QAction *saveAsAct = file->addAction(QStringLiteral("S&ave As…"));
+    saveAsAct->setIcon(Icons::get(QStringLiteral("saveas.ico")));
+    connect(saveAsAct, &QAction::triggered,
             this, [this] { if(auto *t = currentTab()) t->saveEditor(); });
     file->addSeparator();
     /* a "session" here is just the list of open connections (name, driver,
@@ -226,6 +236,7 @@ MainWindow::MainWindow(QWidget *parent)
         return true;
     };
     QAction *saveSession = file->addAction(QStringLiteral("Save Session…\tCtrl+Shift+S"));
+    saveSession->setIcon(Icons::get(QStringLiteral("session_save_all.ico")));
     connect(saveSession, &QAction::triggered, this, [this, saveSessionTo] {
         QString target = m_sessionFile;
         if(target.isEmpty())
@@ -239,6 +250,7 @@ MainWindow::MainWindow(QWidget *parent)
                 QStringLiteral("Could not write %1").arg(target));
     });
     QAction *saveSessionAs = file->addAction(QStringLiteral("Save Session As…"));
+    saveSessionAs->setIcon(Icons::get(QStringLiteral("session_save_all.ico")));
     connect(saveSessionAs, &QAction::triggered, this, [this, saveSessionTo] {
         const QString target = QFileDialog::getSaveFileName(
             this, QStringLiteral("Save Session As"), QStringLiteral("session.oysession"),
@@ -251,6 +263,7 @@ MainWindow::MainWindow(QWidget *parent)
     });
     QAction *openSession = file->addAction(
         QStringLiteral("Open Session Savepoint…\tCtrl+Shift+O"));
+    openSession->setIcon(Icons::get(QStringLiteral("session_open.ico")));
     connect(openSession, &QAction::triggered, this, [this] {
         const QString target = QFileDialog::getOpenFileName(
             this, QStringLiteral("Open Session"), QString(),
@@ -290,6 +303,7 @@ MainWindow::MainWindow(QWidget *parent)
         m_sessionFile = target;
     });
     QAction *endSession = file->addAction(QStringLiteral("End Session\tCtrl+Shift+X"));
+    endSession->setIcon(Icons::get(QStringLiteral("session_close.ico")));
     connect(endSession, &QAction::triggered, this, [this] {
         while(m_tabs->count())
             closeTab(0);
@@ -300,13 +314,16 @@ MainWindow::MainWindow(QWidget *parent)
     recent->addAction(QStringLiteral("(no recent files)"))->setEnabled(false);
     file->addSeparator();
     QAction *quit = file->addAction(QStringLiteral("E&xit\tAlt+F4"));
+    quit->setIcon(Icons::get(QStringLiteral("exit.ico")));
     connect(quit, &QAction::triggered, this, &MainWindow::close);
 
     /* ================= Edit ========================================= */
     QMenu *edit = menuBar()->addMenu(QStringLiteral("&Edit"));
     QAction *refresh = edit->addAction(QStringLiteral("Refresh &Object Browser\tF5"));
+    refresh->setIcon(Icons::get(QStringLiteral("refresh_16.ico")));
     connect(refresh, &QAction::triggered, this, &MainWindow::refreshBrowser);
     QAction *browserColor = edit->addAction(QStringLiteral("Change Objec&t Browser Color"));
+    browserColor->setIcon(Icons::get(QStringLiteral("colorpicker.ico")));
     connect(browserColor, &QAction::triggered, this, [this] {
         const QColor cur = ObjectBrowserColor::load();
         const QColor c = QColorDialog::getColor(
@@ -324,12 +341,16 @@ MainWindow::MainWindow(QWidget *parent)
     edit->addSeparator();
     QMenu *execMenu = edit->addMenu(QStringLiteral("Execute Quer&y"));
     QAction *execQuery = execMenu->addAction(QStringLiteral("Exe&cute Query\tF9"));
+    execQuery->setIcon(Icons::get(QStringLiteral("execute_16.ico")));
     connect(execQuery, &QAction::triggered, this, &MainWindow::executeCurrentTab);
     QAction *execAll = execMenu->addAction(QStringLiteral("Execute &All Queries\tCtrl+F9"));
+    execAll->setIcon(Icons::get(QStringLiteral("execall_16.ico")));
     connect(execAll, &QAction::triggered, this,
             [this] { if(auto *t = currentTab()) t->runAll(); });
-    connect(execMenu->addAction(QStringLiteral("Execute And Edit &Resultset\tF8")),
-            &QAction::triggered, this,
+    QAction *execEditMenu =
+        execMenu->addAction(QStringLiteral("Execute And Edit &Resultset\tF8"));
+    execEditMenu->setIcon(Icons::get(QStringLiteral("execforupd_16.ico")));
+    connect(execEditMenu, &QAction::triggered, this,
             [this] { if(auto *t = currentTab()) t->runAndEdit(); });
     QMenu *explain = edit->addMenu(QStringLiteral("Execute Explain"));
     connect(explain->addAction(QStringLiteral("&EXPLAIN Current Query")),
@@ -365,22 +386,27 @@ MainWindow::MainWindow(QWidget *parent)
     }
     edit->addSeparator();
     QAction *undo = edit->addAction(QStringLiteral("&Undo\tCtrl+Z"));
+    undo->setIcon(Icons::get(QStringLiteral("undo.ico")));
     connect(undo, &QAction::triggered, this,
             [this] { editClipboard(QStringLiteral("undo")); });
     QAction *redo = edit->addAction(QStringLiteral("&Redo\tCtrl+Y"));
+    redo->setIcon(Icons::get(QStringLiteral("redo.ico")));
     connect(redo, &QAction::triggered, this,
             [this] { editClipboard(QStringLiteral("redo")); });
     edit->addSeparator();
     QAction *cut = edit->addAction(QStringLiteral("Cu&t\tCtrl+X"));
+    cut->setIcon(Icons::get(QStringLiteral("cut.ico")));
     connect(cut, &QAction::triggered, this,
             [this] { editClipboard(QStringLiteral("cut")); });
     QAction *copy = edit->addAction(QStringLiteral("&Copy\tCtrl+C"));
+    copy->setIcon(Icons::get(QStringLiteral("Copy.ico")));
     connect(copy, &QAction::triggered, this,
             [this] { editClipboard(QStringLiteral("copy")); });
     connect(edit->addAction(QStringLiteral("Copy With Normalized &Whitespace\tAlt+C")),
             &QAction::triggered, this,
             [this] { if(auto *t = currentTab()) t->editorCopyNormalizedWhitespace(); });
     QAction *paste = edit->addAction(QStringLiteral("&Paste\tCtrl+V"));
+    paste->setIcon(Icons::get(QStringLiteral("paste.ico")));
     connect(paste, &QAction::triggered, this,
             [this] { editClipboard(QStringLiteral("paste")); });
     connect(edit->addAction(QStringLiteral("Insert From Fi&le…")),
@@ -394,6 +420,7 @@ MainWindow::MainWindow(QWidget *parent)
         if(auto *t = currentTab()) (t->*fn)();
     };
     QAction *findAct = edit->addAction(QStringLiteral("&Find…\tCtrl+F"));
+    findAct->setIcon(Icons::get(QStringLiteral("search.ico")));
     findAct->setShortcut(QKeySequence::Find);
     connect(findAct, &QAction::triggered, this,
             [onEditor] { onEditor(&ConnectionTab::promptFind); });
@@ -402,6 +429,7 @@ MainWindow::MainWindow(QWidget *parent)
     connect(findNextAct, &QAction::triggered, this,
             [onEditor] { onEditor(&ConnectionTab::findNext); });
     QAction *replaceAct = edit->addAction(QStringLiteral("R&eplace…\tCtrl+H"));
+    replaceAct->setIcon(Icons::get(QStringLiteral("replace.ico")));
     replaceAct->setShortcut(QKeySequence::Replace);
     connect(replaceAct, &QAction::triggered, this,
             [onEditor] { onEditor(&ConnectionTab::promptReplace); });
@@ -472,11 +500,13 @@ MainWindow::MainWindow(QWidget *parent)
     QMenu *favorites = menuBar()->addMenu(QStringLiteral("Fa&vorites"));
     QAction *addFav = favorites->addAction(
         QStringLiteral("&Add To Favorites…\tCtrl+Shift+F"));
+    addFav->setIcon(Icons::get(QStringLiteral("addtofavorite.ico")));
     addFav->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_F));
     connect(addFav, &QAction::triggered, this, [this] {
         if(auto *t = currentTab()) t->addCurrentToFavorites();
     });
     QAction *organizeFav = favorites->addAction(QStringLiteral("&Organize Favorites…"));
+    organizeFav->setIcon(Icons::get(QStringLiteral("favorites.ico")));
     connect(organizeFav, &QAction::triggered, this, [this] {
         if(auto *t = currentTab()) t->organizeFavorites();
     });
@@ -515,15 +545,28 @@ MainWindow::MainWindow(QWidget *parent)
     });
     QAction *createDb = database->addAction(
         QStringLiteral("Create &Database…\tCtrl+D"));
+    createDb->setIcon(Icons::get(QStringLiteral("new_data.ico")));
     connect(createDb, &QAction::triggered, this, &MainWindow::createDatabase);
     QAction *alterDb = database->addAction(QStringLiteral("&Alter Database…\tF6"));
+    alterDb->setIcon(Icons::get(QStringLiteral("alterdb.ico")));
     connect(alterDb, &QAction::triggered, this, [this] {
         if(auto *t = currentTab()) t->promptAlterDatabase({});
     });
     QMenu *create = database->addMenu(QStringLiteral("C&reate"));
     QAction *createTblFromDb = create->addAction(QStringLiteral("&Table"));
+    createTblFromDb->setIcon(Icons::get(QStringLiteral("createtableindata.ico")));
     connect(createTblFromDb, &QAction::triggered, this,
             [this] { createTable(); });
+    /* icon per schema-object kind, matching upstream's Database > Create submenu
+     * (ID_DB_CREATEVIEW/CREATESTOREDPROCEDURE/CREATEFUNCTION/CREATETRIGGER/
+     * CREATEEVENT in CreateIconList) */
+    const QHash<QString, QString> createIcons = {
+        { QStringLiteral("VIEW"), QStringLiteral("viewnew.ico") },
+        { QStringLiteral("PROCEDURE"), QStringLiteral("addsp.ico") },
+        { QStringLiteral("FUNCTION"), QStringLiteral("addfunction.ico") },
+        { QStringLiteral("TRIGGER"), QStringLiteral("addtrigger.ico") },
+        { QStringLiteral("EVENT"), QStringLiteral("eventnew.ico") },
+    };
     for(const auto &pair : {
             std::pair<QString, QString>{ QStringLiteral("&View…"), QStringLiteral("VIEW") },
             { QStringLiteral("&Stored Procedure…"), QStringLiteral("PROCEDURE") },
@@ -531,29 +574,37 @@ MainWindow::MainWindow(QWidget *parent)
             { QStringLiteral("Tri&gger…"), QStringLiteral("TRIGGER") },
             { QStringLiteral("&Event…"), QStringLiteral("EVENT") } }) {
         const QString kw = pair.second;
-        connect(create->addAction(pair.first), &QAction::triggered, this,
+        QAction *a = create->addAction(pair.first);
+        a->setIcon(Icons::get(createIcons.value(kw)));
+        connect(a, &QAction::triggered, this,
                 [this, kw] { if(auto *t = currentTab()) t->createSchemaObject({}, kw); });
     }
     QMenu *dbOps = database->addMenu(QStringLiteral("More Database &Operations"));
-    connect(dbOps->addAction(QStringLiteral("Dro&p Database…\tDel")),
-            &QAction::triggered, this,
+    QAction *dropDbAct = dbOps->addAction(QStringLiteral("Dro&p Database…\tDel"));
+    dropDbAct->setIcon(Icons::get(QStringLiteral("dropdatabase.ico")));
+    connect(dropDbAct, &QAction::triggered, this,
             [this] { if(auto *t = currentTab()) t->dropDatabase({}); });
-    connect(dbOps->addAction(QStringLiteral("Tr&uncate Database…\tShift+Del")),
-            &QAction::triggered, this,
+    QAction *truncDbAct = dbOps->addAction(QStringLiteral("Tr&uncate Database…\tShift+Del"));
+    truncDbAct->setIcon(Icons::get(QStringLiteral("truncatedata.ico")));
+    connect(truncDbAct, &QAction::triggered, this,
             [this] { if(auto *t = currentTab()) t->truncateDatabase({}); });
-    connect(dbOps->addAction(QStringLiteral("E&mpty Database…")),
-            &QAction::triggered, this,
+    QAction *emptyDbAct = dbOps->addAction(QStringLiteral("E&mpty Database…"));
+    emptyDbAct->setIcon(Icons::get(QStringLiteral("emptydata.ico")));
+    connect(emptyDbAct, &QAction::triggered, this,
             [this] { if(auto *t = currentTab()) t->emptyDatabase({}); });
     database->addSeparator();
     QMenu *dbBackup = database->addMenu(QStringLiteral("&Backup/Export"));
     addDisabled(dbBackup, QStringLiteral("&Scheduled Backups…\tCtrl+Alt+S"));
     QAction *dbDump = dbBackup->addAction(
         QStringLiteral("&Backup Database As SQL Dump…\tCtrl+Alt+E"));
+    dbDump->setIcon(Icons::get(QStringLiteral("export_data_16.ico")));
     connect(dbDump, &QAction::triggered, this, [this] { dumpDatabase(); });
     QMenu *dbImport = database->addMenu(QStringLiteral("&Import "));
     addDisabled(dbImport, QStringLiteral("Import E&xternal Data…\tCtrl+Alt+O"));
-    connect(dbImport->addAction(QStringLiteral("&Execute SQL Script…\tCtrl+Shift+Q")),
-            &QAction::triggered, this, [this] {
+    QAction *dbRunScript =
+        dbImport->addAction(QStringLiteral("&Execute SQL Script…\tCtrl+Shift+Q"));
+    dbRunScript->setIcon(Icons::get(QStringLiteral("execbatch_16.ico")));
+    connect(dbRunScript, &QAction::triggered, this, [this] {
         if(auto *t = currentTab()) {
             const QString f = QFileDialog::getOpenFileName(
                 this, QStringLiteral("Execute SQL script"), QString(),
@@ -565,6 +616,7 @@ MainWindow::MainWindow(QWidget *parent)
     database->addSeparator();
     QAction *schemaHtml = database->addAction(
         QStringLiteral("Create Schema For Database In &HTML…\tCtrl+Shift+Alt+S"));
+    schemaHtml->setIcon(Icons::get(QStringLiteral("schema.ico")));
     connect(schemaHtml, &QAction::triggered, this,
             [this] { if(auto *t = currentTab()) t->promptSchemaHtml({}); });
 
@@ -589,6 +641,7 @@ MainWindow::MainWindow(QWidget *parent)
             [this] { if(auto *t = currentTab()) t->pasteSqlTemplate(3); });
     QAction *copyTableHost = table->addAction(
         QStringLiteral("&Copy Table(s) To Different Host/Database…"));
+    copyTableHost->setIcon(Icons::get(QStringLiteral("copy_data.ico")));
     connect(copyTableHost, &QAction::triggered, this, [this] {
         auto *t = currentTab();
         if(!t) return;
@@ -602,6 +655,7 @@ MainWindow::MainWindow(QWidget *parent)
     });
     table->addSeparator();
     QAction *openTable = table->addAction(QStringLiteral("&Open Table\tF11"));
+    openTable->setIcon(Icons::get(QStringLiteral("viewdata.ico")));
     connect(openTable, &QAction::triggered, this, [this] {
         if(auto *t = currentTab())
             t->openSelectedTable();
@@ -628,9 +682,11 @@ MainWindow::MainWindow(QWidget *parent)
         }
     });
     QAction *createTbl = table->addAction(QStringLiteral("Create &Table\tF4"));
+    createTbl->setIcon(Icons::get(QStringLiteral("createtableindata.ico")));
     createTbl->setShortcut(QKeySequence(Qt::Key_F4));
     connect(createTbl, &QAction::triggered, this, [this] { createTable(); });
     QAction *alterTbl = table->addAction(QStringLiteral("&Alter Table\tF6"));
+    alterTbl->setIcon(Icons::get(QStringLiteral("altertable.ico")));
     alterTbl->setShortcut(QKeySequence(Qt::Key_F6));
     connect(alterTbl, &QAction::triggered, this, &MainWindow::alterTable);
     /* each of these acts on the object browser's selected table */
@@ -657,29 +713,36 @@ MainWindow::MainWindow(QWidget *parent)
             [onSelectedTable] { onSelectedTable(&ConnectionTab::promptManageForeignKeys); });
     QMenu *moreTable = table->addMenu(QStringLiteral("Mo&re Table Operations"));
     QAction *renameTbl = moreTable->addAction(QStringLiteral("&Rename Table\tF2"));
+    renameTbl->setIcon(Icons::get(QStringLiteral("rename.ico")));
     renameTbl->setShortcut(QKeySequence(Qt::Key_F2));
     connect(renameTbl, &QAction::triggered, this,
             [onSelectedTable] { onSelectedTable(&ConnectionTab::promptRenameTable); });
     QAction *truncTbl = moreTable->addAction(QStringLiteral("Tru&ncate Table…\tShift+Del"));
+    truncTbl->setIcon(Icons::get(QStringLiteral("emptytable.ico")));
     connect(truncTbl, &QAction::triggered, this,
             [onSelectedTable] { onSelectedTable(&ConnectionTab::truncateTable); });
     QAction *dropTbl = moreTable->addAction(QStringLiteral("&Drop Table From Database…\tDel"));
+    dropTbl->setIcon(Icons::get(QStringLiteral("drop_table.ico")));
     connect(dropTbl, &QAction::triggered, this,
             [onSelectedTable] { onSelectedTable(&ConnectionTab::dropTable); });
-    addDisabled(moreTable, QStringLiteral("Re&order Column(s)\tCtrl+Alt+R"));
+    addDisabled(moreTable, QStringLiteral("Re&order Column(s)\tCtrl+Alt+R"))
+        ->setIcon(Icons::get(QStringLiteral("reordercol.ico")));
     QAction *dupTbl = moreTable->addAction(
         QStringLiteral("Duplicate Table &Structure/Data…"));
+    dupTbl->setIcon(Icons::get(QStringLiteral("copytable.ICO")));
     connect(dupTbl, &QAction::triggered, this,
             [onSelectedTable] { onSelectedTable(&ConnectionTab::promptCopyTable); });
     QAction *tblProps = moreTable->addAction(QStringLiteral("View &Table Properties"));
+    tblProps->setIcon(Icons::get(QStringLiteral("tableprop.ico")));
     connect(tblProps, &QAction::triggered, this,
             [onSelectedTable] { onSelectedTable(&ConnectionTab::showTableProperties); });
     table->addSeparator();
     QMenu *tblBackup = table->addMenu(QStringLiteral("&Backup/Export"));
     addDisabled(tblBackup, QStringLiteral("&Scheduled Backups…\tCtrl+Alt+S"));
-    connect(tblBackup->addAction(
-                QStringLiteral("&Backup Table(s) As SQL Dump…\tCtrl+Alt+E")),
-            &QAction::triggered, this,
+    QAction *dumpTblAct = tblBackup->addAction(
+        QStringLiteral("&Backup Table(s) As SQL Dump…\tCtrl+Alt+E"));
+    dumpTblAct->setIcon(Icons::get(QStringLiteral("export_data_16.ico")));
+    connect(dumpTblAct, &QAction::triggered, this,
             [onSelectedTable] { onSelectedTable(&ConnectionTab::dumpTable); });
     QAction *expTblData = tblBackup->addAction(
         QStringLiteral("&Export Table Data As…\tCtrl+Alt+C"));
@@ -689,6 +752,7 @@ MainWindow::MainWindow(QWidget *parent)
     addDisabled(tblImport, QStringLiteral("Import E&xternal Data…\tCtrl+Alt+O"));
     QAction *importCsv = tblImport->addAction(
         QStringLiteral("&Import CSV Data Using LOAD LOCAL…\tCtrl+Shift+M"));
+    importCsv->setIcon(Icons::get(QStringLiteral("csv.ico")));
     connect(importCsv, &QAction::triggered, this,
             [onSelectedTable] { onSelectedTable(&ConnectionTab::promptImportCsv); });
     QAction *importXml = tblImport->addAction(
@@ -697,6 +761,7 @@ MainWindow::MainWindow(QWidget *parent)
             [onSelectedTable] { onSelectedTable(&ConnectionTab::promptImportXml); });
     table->addSeparator();
     QAction *createTrig = table->addAction(QStringLiteral("Create Tri&gger…"));
+    createTrig->setIcon(Icons::get(QStringLiteral("addtrigger.ico")));
     connect(createTrig, &QAction::triggered, this, [this] {
         auto *t = currentTab();
         if(!t) return;
@@ -712,16 +777,20 @@ MainWindow::MainWindow(QWidget *parent)
     QMenu *others = menuBar()->addMenu(QStringLiteral("&Others"));
     QMenu *columns = others->addMenu(QStringLiteral("&Columns"));
     QAction *dropCol = columns->addAction(QStringLiteral("Drop &Column…\tDel"));
+    dropCol->setIcon(Icons::get(QStringLiteral("dropcolumn.ico")));
     connect(dropCol, &QAction::triggered, this,
             [onSelectedTable] { onSelectedTable(&ConnectionTab::promptDropColumn); });
     QAction *manageCols = columns->addAction(QStringLiteral("&Manage Columns\tF6"));
+    manageCols->setIcon(Icons::get(QStringLiteral("column.ico")));
     connect(manageCols, &QAction::triggered, this,
             [onSelectedTable] { onSelectedTable(&ConnectionTab::promptAlterTable); });
     QMenu *indexes = others->addMenu(QStringLiteral("&Indexes"));
     QAction *createIdx = indexes->addAction(QStringLiteral("Create &Index\tF4"));
+    createIdx->setIcon(Icons::get(QStringLiteral("indexcreate.ico")));
     connect(createIdx, &QAction::triggered, this,
             [onSelectedTable] { onSelectedTable(&ConnectionTab::promptManageIndexes); });
     QAction *editIdx = indexes->addAction(QStringLiteral("&Edit Index\tF6"));
+    editIdx->setIcon(Icons::get(QStringLiteral("indexedit.ico")));
     connect(editIdx, &QAction::triggered, this,
             [onSelectedTable] { onSelectedTable(&ConnectionTab::promptManageIndexes); });
 
@@ -735,6 +804,7 @@ MainWindow::MainWindow(QWidget *parent)
     });
     QAction *toolsDump = tools->addAction(
         QStringLiteral("&Backup Database As SQL Dump…\tCtrl+Alt+E"));
+    toolsDump->setIcon(Icons::get(QStringLiteral("export_data_16.ico")));
     connect(toolsDump, &QAction::triggered, this, [this] { dumpDatabase(); });
     QAction *runScript = tools->addAction(
         QStringLiteral("Execute &SQL Script…\tCtrl+Shift+Q"));
@@ -749,6 +819,10 @@ MainWindow::MainWindow(QWidget *parent)
     });
     tools->addSeparator();
     QMenu *flushMenu = tools->addMenu(QStringLiteral("&Flush…\tCtrl+Alt+F"));
+    /* upstream's Flush is a single command (ID_TOOLS_FLUSH) that pops its own
+     * floating menu rather than a nested submenu — the icon still belongs on
+     * that one launcher action, which here is the QMenu's own menuAction() */
+    flushMenu->menuAction()->setIcon(Icons::get(QStringLiteral("flush.ico")));
     const auto flushWith = [this](const QString &sql) {
         auto *t = currentTab();
         if(!t) return;
@@ -769,14 +843,17 @@ MainWindow::MainWindow(QWidget *parent)
         connect(a, &QAction::triggered, this, [flushWith, sql] { flushWith(sql); });
     }
     QAction *diag = tools->addAction(QStringLiteral("&Table Diagnostics…\tCtrl+Alt+T"));
+    diag->setIcon(Icons::get(QStringLiteral("tablediag.ico")));
     connect(diag, &QAction::triggered, this,
             [onSelectedTable] { onSelectedTable(&ConnectionTab::tableDiagnostics); });
     QAction *history = tools->addAction(QStringLiteral("&History\tCtrl+Shift+H"));
+    history->setIcon(Icons::get(QStringLiteral("history.ico")));
     connect(history, &QAction::triggered, this, [this] {
         if(auto *t = currentTab())
             t->showHistory();
     });
     QAction *info = tools->addAction(QStringLiteral("&Info\tCtrl+Shift+I"));
+    info->setIcon(Icons::get(QStringLiteral("object.ico")));
     connect(info, &QAction::triggered, this, [this] {
         if(auto *t = currentTab())
             t->showConnectionInfo();
@@ -786,6 +863,7 @@ MainWindow::MainWindow(QWidget *parent)
     });
     tools->addSeparator();
     QAction *userMgr = tools->addAction(QStringLiteral("&User Manager\tCtrl+U"));
+    userMgr->setIcon(Icons::get(QStringLiteral("user16.ico")));
     userMgr->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_U));
     connect(userMgr, &QAction::triggered, this, [this] {
         if(auto *t = currentTab()) t->promptUserManager();
@@ -904,6 +982,7 @@ MainWindow::MainWindow(QWidget *parent)
         openAndRun(p);
     });
     QAction *preferences = tools->addAction(QStringLiteral("&Preferences…"));
+    preferences->setIcon(Icons::get(QStringLiteral("preferences.ico")));
     connect(preferences, &QAction::triggered, this, [this] {
         /* one dialog over the same settings the Theme submenu, Query
          * Timeout… action and Change Object Browser Color already expose
@@ -1140,6 +1219,7 @@ MainWindow::MainWindow(QWidget *parent)
     /* ================= Window ======================================= */
     QMenu *window = menuBar()->addMenu(QStringLiteral("&Window"));
     QAction *winClose = window->addAction(QStringLiteral("&Close Tab\tAlt+L"));
+    winClose->setIcon(Icons::get(QStringLiteral("closetab.ico")));
     connect(winClose, &QAction::triggered, this, [this] {
         if(m_tabs->currentIndex() >= 0)
             closeTab(m_tabs->currentIndex());
