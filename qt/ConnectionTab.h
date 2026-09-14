@@ -137,7 +137,10 @@ public slots:
     void cancelQuery();   /* best-effort: ask the in-flight batch to stop */
     void openTable(const QString &db, const QString &table);
     void useDatabase(const QString &db);
-    void refreshBrowser();
+    /* autoDrill forwarded to ObjectBrowser::loadDatabases() — false only
+     * from switchDatabase(), so promoting a tree database to primary just
+     * reveals its schema list instead of also diving into its Tables */
+    void refreshBrowser(bool autoDrill = true);
     /* headless-test hook, forwards to ObjectBrowser::expandTopLevelDatabase() */
     void expandDatabaseNode(const QString &name);
     /* headless-test hook, forwards to ObjectBrowser::selectTreeItem() */

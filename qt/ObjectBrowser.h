@@ -47,9 +47,15 @@ public:
      * for MySQL/SQLite, where there's no separate database-vs-schema
      * split) — needed so the multi-database tree knows which top-level
      * database node is "already connected" (via `conn` directly) versus
-     * one that needs a side connection resolved on expand. */
+     * one that needs a side connection resolved on expand. autoDrill:
+     * when currentDb matches, also select/expand it and jump straight
+     * into its Tables folder (SQLyog's "show me my tables" reflex on a
+     * fresh connect/refresh) — pass false when the tree is already being
+     * browsed and this call is just a database switch, so the top-level
+     * node only reveals its own schema list instead of also diving two
+     * levels deeper than an ordinary expand-arrow click would. */
     void loadDatabases(IDbConnection *conn, const QString &currentDb,
-                       const QString &primaryDb = {});
+                       const QString &primaryDb = {}, bool autoDrill = true);
 
     /* [db, table] of the currently selected table item, else empty */
     QStringList currentTableInfo() const;
