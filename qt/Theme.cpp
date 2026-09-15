@@ -64,8 +64,8 @@ QTabBar::tab:!selected { margin-top: 0; }
 QTabWidget#connTabs > QTabBar { background: #FFFFFF; qproperty-drawBase: 0;
     border-bottom: 2px solid #3B7DBB; }
 QTabWidget#connTabs > QTabBar::tab { background: #F0F0F0; color: #3B7DBB;
-    border: 1px solid #C8C8C8; border-bottom: 0; margin-right: 2px;
-    padding: 3px 10px; }
+    border: 1px solid #C8C8C8; border-bottom: 0; margin-right: 0;
+    padding: 3px 6px; }
 QTabWidget#connTabs > QTabBar::tab:selected { background: #FFFFFF;
     color: #1E1E1E; }
 
