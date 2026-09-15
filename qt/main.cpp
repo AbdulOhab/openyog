@@ -81,6 +81,12 @@ int main(int argc, char *argv[])
     QString dblClickTreePath; /* --dblclicktreepath=a/b/c selftest (synthesized double-click) */
     QString collapseTreePath; /* --collapsetreepath=a/b/c selftest */
     QString expandTreePath;   /* --expandtreepath=a/b/c selftest (setExpanded(true), not a click) */
+    QStringList dumpTreePaths; /* --dumptree=a/b/c selftest: print that node's subtree (repeatable) */
+    /* the four tree gestures above, repeated --xxxtreepath= args accumulate
+     * here in command-line order and are replayed in that order — lets a
+     * selftest script a whole browse sequence (expand A, double-click B,
+     * expand C…) instead of one gesture per run */
+    QList<QPair<QString, QString>> treeActions;
     int editRow = -1, editCol = -1;
     bool stageOnly = false;
     QString editValue;
@@ -115,14 +121,24 @@ int main(int argc, char *argv[])
             runAgain = true;
         if(a.startsWith(QStringLiteral("--selecttreepath=")))
             selectTreePath = a.mid(QStringLiteral("--selecttreepath=").size());
-        if(a.startsWith(QStringLiteral("--clicktreepath=")))
+        if(a.startsWith(QStringLiteral("--clicktreepath="))) {
             clickTreePath = a.mid(QStringLiteral("--clicktreepath=").size());
-        if(a.startsWith(QStringLiteral("--dblclicktreepath=")))
+            treeActions.append({ QStringLiteral("click"), clickTreePath });
+        }
+        if(a.startsWith(QStringLiteral("--dblclicktreepath="))) {
             dblClickTreePath = a.mid(QStringLiteral("--dblclicktreepath=").size());
-        if(a.startsWith(QStringLiteral("--collapsetreepath=")))
+            treeActions.append({ QStringLiteral("dblclick"), dblClickTreePath });
+        }
+        if(a.startsWith(QStringLiteral("--collapsetreepath="))) {
             collapseTreePath = a.mid(QStringLiteral("--collapsetreepath=").size());
-        if(a.startsWith(QStringLiteral("--expandtreepath=")))
+            treeActions.append({ QStringLiteral("collapse"), collapseTreePath });
+        }
+        if(a.startsWith(QStringLiteral("--expandtreepath="))) {
             expandTreePath = a.mid(QStringLiteral("--expandtreepath=").size());
+            treeActions.append({ QStringLiteral("expand"), expandTreePath });
+        }
+        if(a.startsWith(QStringLiteral("--dumptree=")))
+            dumpTreePaths.append(a.mid(QStringLiteral("--dumptree=").size()));
         if(a == QStringLiteral("--exportdlg"))
             shotExportDlg = true;
         /* --opentable=db:table (selftest: opens the editable data grid) */
@@ -1652,14 +1668,28 @@ int main(int argc, char *argv[])
                         w->selftestSelectBrowserItem(selectTreePath);
                     if(!switchDbArg.isEmpty())
                         w->selftestSwitchDatabase(switchDbArg);
-                    if(!expandTreePath.isEmpty())
-                        w->selftestExpandBrowserItem(expandTreePath);
-                    if(!collapseTreePath.isEmpty())
-                        w->selftestCollapseBrowserItem(collapseTreePath);
-                    if(!clickTreePath.isEmpty())
-                        w->selftestClickBrowserItem(clickTreePath);
-                    if(!dblClickTreePath.isEmpty())
-                        w->selftestDoubleClickBrowserItem(dblClickTreePath);
+                    /* all four tree gestures, replayed in command-line order
+                     * (single-gesture invocations are just a one-entry list —
+                     * same effect as the old per-verb calls, but repeatable
+                     * --xxxtreepath= args let a selftest script a whole
+                     * browse sequence: expand A, double-click B, expand C…) */
+                    for(const auto &act : treeActions) {
+                        const QString &verb = act.first;
+                        const QString &path = act.second;
+                        if(verb == QStringLiteral("expand"))
+                            w->selftestExpandBrowserItem(path);
+                        else if(verb == QStringLiteral("collapse"))
+                            w->selftestCollapseBrowserItem(path);
+                        else if(verb == QStringLiteral("click"))
+                            w->selftestClickBrowserItem(path);
+                        else if(verb == QStringLiteral("dblclick"))
+                            w->selftestDoubleClickBrowserItem(path);
+                    }
+                    for(const QString &dumpPath : dumpTreePaths) {
+                        QTextStream(stdout) << "---- tree @ " << dumpPath << '\n';
+                        for(const QString &line : w->selftestDumpTree(dumpPath))
+                            QTextStream(stdout) << line << '\n';
+                    }
                     if(!mkObj.isEmpty())
                         w->openSchemaObjectTab(mkObj);
                     if(runAgain)

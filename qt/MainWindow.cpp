@@ -1890,6 +1890,13 @@ void MainWindow::selftestExpandBrowserItem(const QString &path)
         tab->expandBrowserItem(path);
 }
 
+QStringList MainWindow::selftestDumpTree(const QString &path)
+{
+    if(auto *tab = currentTab())
+        return tab->dumpBrowserSubtree(path);
+    return {};
+}
+
 void MainWindow::selftestDoubleClickBrowserItem(const QString &path)
 {
     if(auto *tab = currentTab())

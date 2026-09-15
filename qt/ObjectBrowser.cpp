@@ -166,6 +166,17 @@ ObjectBrowser::ObjectBrowser(QWidget *parent)
                            this, [this, physDb] {
                 emit openDatabaseInNewTabRequested(physDb);
             });
+            if(kind == KTable)
+                /* viewing data is safe on a foreign table — the data grid
+                 * gets that database's own side connection (tableActivated
+                 * carries physDb), unlike the Alter/Index/FK actions that
+                 * stay primary-only below */
+                menu.addAction(QStringLiteral("Open Table &Data"), this,
+                               [this, item] {
+                    emit tableActivated(item->data(0, Qt::UserRole + 1).toString(),
+                                        item->text(0),
+                                        item->data(0, RolePhysDb).toString());
+                });
             if(kind == KDatabase || kind == KFolder || kind == KTable)
                 menu.addAction(QStringLiteral("Re&fresh Node"), this, [this, item] {
                     item->takeChildren();
@@ -223,7 +234,9 @@ ObjectBrowser::ObjectBrowser(QWidget *parent)
             const QString db = item->data(0, Qt::UserRole + 1).toString();
             const QString table = item->text(0);
             menu.addAction(QStringLiteral("Open Table &Data"), this,
-                           [this, db, table] { emit tableActivated(db, table); });
+                           [this, db, table, physDb] {
+                               emit tableActivated(db, table, physDb);
+                           });
             menu.addAction(QStringLiteral("&Alter Table…"), this,
                            [this, db, table] { emit alterTableRequested(db, table); });
             menu.addAction(QStringLiteral("&Manage Indexes…"), this,
@@ -293,15 +306,27 @@ ObjectBrowser::ObjectBrowser(QWidget *parent)
                 const int kind = item->data(0, Qt::UserRole).toInt();
                 const QString physDb = item->data(0, RolePhysDb).toString();
                 const bool foreign = !physDb.isEmpty() && physDb != m_primaryDatabase;
+                /* the database node itself is the switch gesture (double-
+                 * click = make this tab's connection that database) */
                 if(kind == KPgDatabase)
                     emit switchDatabaseRequested(item->text(0));
+                else if(kind == KTable)
+                    /* open the clicked table's data — on EITHER database.
+                     * The table under a non-primary database used to route
+                     * here too and switch the whole connection instead,
+                     * throwing away the user's tree state (the reported
+                     * "clicked a table in half26, everything collapsed"
+                     * bug); it now opens through that database's side
+                     * connection, like the context menu's Open Table Data.
+                     * physDb routes the data grid to the right connection
+                     * (empty on MySQL/SQLite → m_conn). */
+                    emit tableActivated(item->data(0, Qt::UserRole + 1).toString(),
+                                        item->text(0), physDb);
                 else if(foreign)
-                    emit switchDatabaseRequested(physDb);
+                    return;   /* other foreign items: double-click just
+                                 expands in place — browsing, not switching */
                 else if(kind == KDatabase)
                     emit databaseActivated(item->data(0, Qt::UserRole + 1).toString());
-                else if(kind == KTable)
-                    emit tableActivated(item->data(0, Qt::UserRole + 1).toString(),
-                                        item->text(0));
                 else if(kind == KLeaf && item->parent()
                         && !folderObjType(item->parent()->text(0)).isEmpty())
                     emit alterObjectRequested(
@@ -727,6 +752,32 @@ void ObjectBrowser::expandTreeItem(const QString &path)
         cur = next;
     }
     cur->setExpanded(true);
+}
+
+QStringList ObjectBrowser::dumpSubtree(const QString &path) const
+{
+    QTreeWidgetItem *cur = m_tree->topLevelItem(0);
+    if(!cur)
+        return {};
+    const QStringList parts = path.split(QLatin1Char('/'), Qt::SkipEmptyParts);
+    for(const QString &part : parts) {
+        QTreeWidgetItem *next = nullptr;
+        for(int i = 0; i < cur->childCount(); ++i)
+            if(cur->child(i)->text(0) == part) { next = cur->child(i); break; }
+        if(!next)
+            return {};   /* unresolved path — same silence as the walkers */
+        cur = next;
+    }
+    QStringList out;
+    const std::function<void(QTreeWidgetItem *, int)> walk =
+        [&](QTreeWidgetItem *item, int depth) {
+            out << QStringLiteral("%1%2").arg(QString(depth * 2, QLatin1Char(' ')),
+                                              item->text(0));
+            for(int i = 0; i < item->childCount(); ++i)
+                walk(item->child(i), depth + 1);
+        };
+    walk(cur, 0);
+    return out;
 }
 
 void ObjectBrowser::copyCreateTable(const QString &db, const QString &table,
