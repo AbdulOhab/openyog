@@ -19,7 +19,6 @@
  *   QTabWidget#editorTabs        Query/History    — white strip
  *   QTabWidget#resultTabs        Messages/Data/…  — solid blue strip
  *   QTabWidget#connectDialogTabs ConnectionDialog's driver tabs — same as #connTabs
- *   QLabel#infoStrip      nag-bar replacement — solid blue
  *   QFrame#limitStrip     bottom LIMIT combo row — solid blue          */
 
 namespace {
@@ -107,7 +106,6 @@ QTabWidget#resultTabs > QTabBar::tab { background: #3B7DBB; color: #FFFFFF;
 QTabWidget#resultTabs > QTabBar::tab:selected { background: #FFFFFF;
     color: #000000; }
 
-QLabel#infoStrip { background: #3B7DBB; color: #FFFFFF; padding: 2px 8px; }
 QFrame#limitStrip { background: #3B7DBB; }
 QFrame#limitStrip QComboBox { min-width: 90px; }
 
@@ -148,7 +146,6 @@ QTabBar { background: #3C3F41; }
 QTabBar::tab { background: #3C3F41; color: #C8C8C8; padding: 3px 12px;
     margin-right: 1px; font-size: 9pt; }
 QTabBar::tab:selected { background: #2A5D9F; color: white; }
-QLabel#infoStrip { background: #2A5D9F; color: white; padding: 2px 8px; }
 QFrame#limitStrip { background: #2A5D9F; }
 QSplitter::handle { background: #2A5D9F; }
 QSplitter::handle:horizontal { width: 4px; }
@@ -171,7 +168,6 @@ QTabBar { background: #293955; }
 QTabBar::tab { background: #293955; color: #A5B1C9; padding: 3px 12px;
     margin-right: 1px; font-size: 9pt; }
 QTabBar::tab:selected { background: #FCE198; color: #293955; }
-QLabel#infoStrip { background: #3A5278; color: #FCE198; padding: 2px 8px; }
 QFrame#limitStrip { background: #3A5278; }
 QSplitter::handle { background: #3A5278; }
 QSplitter::handle:horizontal { width: 4px; }

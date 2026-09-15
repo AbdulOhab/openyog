@@ -311,7 +311,6 @@ private:
 
     ObjectBrowser    * m_browser    = nullptr;
     TableDataView    * m_tableData  = nullptr;
-    QLabel           * m_infoBar    = nullptr;
     QComboBox        * m_limitCombo = nullptr;
     QTabWidget       * m_editorTabs = nullptr;
     CodeEditor       * m_editor     = nullptr;
