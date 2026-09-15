@@ -16,6 +16,8 @@
  *   openyog --pgtest=host:port:user:pw:db              PostgreSQL driver shape self-check
  *   openyog --autoconnectfile=FILE.sqlite [--opentable=db:t] [--editcell=r:c:v]
  *           --screenshot=FILE.png       same data-grid selftests, SQLite driver
+ *   openyog --autoconnectpg=h:p:u:pw:db --explain=json|plain --screenshot=FILE.png
+ *           … same downstream machinery as --autoconnect=, PostgreSQL driver
  */
 #include "MainWindow.h"
 #include "ConnectionDialog.h"
@@ -70,6 +72,7 @@ int main(int argc, char *argv[])
     QString checkRows;      /* --checkrows=0,2,4 selftest */
     QString hexCell;        /* --hexcell=row:col:hexdigits selftest */
     QString mkObj;          /* --mkobj=VIEW|PROCEDURE|… selftest */
+    QString explainMode;    /* --explain=json|plain selftest: Explain "SELECT 1" */
     QString useDbArg;       /* --usedb=NAME selftest */
     QString expandPgDbArg;  /* --expandpgdb=NAME selftest */
     bool runAgain = false;  /* --runagain selftest: F9 a second time before the screenshot */
@@ -1255,6 +1258,9 @@ int main(int argc, char *argv[])
         /* --mkobj=VIEW : open the Create <obj> editor tab */
         if(a.startsWith(QStringLiteral("--mkobj=")))
             mkObj = a.mid(QStringLiteral("--mkobj=").size());
+        /* --explain=json|plain : run Explain (Format=JSON) on "SELECT 1" */
+        if(a.startsWith(QStringLiteral("--explain=")))
+            explainMode = a.mid(QStringLiteral("--explain=").size());
         if(a.startsWith(QStringLiteral("--usedb=")))
             useDbArg = a.mid(QStringLiteral("--usedb=").size());
         if(a.startsWith(QStringLiteral("--expandpgdb=")))
@@ -1658,11 +1664,15 @@ int main(int argc, char *argv[])
                         w->openSchemaObjectTab(mkObj);
                     if(runAgain)
                         w->selftestRunAgain();
-                    /* a re-run is also threaded — give it the same landing
-                     * time as the initial connect's own query before the
-                     * screenshot, instead of the other selftests' shorter
-                     * delay (their effects are all synchronous) */
-                    QTimer::singleShot(runAgain ? 1500 : 600, [w, screenshot] {
+                    if(!explainMode.isEmpty())
+                        w->selftestExplain(explainMode);
+                    /* a re-run or an --explain= is also threaded — give it
+                     * the same landing time as the initial connect's own
+                     * query before the screenshot, instead of the other
+                     * selftests' shorter delay (their effects are all
+                     * synchronous) */
+                    QTimer::singleShot((runAgain || !explainMode.isEmpty())
+                                           ? 1500 : 600, [w, screenshot] {
                         w->grab().save(screenshot);
                         QApplication::quit();
                     });

@@ -1860,6 +1860,12 @@ void MainWindow::selftestRunAgain()
     executeCurrentTab();
 }
 
+void MainWindow::selftestExplain(const QString &mode)
+{
+    if(auto *tab = currentTab())
+        tab->selftestExplain(mode);
+}
+
 void MainWindow::selftestSelectBrowserItem(const QString &path)
 {
     if(auto *tab = currentTab())
