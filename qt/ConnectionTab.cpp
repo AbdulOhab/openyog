@@ -684,6 +684,13 @@ QString ConnectionTab::defaultDb() const
 {
     if(m_params.driverType == DriverType::Postgres)
         return m_currentSchema.isEmpty() ? QStringLiteral("public") : m_currentSchema;
+    /* SQLite names its one database "main" — a file connection carries no
+     * database field, so an empty default would make db-less calls (Create
+     * Procedure etc.) hit "Select a database first." instead of doing their
+     * normal thing (which for PROCEDURE/FUNCTION/EVENT is the SQLite guard) */
+    if(m_params.driverType == DriverType::Sqlite)
+        return m_params.database.isEmpty() ? QStringLiteral("main")
+                                           : m_params.database;
     return m_params.database;
 }
 
