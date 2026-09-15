@@ -1,7 +1,7 @@
 /* PORT shim: minimal CommonHelper.h stand-in for compiling leaf core files
  * (wyString.cpp) on Linux without the full GUI header chain.
  * The real include/CommonHelper.h needs CommonJobStructures.h, which is
- * missing from the upstream repo (see xnote/2026-09-08-codebase-metrics.md).
+ * missing from the upstream repo.
  * This shim shadows include/CommonHelper.h via -I port/shim coming first.
  * It must grow or die when Phase 2 starts compiling real UI-adjacent code.
  */
