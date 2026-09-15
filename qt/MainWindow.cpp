@@ -1364,12 +1364,13 @@ MainWindow::MainWindow(QWidget *parent)
 
     m_statusMsg = new QLabel(QStringLiteral("Ready"), this);
     statusBar()->addWidget(m_statusMsg, 1);
+    m_driverLabel = new QLabel(QStringLiteral("—"), this);
     m_connectionLabel = new QLabel(QStringLiteral("No connection"), this);
     m_execLabel = new QLabel(QStringLiteral("Exec: 0 sec"), this);
     m_totalLabel = new QLabel(QStringLiteral("Total: 0 sec"), this);
     m_cursorLabel = new QLabel(QStringLiteral("Ln 1, Col 1"), this);
     m_connectionsLabel = new QLabel(QStringLiteral("Connections: 0"), this);
-    for(QLabel *l : { m_connectionLabel, m_execLabel, m_totalLabel, m_cursorLabel, m_connectionsLabel }) {
+    for(QLabel *l : { m_driverLabel, m_connectionLabel, m_execLabel, m_totalLabel, m_cursorLabel, m_connectionsLabel }) {
         l->setMinimumWidth(90);
         l->setFrameStyle(QFrame::Panel | QFrame::Sunken);
         statusBar()->addPermanentWidget(l);
@@ -1488,9 +1489,11 @@ void MainWindow::syncToolbarToCurrentTab()
         setWindowTitle(QStringLiteral("OpenYog - [%1/%2 - %3]")
                            .arg(tab->title(), tab->defaultDb(),
                                 tab->hostLabel()));
+        m_driverLabel->setText(driverDisplayName(tab->driverType()));
         m_connectionLabel->setText(tab->activeConnectionLabel());
     } else {
         setWindowTitle(QStringLiteral("OpenYog"));
+        m_driverLabel->setText(QStringLiteral("—"));
         m_connectionLabel->setText(QStringLiteral("No connection"));
     }
     /* counts real server connections (a tab that has browsed another

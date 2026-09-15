@@ -16,6 +16,18 @@ inline QString driverTypeToString(DriverType t)
     return QStringLiteral("mysql");
 }
 
+/* human-readable driver name for the UI (status bar, dialogs) —
+ * driverTypeToString() above is the lowercase persistence form */
+inline QString driverDisplayName(DriverType t)
+{
+    switch(t) {
+    case DriverType::Mysql:    return QStringLiteral("MySQL");
+    case DriverType::Sqlite:   return QStringLiteral("SQLite");
+    case DriverType::Postgres: return QStringLiteral("PostgreSQL");
+    }
+    return QStringLiteral("MySQL");
+}
+
 /* Unknown/missing strings fall back to `fallback` — keeps old saved
  * connections with no "driver" key (or a driver added by a newer build)
  * loading instead of failing outright. */

@@ -88,6 +88,7 @@ private:
     QTabWidget *m_tabs    = nullptr;
     QComboBox  *m_dbCombo = nullptr;
     QLabel     *m_statusMsg        = nullptr;
+    QLabel     *m_driverLabel      = nullptr;   /* MySQL / PostgreSQL / SQLite */
     QLabel     *m_connectionLabel  = nullptr;   /* which connection is in front */
     QLabel     *m_execLabel        = nullptr;
     QLabel     *m_totalLabel       = nullptr;
