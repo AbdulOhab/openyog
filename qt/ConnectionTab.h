@@ -152,6 +152,7 @@ public slots:
     void collapseBrowserItem(const QString &path);
     /* headless-test hook, forwards to ObjectBrowser::expandTreeItem() */
     void expandBrowserItem(const QString &path);
+    QStringList dumpBrowserSubtree(const QString &path);   /* --dumptree= selftest */
     /* headless-test hook, forwards to ObjectBrowser::doubleClickTreeItem() */
     void doubleClickBrowserItem(const QString &path);
     bool execDdl(const QString &sql);

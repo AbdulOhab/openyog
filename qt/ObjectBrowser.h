@@ -93,10 +93,19 @@ public:
      * which — unlike a real arrow click — does trigger itemExpanded, so
      * lazy children populate exactly as they would for a user) */
     void expandTreeItem(const QString &path);
+    /* same path walk, returns the found item's subtree as indented text
+     * (empty when the path doesn't resolve) — lets a selftest assert on
+     * what actually got listed under a folder, not just screenshot it */
+    QStringList dumpSubtree(const QString &path) const;
 
 signals:
     void databaseActivated(const QString &db);      /* double click → USE */
-    void tableActivated(const QString &db, const QString &table); /* → SELECT */
+    void tableActivated(const QString &db, const QString &table,
+                        const QString &physDb = {});   /* → SELECT; physDb routes
+                        the data grid at the right connection (PostgreSQL's
+                        multi-database tree: a table under a non-primary
+                        database must load via that database's side
+                        connection, not m_conn) */
     void dropTableRequested(const QString &db, const QString &table);
     void truncateTableRequested(const QString &db, const QString &table);
     void createTableRequested(const QString &db);

@@ -555,11 +555,25 @@ ConnectionTab::ConnectionTab(const ConnectionParams &params, QWidget *parent)
     connect(m_browser, &ObjectBrowser::databaseActivated, this,
             &ConnectionTab::useDatabase);
     connect(m_browser, &ObjectBrowser::tableActivated, this,
-            [this](const QString &db, const QString &table) {
-        if(m_conn) {
-            m_tableData->load(m_conn, db, table);
-            m_resultTabs->setCurrentWidget(m_tableData);
+            [this](const QString &db, const QString &table, const QString &physDb) {
+        if(!m_conn)
+            return;
+        /* physDb routes PostgreSQL's multi-database tree: a table under a
+         * non-primary database loads through that database's own (pooled)
+         * side connection, not m_conn. connectionFor() falls back to m_conn
+         * for an empty physDb (MySQL/SQLite) or the current primary, and
+         * pool entries are only ever moved between m_conn and the pool —
+         * never deleted — so the pointer stays valid for this tab's life. */
+        QString error;
+        IDbConnection *c = connectionFor(physDb, &error);
+        if(!c) {
+            m_messages->setPlainText(
+                QStringLiteral("Could not open %1.%2: %3").arg(physDb, table, error));
+            m_resultTabs->setCurrentWidget(m_messages);
+            return;
         }
+        m_tableData->load(c, db, table);
+        m_resultTabs->setCurrentWidget(m_tableData);
     });
     connect(m_tableData, &TableDataView::statusMessage, this,
             [this](const QString &text) {
@@ -1553,6 +1567,11 @@ void ConnectionTab::collapseBrowserItem(const QString &path)
 void ConnectionTab::expandBrowserItem(const QString &path)
 {
     m_browser->expandTreeItem(path);
+}
+
+QStringList ConnectionTab::dumpBrowserSubtree(const QString &path)
+{
+    return m_browser->dumpSubtree(path);
 }
 
 void ConnectionTab::doubleClickBrowserItem(const QString &path)
