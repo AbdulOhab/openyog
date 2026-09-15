@@ -1152,7 +1152,14 @@ void ConnectionTab::runAndEdit()
     runQuery();
 }
 
-/* Explain the current statement (FORMAT=JSON goes to the Messages pane) */
+/* Explain the current statement (FORMAT=JSON goes to the Messages pane).
+ * Plain EXPLAIN is valid SQL on all three drivers as-is (SQLite's own
+ * EXPLAIN just returns raw VDBE opcodes rather than a query plan — usable,
+ * just not very readable — so it's left unguarded); FORMAT=JSON is where
+ * the syntax actually diverges: MySQL's own "EXPLAIN FORMAT=JSON <stmt>"
+ * is invalid everywhere else — Postgres needs the parenthesized option
+ * list "EXPLAIN (FORMAT JSON) <stmt>", and SQLite has no such option at
+ * all, so that combination is guarded instead of sent as broken SQL. */
 void ConnectionTab::explainCurrent(bool json)
 {
     CodeEditor *ed = currentEditor();
@@ -1167,9 +1174,20 @@ void ConnectionTab::explainCurrent(bool json)
         stmt.chop(1);
     if(stmt.isEmpty())
         return;
-    runStatements({ QStringLiteral("EXPLAIN %1%2")
-                        .arg(json ? QStringLiteral("FORMAT=JSON ") : QString(), stmt) },
-                  QStringLiteral("Explain"));
+    QString explainSql;
+    if(!json) {
+        explainSql = QStringLiteral("EXPLAIN %1").arg(stmt);
+    } else if(driverType() == DriverType::Postgres) {
+        explainSql = QStringLiteral("EXPLAIN (FORMAT JSON) %1").arg(stmt);
+    } else if(driverType() == DriverType::Sqlite) {
+        QMessageBox::information(this, QStringLiteral("Explain"),
+            QStringLiteral("SQLite has no EXPLAIN FORMAT=JSON — use plain "
+                           "EXPLAIN instead."));
+        return;
+    } else {
+        explainSql = QStringLiteral("EXPLAIN FORMAT=JSON %1").arg(stmt);
+    }
+    runStatements({ explainSql }, QStringLiteral("Explain"));
 }
 
 void ConnectionTab::runStatements(const QStringList &statements,
@@ -1729,6 +1747,23 @@ void ConnectionTab::createSchemaObject(const QString &database,
         return;
     }
     const QString nice = objType.left(1) + objType.mid(1).toLower();
+    /* SQLite has none of these three — no stored procedures, no CREATE
+     * FUNCTION (user-defined functions there are registered through the C
+     * API, not SQL DDL), no event scheduler. Without this guard,
+     * SchemaSql::createTemplate() falls into its generic "MySQL/SQLite"
+     * branch and opens an editor tab pre-filled with MySQL-only syntax
+     * that just fails with a bare syntax error on Run — View and Trigger
+     * are genuinely fine on SQLite and stay unguarded. */
+    if(m_params.driverType == DriverType::Sqlite
+       && (objType == QStringLiteral("PROCEDURE")
+           || objType == QStringLiteral("FUNCTION")
+           || objType == QStringLiteral("EVENT"))) {
+        QMessageBox::information(this, QStringLiteral("Create %1").arg(nice),
+            QStringLiteral("SQLite has no stored procedures, functions, or "
+                           "scheduled events — only tables, views, indexes "
+                           "and triggers."));
+        return;
+    }
     /* SQLyog opens the DDL in a new query-editor tab, not a modal dialog */
     openEditorWithSql(
         QStringLiteral("Create %1").arg(nice),
@@ -2523,19 +2558,45 @@ void ConnectionTab::promptCopyTableToHost(const QString &database, const QString
 {
     if(!m_conn || table.isEmpty())
         return;
+    /* the target here is always a fresh MySQL connection (see the dialog's
+     * own label below) and the structure statement below is whatever
+     * m_conn->showCreate() hands back — the *source's own* dialect. That's
+     * fine when the source is MySQL too, but a Postgres/SQLite CREATE
+     * TABLE (double-quoted identifiers, SERIAL/TEXT type differences, no
+     * ENGINE=/CHARSET= clause, etc.) sent to a MySQL server the way this
+     * always did would just fail with a syntax error rather than copying
+     * anything — untested and unguarded until this fix. Unlike Copy
+     * Database (which grew three genuinely separate per-driver code
+     * paths — copyDatabaseTo()/copyDatabaseToPostgres()/the SQLite branch
+     * in promptCopyDatabase()), a real cross-dialect DDL translator for
+     * this one is a bigger job than a bug fix; guarding it is the same
+     * defensive choice already made everywhere else in this file (Flush,
+     * Show, Set Autocommit, …) rather than sending SQL nobody asked for. */
+    if(m_params.driverType != DriverType::Mysql) {
+        QMessageBox::information(this, QStringLiteral("Copy Table To Different Host"),
+            QStringLiteral("This only supports a MySQL/MariaDB source right "
+                           "now — the target is always MySQL, and copying "
+                           "a %1 table's structure across dialects isn't "
+                           "implemented. Use Database ▸ Copy Database or "
+                           "Backup Table(s) As SQL Dump instead.")
+                .arg(m_params.driverType == DriverType::Postgres
+                         ? QStringLiteral("PostgreSQL") : QStringLiteral("SQLite")));
+        return;
+    }
     const QString srcDb = database.isEmpty() ? defaultDb() : database;
 
     QDialog dlg(this);
     dlg.setWindowTitle(QStringLiteral("Copy Table `%1` To Different Host/Database")
                             .arg(table));
-    const bool srcIsMysql = m_params.driverType == DriverType::Mysql;
-    auto *tHost = new QLineEdit(srcIsMysql ? m_params.host : QStringLiteral("127.0.0.1"), &dlg);
+    /* driver is guaranteed MySQL past the guard above, so this can just
+     * prefill from the source tab's own connection */
+    auto *tHost = new QLineEdit(m_params.host, &dlg);
     auto *tPort = new QSpinBox(&dlg);
     tPort->setRange(1, 65535);
-    tPort->setValue(srcIsMysql ? m_params.port : 3306);
+    tPort->setValue(m_params.port);
     tPort->setLocale(QLocale::c());
-    auto *tUser = new QLineEdit(srcIsMysql ? m_params.user : QString(), &dlg);
-    auto *tPass = new QLineEdit(srcIsMysql ? m_params.password : QString(), &dlg);
+    auto *tUser = new QLineEdit(m_params.user, &dlg);
+    auto *tPass = new QLineEdit(m_params.password, &dlg);
     tPass->setEchoMode(QLineEdit::Password);
     auto *tDb = new QLineEdit(srcDb, &dlg);
     auto *wantData = new QCheckBox(QStringLiteral("Copy table data"), &dlg);

@@ -46,6 +46,23 @@
 #include <algorithm>
 #include <functional>
 
+namespace {
+/* a binary-literal expression for `hex` (already validated: even length,
+ * lowercase 0-9a-f) — MySQL and SQLite both accept the x'…' form as-is,
+ * but on PostgreSQL that syntax is a *bit-string* literal (type `bit`),
+ * not a `bytea` one, so writing it into a binary column either fails to
+ * cast or silently does the wrong thing rather than storing the intended
+ * bytes. decode('…','hex') is PostgreSQL's own portable binary literal —
+ * unlike '\x…'::bytea it doesn't depend on the standard_conforming_strings
+ * setting for escaping. */
+QString hexLiteral(DriverType driver, const QString &hex)
+{
+    if(driver == DriverType::Postgres)
+        return QStringLiteral("decode('%1','hex')").arg(hex);
+    return QStringLiteral("x'%1'").arg(hex);
+}
+} // namespace
+
 /* ---------------- editable model (staged edits + inserts + deletes) ------- */
 
 class TableDataModel : public QAbstractTableModel
@@ -948,8 +965,8 @@ void TableDataView::checkAllRows(bool on)
 void TableDataView::hexCellForTest(int row, int col, const QString &hex)
 {
     const QString h = hex.trimmed().toLower();
-    m_model->stageExpr(row, col, QStringLiteral("x'%1'").arg(h),
-                                 QStringLiteral("x'%1'").arg(h));
+    const QString expr = hexLiteral(m_conn ? m_conn->driverType() : DriverType::Mysql, h);
+    m_model->stageExpr(row, col, expr, expr);
     applyPendingEdits();
 }
 
@@ -1509,9 +1526,11 @@ void TableDataView::editCellInTextEditor()
                 QStringLiteral("Enter an even number of hex digits (0-9, a-f)."));
             return;
         }
-        const QString expr = QStringLiteral("x'%1'").arg(h);
+        const DriverType drv = m_conn ? m_conn->driverType() : DriverType::Mysql;
+        const QString expr = hexLiteral(drv, h);
         const QString disp = h.size() > 32
-            ? QStringLiteral("x'%1…' (%2 bytes)").arg(h.left(32)).arg(h.size() / 2)
+            ? hexLiteral(drv, h.left(32) + QStringLiteral("…"))
+                  + QStringLiteral(" (%1 bytes)").arg(h.size() / 2)
             : expr;
         m_model->stageExpr(row, c, disp, expr);
         return;
