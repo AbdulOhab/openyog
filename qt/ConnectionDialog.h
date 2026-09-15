@@ -1,6 +1,5 @@
 /* OpenYog — connection dialog, laid out after SQLyog's "Connect to MySQL Host"
- * (include/SQLyog.rc IDD_CONNECT, see xnote/2026-09-09-ui-shell-spec.md §5 and
- * xnote/ref-sqlyog-flat-connection-page.png):
+ * (include/SQLyog.rc IDD_CONNECT):
  *   left image strip | New/Clone/Save/Rename/Delete row | Saved Connections
  *   combo | MySQL/HTTP/SSH/SSL/Advanced tabs | Connect / Cancel / Test.
  * HTTP/SSH/SSL/Advanced are placeholders until Phase 6. Persistence is via

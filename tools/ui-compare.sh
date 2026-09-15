@@ -1,10 +1,8 @@
 #!/usr/bin/env bash
 # ui-compare.sh — capture OpenYog and the real SQLyog at the same size and
 # stitch them side by side, so the owner reviews ONE image per session instead
-# of describing the visual gap in words.
-#
-# See xnote/2026-09-09-ui-shell-spec.md for why this exists (owner directive:
-# converge on the look first, judged per side-by-side screenshot).
+# of describing the visual gap in words (owner directive: converge on the
+# look first, judged per side-by-side screenshot).
 #
 # Usage:
 #   tools/ui-compare.sh [tag]

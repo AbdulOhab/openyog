@@ -167,9 +167,9 @@ int main(int argc, char *argv[])
         }
         /* --sqlitetest=FILE — exercise the SQLite driver's canonical metadata
          * shapes (qt/db/IDbConnection.h) headlessly against a prepared SQLite
-         * file; expects the xnote/sample.sqlite layout (employees: INTEGER
-         * PRIMARY KEY id, a city index, an inline FK to emp_dept, a BEFORE
-         * INSERT trigger; plus a view; no routines/events). */
+         * file; expects an (employees: INTEGER PRIMARY KEY id, a city index,
+         * an inline FK to emp_dept, a BEFORE INSERT trigger; plus a view; no
+         * routines/events) layout. */
         if(a.startsWith(QStringLiteral("--sqlitetest="))) {
             qputenv("QT_QPA_PLATFORM", "offscreen");
             QApplication app2(argc, argv);
@@ -675,7 +675,7 @@ int main(int argc, char *argv[])
         }
         /* --pgtest=host:port:user:pw:db — exercise the PostgreSQL driver's
          * canonical metadata shapes against a live server prepared with the
-         * same layout as xnote/sample.sqlite (employees/emp_dept/
+         * same layout as the --sqlitetest fixture (employees/emp_dept/
          * v_employee_dept, a city index, an FK, a BEFORE INSERT trigger). */
         if(a.startsWith(QStringLiteral("--pgtest="))) {
             qputenv("QT_QPA_PLATFORM", "offscreen");

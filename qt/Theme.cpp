@@ -10,7 +10,6 @@
 #include <QStyle>
 
 /* Palette + metrics come from the upstream "Flat" theme and the frame code.
- * All values are documented in xnote/2026-09-09-ui-shell-spec.md:
  *   SQLyog blue   #3B7DBB   strips, splitters, result/table tab bars
  *   selection     #89BCED / wash #E8F2FA
  *   toolbar bg    #F5F5F5   menu/conn-tab bg #FFFFFF
