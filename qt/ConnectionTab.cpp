@@ -1190,6 +1190,21 @@ void ConnectionTab::explainCurrent(bool json)
     runStatements({ explainSql }, QStringLiteral("Explain"));
 }
 
+/* headless-test hook (--explain=json|plain): put a known statement in the
+ * editor and run explainCurrent() on it — exactly the path the Explain /
+ * Explain Format=JSON menu items take. Goes through runStatements(), so the
+ * result (plan or server error) lands in the result area for the
+ * --screenshot= pass to capture. Threaded, like every real run. */
+void ConnectionTab::selftestExplain(const QString &mode)
+{
+    CodeEditor *ed = currentEditor();
+    if(!ed)
+        return;
+    ed->setPlainText(QStringLiteral("SELECT 1"));
+    ed->moveCursor(QTextCursor::End);
+    explainCurrent(mode == QLatin1String("json"));
+}
+
 void ConnectionTab::runStatements(const QStringList &statements,
                                   const QString &tabPrefix)
 {

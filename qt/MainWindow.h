@@ -48,6 +48,7 @@ public:
     void selftestExpandBrowserItem(const QString &path);   /* --expandtreepath= selftest */
     void selftestDoubleClickBrowserItem(const QString &path); /* --dblclicktreepath= selftest */
     void selftestRunAgain();   /* --runagain selftest: F9 a second time */
+    void selftestExplain(const QString &mode);   /* --explain=json|plain selftest */
     QStringList selftestComboItems() const;   /* --dumpcombo selftest */
     void selftestSwitchDatabase(const QString &db);   /* --switchdb= selftest */
     int selftestTabCount() const;   /* --dumpcombo selftest */

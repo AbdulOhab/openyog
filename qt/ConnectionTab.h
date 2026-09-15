@@ -128,6 +128,7 @@ public slots:
     void runAll();                   /* Ctrl+F9 — the whole editor */
     void runAndEdit();               /* F8 — run, and open a single-table SELECT editable */
     void explainCurrent(bool json);  /* EXPLAIN [FORMAT=JSON] the current stmt */
+    void selftestExplain(const QString &mode);   /* --explain=json|plain selftest */
     void renameCurrentEditorTab();   /* Alt+F2 */
     void dumpTable(const QString &db, const QString &table);   /* one-table SQL dump */
     void editorCopyNormalizedWhitespace();   /* Alt+C */
