@@ -195,6 +195,15 @@ int main(int argc, char *argv[])
             ConnectionParams cp;
             cp.driverType = DriverType::Sqlite;
             cp.filePath = a.mid(QStringLiteral("--sqlitetest=").size());
+            /* refuse a missing file up front: sqlite's create-on-open
+             * would silently connect to a fresh empty database and fail
+             * every shape check below (seen when a /tmp fixture was
+             * wiped between sessions) */
+            if(!QFileInfo::exists(cp.filePath)) {
+                QTextStream(stdout) << "sqlitetest: " << cp.filePath
+                                    << " does not exist\n";
+                return 1;
+            }
             QString connectError;
             IDbConnection *c = dbDriverFor(cp.driverType)->connect(cp, &connectError);
             if(!c) {
