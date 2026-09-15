@@ -226,8 +226,9 @@ ConnectionDialog::ConnectionDialog(QWidget *parent)
     pgForm->addRow(QStringLiteral("P&ort"), m_pgPort);
     pgForm->addRow(QStringLiteral("Data&base"), m_pgDatabase);
     auto *pgHint = new QLabel(QStringLiteral(
-        "(A PostgreSQL connection is to one database — the object browser's "
-        "top-level nodes are this database's schemas, not other databases)"),
+        "(A PostgreSQL connection runs its queries in one database, but the "
+        "object browser lists every database on the server — expand one for "
+        "its schemas, double-click or right-click it to switch.)"),
         this);
     pgHint->setEnabled(false);
     pgHint->setWordWrap(true);
