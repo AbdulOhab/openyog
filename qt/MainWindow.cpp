@@ -1364,15 +1364,17 @@ MainWindow::MainWindow(QWidget *parent)
 
     m_statusMsg = new QLabel(QStringLiteral("Ready"), this);
     statusBar()->addWidget(m_statusMsg, 1);
+    m_connectionLabel = new QLabel(QStringLiteral("No connection"), this);
     m_execLabel = new QLabel(QStringLiteral("Exec: 0 sec"), this);
     m_totalLabel = new QLabel(QStringLiteral("Total: 0 sec"), this);
     m_cursorLabel = new QLabel(QStringLiteral("Ln 1, Col 1"), this);
     m_connectionsLabel = new QLabel(QStringLiteral("Connections: 0"), this);
-    for(QLabel *l : { m_execLabel, m_totalLabel, m_cursorLabel, m_connectionsLabel }) {
+    for(QLabel *l : { m_connectionLabel, m_execLabel, m_totalLabel, m_cursorLabel, m_connectionsLabel }) {
         l->setMinimumWidth(90);
         l->setFrameStyle(QFrame::Panel | QFrame::Sunken);
         statusBar()->addPermanentWidget(l);
     }
+    m_connectionLabel->setMinimumWidth(170);
 
     /* Menu actions carry their shortcut as a "\t<keys>" hint in the text, which
      * only *displays* the accelerator. Turn each hint into a real QKeySequence
@@ -1429,6 +1431,15 @@ ConnectionTab *MainWindow::currentTab() const
     return qobject_cast<ConnectionTab *>(m_tabs->currentWidget());
 }
 
+int MainWindow::totalLiveConnections() const
+{
+    int live = 0;
+    for(int i = 0; i < m_tabs->count(); ++i)
+        if(auto *t = qobject_cast<ConnectionTab *>(m_tabs->widget(i)))
+            live += t->liveConnectionCount();
+    return live;
+}
+
 void MainWindow::syncToolbarToCurrentTab()
 {
     auto *tab = currentTab();
@@ -1477,12 +1488,16 @@ void MainWindow::syncToolbarToCurrentTab()
         setWindowTitle(QStringLiteral("OpenYog - [%1/%2 - %3]")
                            .arg(tab->title(), tab->defaultDb(),
                                 tab->hostLabel()));
-        m_connectionsLabel->setText(
-            QStringLiteral("Connections: %1").arg(m_tabs->count()));
+        m_connectionLabel->setText(tab->activeConnectionLabel());
     } else {
         setWindowTitle(QStringLiteral("OpenYog"));
-        m_connectionsLabel->setText(QStringLiteral("Connections: 0"));
+        m_connectionLabel->setText(QStringLiteral("No connection"));
     }
+    /* counts real server connections (a tab that has browsed another
+     * PostgreSQL database holds several at once) — it used to count
+     * tabs, which read as a lie the moment a side connection opened */
+    m_connectionsLabel->setText(
+        QStringLiteral("Connections: %1").arg(totalLiveConnections()));
 }
 
 void MainWindow::useDatabaseFromCombo(const QString &db)
@@ -1661,6 +1676,17 @@ bool MainWindow::openAndRun(const ConnectionParams &params)
             [this, tab](const QString &pos) {
         if(m_tabs->currentWidget() == tab)
             m_cursorLabel->setText(pos);
+    });
+    connect(tab, &ConnectionTab::activeConnectionChanged, this,
+            [this, tab](const QString &label) {
+        if(m_tabs->currentWidget() != tab)
+            return;
+        m_connectionLabel->setText(label);
+        /* every emission coincides with the live-connection count possibly
+         * changing (a side connection opened, switchDatabase swapped the
+         * primary) — so re-count here too, not just on tab switches */
+        m_connectionsLabel->setText(
+            QStringLiteral("Connections: %1").arg(totalLiveConnections()));
     });
     connect(tab, &ConnectionTab::newTabRequested, this,
             [this](const ConnectionParams &p) { openAndRun(p); });
