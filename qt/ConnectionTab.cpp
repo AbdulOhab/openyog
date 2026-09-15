@@ -478,6 +478,11 @@ ConnectionTab::ConnectionTab(const ConnectionParams &params, QWidget *parent)
     for(int i = 0; i < 3; ++i)
         m_resultTabs->tabBar()->setTabButton(i, QTabBar::RightSide, nullptr);
     m_resultTabs->setCurrentIndex(0);
+    /* the connection label tracks which result page is in front: a side
+     * connection is only "the active connection" while its Table Data
+     * grid is the visible one (see m_tableDataPhysDb) */
+    connect(m_resultTabs, &QTabWidget::currentChanged,
+            this, [this](int) { updateActiveConnectionLabel(); });
 
     /* nag-bar replacement — solid blue strip above the editor (Flat theme) */
     m_infoBar = new QLabel(this);
@@ -573,7 +578,12 @@ ConnectionTab::ConnectionTab(const ConnectionParams &params, QWidget *parent)
             return;
         }
         m_tableData->load(c, db, table);
+        /* remember whose connection is feeding the grid — primary (empty)
+         * or a foreign database's side connection — so the status bar can
+         * say which one the rows on screen came from */
+        m_tableDataPhysDb = (c == m_conn) ? QString() : physDb;
         m_resultTabs->setCurrentWidget(m_tableData);
+        updateActiveConnectionLabel();
     });
     connect(m_tableData, &TableDataView::statusMessage, this,
             [this](const QString &text) {
@@ -648,6 +658,7 @@ ConnectionTab::ConnectionTab(const ConnectionParams &params, QWidget *parent)
         dbs = m_conn->listDatabases();
     m_databases = dbs;
     emit databasesChanged(dbs, defaultDb());
+    updateActiveConnectionLabel();
 }
 
 ConnectionTab::~ConnectionTab()
@@ -687,6 +698,28 @@ QString ConnectionTab::defaultDb() const
     return m_params.database;
 }
 
+QString ConnectionTab::activeConnectionLabel() const
+{
+    if(m_params.driverType == DriverType::Sqlite)
+        return m_params.filePath;
+    const QString where =
+        QStringLiteral("%1:%2").arg(m_params.host).arg(m_params.port);
+    /* the visible grid came from another physical database's side
+     * connection — name it, with the marker telling the user why the
+     * footer disagrees with the title bar's primary connection */
+    if(!m_tableDataPhysDb.isEmpty() && m_resultTabs->currentWidget() == m_tableData)
+        return QStringLiteral("%1@%2 — table data").arg(m_tableDataPhysDb, where);
+    return QStringLiteral("%1@%2%3")
+        .arg(m_params.user, where,
+             m_params.database.isEmpty()
+                 ? QString() : QStringLiteral("/") + m_params.database);
+}
+
+void ConnectionTab::updateActiveConnectionLabel()
+{
+    emit activeConnectionChanged(activeConnectionLabel());
+}
+
 ConnectionParams ConnectionTab::paramsFor(const QString &database) const
 {
     ConnectionParams p = m_params;
@@ -702,8 +735,14 @@ IDbConnection *ConnectionTab::connectionFor(const QString &database, QString *er
     if(IDbConnection *cached = m_sideConnections.value(database))
         return cached;
     IDbConnection *c = dbDriverFor(m_params.driverType)->connect(paramsFor(database), error);
-    if(c)
+    if(c) {
         m_sideConnections.insert(database, c);
+        /* a connection the user can't see opened — the status bar's
+         * "Connections: N" counts live connections, so say it changed
+         * (the label itself is unchanged; MainWindow re-counts on every
+         * emission) */
+        updateActiveConnectionLabel();
+    }
     return c;
 }
 
@@ -743,6 +782,11 @@ bool ConnectionTab::switchDatabase(const QString &database)
     m_params.database = database;
     m_params.name = database;
     m_currentSchema.clear();   /* belonged to the old database's search_path */
+    /* whatever rows the Table Data grid still holds were loaded through a
+     * connection that just moved into (or out of) the side pool — no
+     * longer a valid "the active connection is X" answer; the switch's
+     * setCurrentWidget(Messages) below re-emits with the new primary */
+    m_tableDataPhysDb.clear();
 
     const bool isSqlite = m_params.driverType == DriverType::Sqlite;
     m_infoBar->setText(isSqlite

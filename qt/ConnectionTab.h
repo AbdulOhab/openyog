@@ -113,6 +113,23 @@ public:
             ? m_params.filePath
             : m_params.host + ':' + QString::number(m_params.port);
     }
+    /* what the status bar's connection field should show right now: the
+     * tab's primary connection in "user@host:port/database" form (SQLite:
+     * the file path) — except while the visible Table Data grid was loaded
+     * through a PostgreSQL side connection to another physical database,
+     * when it names THAT connection with a "— table data" marker, so the
+     * footer never claims the primary is showing another database's rows
+     * (the whole reason this exists: after the foreign-table fix, the
+     * title bar correctly stays on the primary while the grid doesn't) */
+    QString activeConnectionLabel() const;
+    /* how many server connections this tab actually holds open right now
+     * — the primary plus every PostgreSQL side connection still in the
+     * pool. The status bar's "Connections: N" counts these, not tabs;
+     * the two differ the moment the multi-database tree is used. */
+    int liveConnectionCount() const
+    {
+        return m_conn ? 1 + m_sideConnections.size() : 0;
+    }
     /* [db, table] of the browser's selected table, or empty */
     QStringList selectedTableInfo() const;
     DriverType driverType() const { return m_params.driverType; }
@@ -268,6 +285,12 @@ signals:
      * openDatabaseInNewTabRequested()'s doc comment) — MainWindow actually
      * owns the tab widget, so this bubbles the request up to it. */
     void newTabRequested(const ConnectionParams &params);
+    /* the connection serving what's on screen changed (Table Data loaded
+     * through a side connection, a result tab switched away from it, the
+     * primary was swapped by switchDatabase, a side connection opened) —
+     * carries activeConnectionLabel() for the status bar, which
+     * MainWindow also uses as the cue to re-count live connections */
+    void activeConnectionChanged(const QString &label);
 
 private:
     void applyResults(const QVector<QueryResult> &results, const QString &tabPrefix);
@@ -338,6 +361,18 @@ private:
      * being browsed". Empty until useDatabase() is called at least once
      * (defaultDb() falls back to "public" for that case). */
     QString m_currentSchema;
+
+    /* which physical database's connection loaded the Table Data grid's
+     * current rows — empty when it was (or last was) this tab's own
+     * primary connection, the database name when it went through a
+     * PostgreSQL side connection. activeConnectionLabel() shows the side
+     * connection only while that grid is the visible result tab; any
+     * switch away from it (Messages, a query's result grid) drops back
+     * to the primary's identity. Cleared by switchDatabase(): the tree
+     * was rebuilt, so the grid's rows are from a connection that may
+     * since have moved back into the pool. */
+    QString m_tableDataPhysDb;
+    void updateActiveConnectionLabel();
 
     /* selected table in the browser: [db, table] or empty */
     QStringList currentTableInfo() const;

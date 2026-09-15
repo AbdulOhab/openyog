@@ -79,12 +79,16 @@ public:
 
 private:
     ConnectionTab *currentTab() const;
+    /* sum of every tab's live server connections (primary + PostgreSQL
+     * side connections) — what the status bar's "Connections: N" shows */
+    int totalLiveConnections() const;
     QAction *addDisabled(QMenu *menu, const QString &text);
 
     class QStackedWidget *m_stack = nullptr;
     QTabWidget *m_tabs    = nullptr;
     QComboBox  *m_dbCombo = nullptr;
     QLabel     *m_statusMsg        = nullptr;
+    QLabel     *m_connectionLabel  = nullptr;   /* which connection is in front */
     QLabel     *m_execLabel        = nullptr;
     QLabel     *m_totalLabel       = nullptr;
     QLabel     *m_cursorLabel      = nullptr;
