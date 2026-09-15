@@ -484,17 +484,12 @@ ConnectionTab::ConnectionTab(const ConnectionParams &params, QWidget *parent)
     connect(m_resultTabs, &QTabWidget::currentChanged,
             this, [this](int) { updateActiveConnectionLabel(); });
 
-    /* nag-bar replacement — solid blue strip above the editor (Flat theme) */
-    m_infoBar = new QLabel(this);
-    m_infoBar->setObjectName(QStringLiteral("infoStrip"));
-
     m_findBar = new FindBar([this] { return currentEditor(); }, this);
 
     auto *editorSide = new QWidget(this);
     auto *editorCol = new QVBoxLayout(editorSide);
     editorCol->setContentsMargins(0, 0, 0, 0);
     editorCol->setSpacing(0);
-    editorCol->addWidget(m_infoBar);
     editorCol->addWidget(m_editorTabs, 1);
     editorCol->addWidget(m_findBar);
 
@@ -634,12 +629,6 @@ ConnectionTab::ConnectionTab(const ConnectionParams &params, QWidget *parent)
             &ConnectionTab::promptAlterDatabase);
 
     const bool isSqlite = m_params.driverType == DriverType::Sqlite;
-    m_infoBar->setText(isSqlite
-        ? QStringLiteral("OpenYog — connected to %1").arg(m_params.filePath)
-        : QStringLiteral("OpenYog — connected to %1@%2:%3%4")
-              .arg(m_params.user, m_params.host).arg(m_params.port)
-              .arg(m_params.database.isEmpty() ? QString()
-                                               : QStringLiteral("/") + m_params.database));
 
     m_browser->setConnectionLabel(isSqlite
         ? QFileInfo(m_params.filePath).fileName()
@@ -788,11 +777,6 @@ bool ConnectionTab::switchDatabase(const QString &database)
      * setCurrentWidget(Messages) below re-emits with the new primary */
     m_tableDataPhysDb.clear();
 
-    const bool isSqlite = m_params.driverType == DriverType::Sqlite;
-    m_infoBar->setText(isSqlite
-        ? QStringLiteral("OpenYog — connected to %1").arg(m_params.filePath)
-        : QStringLiteral("OpenYog — connected to %1@%2:%3/%4")
-              .arg(m_params.user, m_params.host).arg(m_params.port).arg(database));
     /* false: this switch was triggered from an already-browsed tree (a
      * double-click on a database node, or the toolbar combo) — just show
      * the newly-primary database's schema list, matching what expanding
