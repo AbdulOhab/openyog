@@ -642,17 +642,8 @@ MainWindow::MainWindow(QWidget *parent)
     QAction *copyTableHost = table->addAction(
         QStringLiteral("&Copy Table(s) To Different Host/Database…"));
     copyTableHost->setIcon(Icons::get(QStringLiteral("copy_data.ico")));
-    connect(copyTableHost, &QAction::triggered, this, [this] {
-        auto *t = currentTab();
-        if(!t) return;
-        const QStringList info = t->selectedTableInfo();
-        if(info.size() < 2) {
-            QMessageBox::information(this, QStringLiteral("OpenYog"),
-                QStringLiteral("Select a table in the object browser first."));
-            return;
-        }
-        t->promptCopyTableToHost(info[0], info[1]);
-    });
+    connect(copyTableHost, &QAction::triggered, this,
+            &MainWindow::copySelectedTableToHost);
     table->addSeparator();
     QAction *openTable = table->addAction(QStringLiteral("&Open Table\tF11"));
     openTable->setIcon(Icons::get(QStringLiteral("viewdata.ico")));
@@ -1870,6 +1861,22 @@ void MainWindow::openSchemaObjectTab(const QString &objType)
 {
     if(auto *tab = currentTab())
         tab->createSchemaObject({}, objType);
+}
+
+/* Table ▸ Copy Table(s) To Different Host/Database… — the same body the
+ * menu action runs, kept public so the --copytablehost selftest can
+ * exercise the non-MySQL-source guard headlessly */
+void MainWindow::copySelectedTableToHost()
+{
+    auto *t = currentTab();
+    if(!t) return;
+    const QStringList info = t->selectedTableInfo();
+    if(info.size() < 2) {
+        QMessageBox::information(this, QStringLiteral("OpenYog"),
+            QStringLiteral("Select a table in the object browser first."));
+        return;
+    }
+    t->promptCopyTableToHost(info[0], info[1]);
 }
 
 void MainWindow::selftestUseDatabase(const QString &db)

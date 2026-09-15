@@ -76,6 +76,7 @@ int main(int argc, char *argv[])
     QString useDbArg;       /* --usedb=NAME selftest */
     QString expandPgDbArg;  /* --expandpgdb=NAME selftest */
     bool runAgain = false;  /* --runagain selftest: F9 a second time before the screenshot */
+    bool copyTableHost = false; /* --copytablehost selftest: Table ▸ Copy Table(s) To Different Host… (non-MySQL-source guard) */
     QString selectTreePath;  /* --selecttreepath=a/b/c selftest */
     QString clickTreePath;   /* --clicktreepath=a/b/c selftest (synthesized mouse click) */
     QString dblClickTreePath; /* --dblclicktreepath=a/b/c selftest (synthesized double-click) */
@@ -119,6 +120,8 @@ int main(int argc, char *argv[])
             shotIndexDlg = true;
         if(a == QStringLiteral("--runagain"))
             runAgain = true;
+        if(a == QStringLiteral("--copytablehost"))
+            copyTableHost = true;
         if(a.startsWith(QStringLiteral("--selecttreepath=")))
             selectTreePath = a.mid(QStringLiteral("--selecttreepath=").size());
         if(a.startsWith(QStringLiteral("--clicktreepath="))) {
@@ -1699,22 +1702,34 @@ int main(int argc, char *argv[])
                         for(const QString &line : w->selftestDumpTree(dumpPath))
                             QTextStream(stdout) << line << '\n';
                     }
+                    /* mkObj/runAgain/explain can pop a guard QMessageBox
+                     * whose modal loop blocks this callback right where the
+                     * call is made — schedule the screenshot BEFORE those
+                     * calls (a nested modal loop still services timers) so
+                     * it fires while the dialog is up, and grab the active
+                     * modal widget instead of the main window hidden behind
+                     * it; quit() then unwinds every loop and the app exits.
+                     * A re-run or an --explain= is also threaded — give it
+                     * the same landing time as the initial connect's own
+                     * query before the screenshot, instead of the other
+                     * selftests' shorter delay (their effects are all
+                     * synchronous). */
+                    const bool threadedRun = runAgain || !explainMode.isEmpty();
+                    QTimer::singleShot(threadedRun ? 1500 : 600, [w, screenshot] {
+                        if(QWidget *modal = QApplication::activeModalWidget())
+                            modal->grab().save(screenshot);
+                        else
+                            w->grab().save(screenshot);
+                        QApplication::quit();
+                    });
                     if(!mkObj.isEmpty())
                         w->openSchemaObjectTab(mkObj);
+                    if(copyTableHost)
+                        w->copySelectedTableToHost();
                     if(runAgain)
                         w->selftestRunAgain();
                     if(!explainMode.isEmpty())
                         w->selftestExplain(explainMode);
-                    /* a re-run or an --explain= is also threaded — give it
-                     * the same landing time as the initial connect's own
-                     * query before the screenshot, instead of the other
-                     * selftests' shorter delay (their effects are all
-                     * synchronous) */
-                    QTimer::singleShot((runAgain || !explainMode.isEmpty())
-                                           ? 1500 : 600, [w, screenshot] {
-                        w->grab().save(screenshot);
-                        QApplication::quit();
-                    });
                 });
             });
         });

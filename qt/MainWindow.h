@@ -48,6 +48,7 @@ public:
     void selftestExpandBrowserItem(const QString &path);
     QStringList selftestDumpTree(const QString &path);   /* --dumptree= selftest */   /* --expandtreepath= selftest */
     void selftestDoubleClickBrowserItem(const QString &path); /* --dblclicktreepath= selftest */
+    void copySelectedTableToHost();   /* Table menu + --copytablehost selftest */
     void selftestRunAgain();   /* --runagain selftest: F9 a second time */
     void selftestExplain(const QString &mode);   /* --explain=json|plain selftest */
     QStringList selftestComboItems() const;   /* --dumpcombo selftest */
