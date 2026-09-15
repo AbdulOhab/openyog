@@ -48,3 +48,12 @@ port/shim/sqlite3.h
 
 # stray CSV export test artifact
 employees.csv
+
+# Agent-process notes/docs — kept locally, tracked in their own repo (.notes.git),
+# never published to this project's public GitHub remote.
+/xnote/
+/WORKLOG.md
+/AGENTS.md
+/plan.md
+/FEATURES.md
+/.notes.git/
