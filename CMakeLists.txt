@@ -95,6 +95,7 @@ add_executable(openyog
     qt/FindBar.h           qt/FindBar.cpp
     qt/SqlFormat.h         qt/SqlFormat.cpp
     qt/TableDataView.h     qt/TableDataView.cpp
+    qt/CustomFilterDialog.h qt/CustomFilterDialog.cpp
     qt/Theme.h             qt/Theme.cpp
 )
 # QScintilla (the query editor): system package, same pattern as the

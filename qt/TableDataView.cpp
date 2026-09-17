@@ -599,9 +599,9 @@ TableDataView::TableDataView(QWidget *parent)
         if(fn.isNull())
             fn = QIcon::fromTheme(QStringLiteral("view-filter"));
         if(!fn.isNull()) {
-            btnFilter = mkTool(fn, QStringLiteral("Apply the WHERE filter"));
+            btnFilter = mkTool(fn, QStringLiteral("Custom Filter…"));
             connect(btnFilter, &QToolButton::clicked, this,
-                    &TableDataView::applyViewControls);
+                    &TableDataView::openCustomFilter);
         }
     }
     auto *btnRefresh = mkTool(ico(QStringLiteral("refresh.ico"),
@@ -609,14 +609,15 @@ TableDataView::TableDataView(QWidget *parent)
                               QStringLiteral("Refresh data"));
     connect(btnRefresh, &QToolButton::clicked, this, &TableDataView::refresh);
 
-    m_whereEdit = new QLineEdit(tools);
-    m_whereEdit->setPlaceholderText(
-        QStringLiteral("Filter:  WHERE clause — press Enter"));
-    m_whereEdit->setClearButtonEnabled(true);
-    m_whereEdit->setMinimumWidth(200);
-    m_whereEdit->setMaximumWidth(340);
-    connect(m_whereEdit, &QLineEdit::returnPressed, this,
-            &TableDataView::applyViewControls);
+    /* the active WHERE, elided — empty when there's no filter. A plain
+     * WHERE-clause text box used to live here; the owner pointed out
+     * upstream's actual Table Data toolbar has no such box at all — the
+     * funnel button alone opens the Field/Condition/Value Custom Filter
+     * dialog (src/SortAndFilter.cpp), so that's the only entry point now. */
+    m_filterLabel = new QLabel(tools);
+    m_filterLabel->setMinimumWidth(120);
+    m_filterLabel->setMaximumWidth(340);
+    m_filterLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
 
     /* SQLyog right group: [x] Limit rows   First row [0] ▶   # of rows [1000] */
     m_limitChk = new QCheckBox(QStringLiteral("Limit rows"), tools);
@@ -671,9 +672,6 @@ TableDataView::TableDataView(QWidget *parent)
             reload();
     });
 
-    /* keep the filter box the same height as the native spin boxes beside it */
-    m_whereEdit->setMinimumHeight(m_rowCount->sizeHint().height());
-
     /* short hairline separator — a 16 px tick, not a full-height rule */
     const auto vsep = [tools] {
         auto *f = new QFrame(tools);
@@ -700,9 +698,9 @@ TableDataView::TableDataView(QWidget *parent)
     tl->addWidget(m_tbForm);
     tl->addWidget(m_tbText);
     tl->addStretch(1);
-    tl->addWidget(m_whereEdit);
     if(btnFilter)
         tl->addWidget(btnFilter);
+    tl->addWidget(m_filterLabel);
     tl->addWidget(btnRefresh);
     tl->addWidget(vsep());
     tl->addWidget(m_limitChk);
@@ -814,10 +812,11 @@ void TableDataView::load(IDbConnection *conn, const QString &db, const QString &
     /* fresh table → drop the filter / sort / offset from the last one
      * ("Limit rows" and "# of rows" stay as the user left them, like SQLyog) */
     m_where.clear();
+    m_filterRows.clear();
+    if(m_filterLabel) { m_filterLabel->clear(); m_filterLabel->setToolTip(QString()); }
     m_orderBy.clear();
     m_sortColumn = -1;
     m_sortDesc = false;
-    if(m_whereEdit) m_whereEdit->clear();
     if(m_grid)
         m_grid->horizontalHeader()->setSortIndicator(-1, Qt::AscendingOrder);
     if(m_firstRow) {
@@ -840,12 +839,31 @@ bool TableDataView::discardStagedEdits(const QString &action)
     return true;
 }
 
-/* WHERE-filter box: Enter re-queries; the header-click sort is left intact */
-void TableDataView::applyViewControls()
+/* funnel button: upstream's own Custom Filter dialog (src/SortAndFilter.cpp),
+ * not a raw WHERE-clause text box — Field/Condition/Value rows, AND-joined */
+void TableDataView::openCustomFilter()
 {
-    if(!m_valid || !discardStagedEdits(QStringLiteral("Re-query")))
+    if(!m_valid)
         return;
-    m_where = m_whereEdit->text().trimmed();
+    const auto qi = [this](const QString &ident) {
+        return m_conn ? m_conn->quoteIdent(ident) : QStringLiteral("`%1`").arg(ident);
+    };
+    const auto esc = [this](const QString &v) {
+        return m_conn ? QString::fromUtf8(m_conn->escape(v.toUtf8())) : v;
+    };
+    CustomFilterDialog dlg(m_columns, m_filterRows, qi, esc, this);
+    if(dlg.exec() != QDialog::Accepted)
+        return;
+    if(!discardStagedEdits(QStringLiteral("Re-query")))
+        return;
+    m_filterRows = dlg.rows();
+    m_where = dlg.whereClause();
+    const QString full = m_where.isEmpty() ? QString()
+                                           : QStringLiteral("WHERE %1").arg(m_where);
+    m_filterLabel->setText(
+        m_filterLabel->fontMetrics().elidedText(full, Qt::ElideRight,
+                                                m_filterLabel->maximumWidth()));
+    m_filterLabel->setToolTip(full);
     if(m_firstRow) {
         m_firstRow->blockSignals(true);
         m_firstRow->setValue(0);          /* new filter → back to the top */

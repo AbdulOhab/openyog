@@ -12,6 +12,8 @@
  */
 #pragma once
 
+#include "CustomFilterDialog.h"
+
 #include <QLabel>
 #include <QTableView>
 #include <QWidget>
@@ -65,7 +67,7 @@ private slots:
     void exportRows();            /* write the current rows to a .csv file */
     void checkAllRows(bool on);   /* row-select checkbox column — select all / none */
     void updateApplyBar();
-    void applyViewControls();      /* re-run with the current WHERE filter */
+    void openCustomFilter();       /* funnel button — Custom Filter dialog */
     void pageStep(int delta);
     void sortByColumn(int section);   /* header click → ORDER BY, toggles dir */
 
@@ -115,12 +117,16 @@ private:
     QToolButton * m_tbForm     = nullptr;
     QToolButton * m_tbText     = nullptr;
     int           m_viewMode   = 0;         /* 0 = grid, 2 = text */
-    QLineEdit   * m_whereEdit  = nullptr;
+    QLabel      * m_filterLabel = nullptr;  /* shows the active WHERE, empty = none */
     QCheckBox   * m_limitChk   = nullptr;   /* off = fetch every matching row */
     QSpinBox    * m_firstRow   = nullptr;   /* 0-based OFFSET */
     QSpinBox    * m_rowCount   = nullptr;   /* LIMIT */
     QToolButton * m_nextBtn    = nullptr;   /* ▶ — advance by # of rows */
     QString       m_where;
+    /* Custom Filter dialog's rows, kept so reopening it (or a later table
+     * reload) shows the same Field/Condition/Value the user last entered —
+     * upstream's EndFilter() "copy current filter back" behavior */
+    QVector<CustomFilterDialog::Row> m_filterRows;
     QString       m_orderBy;       /* "`col` ASC" or empty */
     int           m_sortColumn = -1;   /* header index currently sorted, or -1 */
     bool          m_sortDesc = false;

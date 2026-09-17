@@ -32,6 +32,7 @@
 #include "SqlSplit.h"
 #include "SqlFormat.h"
 #include "SqlEditor.h"
+#include "CustomFilterDialog.h"
 #include "Theme.h"
 #include "db/IDbDriver.h"
 #include "db/IDbConnection.h"
@@ -1237,6 +1238,38 @@ int main(int argc, char *argv[])
                 const bool pass = got == QString::fromUtf8(c.want);
                 ok = ok && pass;
                 QTextStream(stdout) << "stmtattest pos " << c.pos << ": "
+                                    << (pass ? "PASS" : "FAIL got=[" + got + "]")
+                                    << "\n";
+            }
+            return ok ? 0 : 1;
+        }
+        if(a == QStringLiteral("--filtertest")) {
+            /* Custom Filter dialog's WHERE-building — the part faithfully
+             * ported from upstream src/SortAndFilter.cpp's SetFilterString()/
+             * ProcessFilter(): NULL detection, LIKE's leading/trailing '%'
+             * stripping, AND-joining, blank rows skipped */
+            const auto qi = [](const QString &c) { return QStringLiteral("`%1`").arg(c); };
+            const auto esc = [](const QString &v) { return QString(v).replace("'", "''"); };
+            using Row = CustomFilterDialog::Row;
+            struct C { QVector<Row> rows; const char *want; };
+            const C cs[] = {
+                { { { "city", "=", "Dhaka" } }, "`city` = 'Dhaka'" },
+                { { { "city", "=", "NULL" } }, "`city` IS NULL" },
+                { { { "city", "<>", "(null)" } }, "`city` IS NOT NULL" },
+                { { { "name", "LIKE", "%foo%" } }, "`name` LIKE '%foo%'" },
+                { { { "name", "LIKE", "foo%" } }, "`name` LIKE 'foo%'" },
+                { { { "name", "LIKE", "%foo" } }, "`name` LIKE '%foo'" },
+                { { { "name", "LIKE", "foo" } }, "`name` LIKE 'foo'" },
+                { { { "id", ">", "10" }, {}, { "city", "=", "Dhaka" } },
+                  "`id` > '10' AND `city` = 'Dhaka'" },
+                { {}, "" },
+            };
+            bool ok = true;
+            for(const C &c : cs) {
+                const QString got = CustomFilterDialog::buildWhere(c.rows, qi, esc);
+                const bool pass = got == QString::fromUtf8(c.want);
+                ok = ok && pass;
+                QTextStream(stdout) << "filtertest [" << c.want << "]: "
                                     << (pass ? "PASS" : "FAIL got=[" + got + "]")
                                     << "\n";
             }
