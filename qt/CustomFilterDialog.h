@@ -19,6 +19,7 @@
 class QCheckBox;
 class QComboBox;
 class QLineEdit;
+class SqlEditor;
 
 class CustomFilterDialog : public QDialog
 {
@@ -75,7 +76,11 @@ private:
         QLineEdit *value;
     };
     QVector<RowWidgets> m_rowWidgets;
-    QLineEdit *m_previewEdit = nullptr;
+    /* upstream's own preview (IDC_PREVIEW) is a real Scintilla control —
+     * SQL-syntax-highlighted, not a plain text field. This app already has
+     * one (qt/SqlEditor, the query editor's own widget); reused here
+     * read-only rather than inventing a second, plainer preview look. */
+    SqlEditor *m_previewEdit = nullptr;
     QWidget *m_previewRow = nullptr;
     QCheckBox *m_previewToggle = nullptr;
 

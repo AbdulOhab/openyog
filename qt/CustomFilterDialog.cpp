@@ -1,4 +1,5 @@
 #include "CustomFilterDialog.h"
+#include "SqlEditor.h"
 
 #include <QCheckBox>
 #include <QComboBox>
@@ -68,12 +69,16 @@ CustomFilterDialog::CustomFilterDialog(const QStringList &columns, const QVector
     connect(m_previewToggle, &QCheckBox::toggled, this,
             [this](bool on) { m_previewRow->setVisible(on); });
 
-    m_previewEdit = new QLineEdit(this);
+    m_previewEdit = new SqlEditor(this);
     m_previewEdit->setReadOnly(true);
-    m_previewEdit->setPlaceholderText(QStringLiteral("(no filter)"));
+    m_previewEdit->setCaretLineVisible(false); /* looks like a stray edit cursor otherwise */
+    m_previewEdit->setMarginWidth(0, 0);       /* no line-number gutter — one short statement */
+    m_previewEdit->setWrapMode(
+        QsciScintilla::WrapWord);      /* long AND-joined queries wrap, don't scroll */
+    m_previewEdit->setFixedHeight(64); /* ~3 lines: enough for a few AND-joined rows */
     m_previewRow = new QWidget(this);
     auto *previewLayout = new QVBoxLayout(m_previewRow);
-    previewLayout->setContentsMargins(0, 0, 0, 0);
+    previewLayout->setContentsMargins(0, 4, 0, 0);
     previewLayout->addWidget(new QLabel(QStringLiteral("Query"), m_previewRow));
     previewLayout->addWidget(m_previewEdit);
     m_previewRow->hide();
@@ -96,9 +101,12 @@ CustomFilterDialog::CustomFilterDialog(const QStringList &columns, const QVector
 void CustomFilterDialog::updatePreview()
 {
     const QString where = whereClause();
-    m_previewEdit->setText(
-        m_fullQueryFor ? m_fullQueryFor(where)
-                       : (where.isEmpty() ? QString() : QStringLiteral("WHERE %1").arg(where)));
+    QString text = m_fullQueryFor
+                       ? m_fullQueryFor(where)
+                       : (where.isEmpty() ? QString() : QStringLiteral("WHERE %1").arg(where));
+    if(text.isEmpty())
+        text = QStringLiteral("-- no filter"); /* QsciScintilla has no placeholder text */
+    m_previewEdit->setPlainText(text);
 }
 
 QVector<CustomFilterDialog::Row> CustomFilterDialog::rows() const
