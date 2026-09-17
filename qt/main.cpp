@@ -83,6 +83,10 @@ int main(int argc, char *argv[])
     QString collapseTreePath; /* --collapsetreepath=a/b/c selftest */
     QString expandTreePath;   /* --expandtreepath=a/b/c selftest (setExpanded(true), not a click) */
     QStringList dumpTreePaths; /* --dumptree=a/b/c selftest: print that node's subtree (repeatable) */
+    QStringList treeMenuPaths; /* --treemenu=a/b/c selftest: print that node's right-click
+                                * context menu item texts (repeatable) — compares what
+                                * MySQL/SQLite/PostgreSQL offer for the same node kind
+                                * without eyeballing a screenshot */
     /* the four tree gestures above, repeated --xxxtreepath= args accumulate
      * here in command-line order and are replayed in that order — lets a
      * selftest script a whole browse sequence (expand A, double-click B,
@@ -144,6 +148,8 @@ int main(int argc, char *argv[])
         }
         if(a.startsWith(QStringLiteral("--dumptree=")))
             dumpTreePaths.append(a.mid(QStringLiteral("--dumptree=").size()));
+        if(a.startsWith(QStringLiteral("--treemenu=")))
+            treeMenuPaths.append(a.mid(QStringLiteral("--treemenu=").size()));
         if(a == QStringLiteral("--exportdlg"))
             shotExportDlg = true;
         /* --opentable=db:table (selftest: opens the editable data grid) */
@@ -1704,6 +1710,11 @@ int main(int argc, char *argv[])
                     for(const QString &dumpPath : dumpTreePaths) {
                         QTextStream(stdout) << "---- tree @ " << dumpPath << '\n';
                         for(const QString &line : w->selftestDumpTree(dumpPath))
+                            QTextStream(stdout) << line << '\n';
+                    }
+                    for(const QString &menuPath : treeMenuPaths) {
+                        QTextStream(stdout) << "---- context menu @ " << menuPath << '\n';
+                        for(const QString &line : w->selftestTreeMenu(menuPath))
                             QTextStream(stdout) << line << '\n';
                     }
                     /* mkObj/runAgain/explain can pop a guard QMessageBox

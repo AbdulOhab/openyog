@@ -1604,6 +1604,11 @@ QStringList ConnectionTab::dumpBrowserSubtree(const QString &path)
     return m_browser->dumpSubtree(path);
 }
 
+QStringList ConnectionTab::browserContextMenuItems(const QString &path)
+{
+    return m_browser->contextMenuItemsForTest(path);
+}
+
 void ConnectionTab::doubleClickBrowserItem(const QString &path)
 {
     m_browser->doubleClickTreeItem(path);

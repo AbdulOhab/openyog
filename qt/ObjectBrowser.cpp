@@ -126,162 +126,12 @@ ObjectBrowser::ObjectBrowser(QWidget *parent)
         QTreeWidgetItem *item = m_tree->itemAt(pos);
         if(!item)
             return;
-        const int kind = item->data(0, Qt::UserRole).toInt();
-        const QString physDb = item->data(0, RolePhysDb).toString();
-        /* an item under a *different* physical database than this tab's
-         * own connection (PostgreSQL's multi-database tree only) — its
-         * structure can be browsed (connFor() opens/reuses a side
-         * connection for that), but every mutating action below assumes
-         * m_conn, the tab's own connection, so those stay unavailable
-         * here; "Connect in New Tab" is the way to actually work with it. */
-        const bool foreign = !physDb.isEmpty() && physDb != m_primaryDatabase;
         QMenu menu(this);
-
-        if(kind == KPgDatabase) {
-            const QString database = item->text(0);
-            menu.addAction(QStringLiteral("&Switch to `%1`").arg(database),
-                           this, [this, database] {
-                emit switchDatabaseRequested(database);
-            });
-            menu.addAction(QStringLiteral("Connect to `%1` in New &Tab…").arg(database),
-                           this, [this, database] {
-                emit openDatabaseInNewTabRequested(database);
-            });
-            menu.addAction(QStringLiteral("Re&fresh Node"), this, [this, item] {
-                item->takeChildren();
-                onItemExpanded(item);
-                item->setExpanded(true);
-            });
-        } else if(foreign) {
-            /* reduced menu for anything under a non-primary database:
-             * browsing already works (the tree got here via connFor()),
-             * but no action below this point is safe to route through
-             * m_conn, so only offer what doesn't need it — Switch fixes
-             * that by making `physDb` the primary connection instead */
-            menu.addAction(QStringLiteral("&Switch to `%1`").arg(physDb),
-                           this, [this, physDb] {
-                emit switchDatabaseRequested(physDb);
-            });
-            menu.addAction(QStringLiteral("Connect to `%1` in New &Tab…").arg(physDb),
-                           this, [this, physDb] {
-                emit openDatabaseInNewTabRequested(physDb);
-            });
-            if(kind == KTable)
-                /* viewing data is safe on a foreign table — the data grid
-                 * gets that database's own side connection (tableActivated
-                 * carries physDb), unlike the Alter/Index/FK actions that
-                 * stay primary-only below */
-                menu.addAction(QStringLiteral("Open Table &Data"), this,
-                               [this, item] {
-                    emit tableActivated(item->data(0, Qt::UserRole + 1).toString(),
-                                        item->text(0),
-                                        item->data(0, RolePhysDb).toString());
-                });
-            if(kind == KDatabase || kind == KFolder || kind == KTable)
-                menu.addAction(QStringLiteral("Re&fresh Node"), this, [this, item] {
-                    item->takeChildren();
-                    onItemExpanded(item);
-                    item->setExpanded(true);
-                });
-        } else if(kind == KDatabase) {
-            const QString db = item->text(0);
-            menu.addAction(QStringLiteral("Create &Table…"), this,
-                           [this, db] { emit createTableRequested(db); });
-            QMenu *create = menu.addMenu(QStringLiteral("&Create Object"));
-            for(const auto &kw : { QStringLiteral("VIEW"), QStringLiteral("PROCEDURE"),
-                                   QStringLiteral("FUNCTION"), QStringLiteral("TRIGGER"),
-                                   QStringLiteral("EVENT") }) {
-                const QString t = kw;
-                create->addAction(t.at(0) + t.mid(1).toLower() + QStringLiteral("…"),
-                                  this, [this, db, t] { emit createObjectRequested(db, t); });
-            }
-            menu.addAction(QStringLiteral("&Copy Database…"), this,
-                           [this, db] { emit copyDatabaseRequested(db); });
-            menu.addAction(QStringLiteral("&Alter Database…"), this,
-                           [this, db] { emit alterDatabaseRequested(db); });
-            menu.addSeparator();
-            menu.addAction(QStringLiteral("&Backup Database As SQL Dump…"), this,
-                           [this, db] { emit dumpDatabaseRequested(db); });
-            menu.addSeparator();
-            menu.addAction(QStringLiteral("&Empty Database (truncate all tables)…"),
-                           this, [this, db] { emit emptyDatabaseRequested(db); });
-            menu.addAction(QStringLiteral("&Truncate Database (drop all objects)…"),
-                           this, [this, db] { emit truncateDatabaseRequested(db); });
-            menu.addAction(QStringLiteral("&Drop Database…"), this,
-                           [this, db] { emit dropDatabaseRequested(db); });
-        } else if(kind == KFolder
-                  && item->text(0) == QStringLiteral("Tables")) {
-            const QString db = item->data(0, Qt::UserRole + 1).toString();
-            menu.addAction(QStringLiteral("Create &Table…"), this,
-                           [this, db] { emit createTableRequested(db); });
-        } else if(kind == KFolder && !folderObjType(item->text(0)).isEmpty()) {
-            const QString db = item->data(0, Qt::UserRole + 1).toString();
-            const QString t = folderObjType(item->text(0));
-            menu.addAction(QStringLiteral("&Create %1…").arg(
-                               t.at(0) + t.mid(1).toLower()),
-                           this, [this, db, t] { emit createObjectRequested(db, t); });
-        } else if(kind == KLeaf && item->parent()
-                  && !folderObjType(item->parent()->text(0)).isEmpty()) {
-            const QString db = item->parent()->data(0, Qt::UserRole + 1).toString();
-            const QString t = folderObjType(item->parent()->text(0));
-            const QString name = item->text(0);
-            const QString nice = t.at(0) + t.mid(1).toLower();
-            menu.addAction(QStringLiteral("&Alter %1…").arg(nice), this,
-                           [this, db, t, name] { emit alterObjectRequested(db, t, name); });
-            menu.addAction(QStringLiteral("&Drop %1…").arg(nice), this,
-                           [this, db, t, name] { emit dropObjectRequested(db, t, name); });
-        } else if(kind == KTable) {
-            const QString db = item->data(0, Qt::UserRole + 1).toString();
-            const QString table = item->text(0);
-            menu.addAction(QStringLiteral("Open Table &Data"), this,
-                           [this, db, table, physDb] {
-                               emit tableActivated(db, table, physDb);
-                           });
-            menu.addAction(QStringLiteral("&Alter Table…"), this,
-                           [this, db, table] { emit alterTableRequested(db, table); });
-            menu.addAction(QStringLiteral("&Manage Indexes…"), this,
-                           [this, db, table] { emit manageIndexesRequested(db, table); });
-            menu.addAction(QStringLiteral("&Foreign Keys…"), this,
-                           [this, db, table] { emit manageForeignKeysRequested(db, table); });
-            menu.addAction(QStringLiteral("&Rename Table…"), this,
-                           [this, db, table] { emit renameTableRequested(db, table); });
-            menu.addAction(QStringLiteral("D&uplicate Table…"), this,
-                           [this, db, table] { emit copyTableRequested(db, table); });
-            menu.addAction(QStringLiteral("&Import CSV…"), this,
-                           [this, db, table] { emit importCsvRequested(db, table); });
-            menu.addAction(QStringLiteral("Import &XML…"), this,
-                           [this, db, table] { emit importXmlRequested(db, table); });
-            menu.addAction(QStringLiteral("&Export Table Data As…"), this,
-                           [this, db, table] { emit exportTableRequested(db, table); });
-            menu.addSeparator();
-            menu.addAction(QStringLiteral("Create &Table…"), this,
-                           [this, db] { emit createTableRequested(db); });
-            menu.addAction(QStringLiteral("&Drop Table…"), this,
-                           [this, db, table] { emit dropTableRequested(db, table); });
-            menu.addAction(QStringLiteral("&Truncate Table…"), this,
-                           [this, db, table] { emit truncateTableRequested(db, table); });
-            menu.addSeparator();
-            menu.addAction(QStringLiteral("&Copy CREATE Statement"), this,
-                           [this, db, table, physDb] { copyCreateTable(db, table, physDb); });
-            menu.addAction(QStringLiteral("Copy Column &Names"), this,
-                           [this, item] { copyColumnNames(item); });
-            menu.addAction(QStringLiteral("Re&fresh Node"), this,
-                           [this, item] {
-                item->takeChildren();
-                onItemExpanded(item);
-                item->setExpanded(true);
-            });
-        } else if(kind == KLeaf && item->parent()
-                  && item->parent()->data(0, Qt::UserRole).toInt() == KFolder
-                  && item->parent()->text(0) == QStringLiteral("Columns")) {
-            const QString col = item->text(0).section(QStringLiteral("  :  "), 0, 0);
-            menu.addAction(QStringLiteral("&Copy Column Name"), this, [col] {
-                QApplication::clipboard()->setText(col);
-            });
-        }
+        populateContextMenu(menu, item);
         if(!menu.isEmpty())
             menu.exec(m_tree->viewport()->mapToGlobal(pos));
     });
+
     /* single click on a schema/database node makes it current too (same
      * databaseActivated the double-click below emits) — the owner's ask:
      * after switching databases the tree stops at the schema list, and
@@ -340,6 +190,162 @@ ObjectBrowser::ObjectBrowser(QWidget *parent)
     layout->addWidget(m_filterLabel);
     layout->addWidget(m_filter);
     layout->addWidget(m_tree, 1);
+}
+
+void ObjectBrowser::populateContextMenu(QMenu &menu, QTreeWidgetItem *item)
+{
+    const int kind = item->data(0, Qt::UserRole).toInt();
+    const QString physDb = item->data(0, RolePhysDb).toString();
+    /* an item under a *different* physical database than this tab's
+     * own connection (PostgreSQL's multi-database tree only) — its
+     * structure can be browsed (connFor() opens/reuses a side
+     * connection for that), but every mutating action below assumes
+     * m_conn, the tab's own connection, so those stay unavailable
+     * here; "Connect in New Tab" is the way to actually work with it. */
+    const bool foreign = !physDb.isEmpty() && physDb != m_primaryDatabase;
+
+    if(kind == KPgDatabase) {
+        const QString database = item->text(0);
+        menu.addAction(QStringLiteral("&Switch to `%1`").arg(database),
+                       this, [this, database] {
+            emit switchDatabaseRequested(database);
+        });
+        menu.addAction(QStringLiteral("Connect to `%1` in New &Tab…").arg(database),
+                       this, [this, database] {
+            emit openDatabaseInNewTabRequested(database);
+        });
+        menu.addAction(QStringLiteral("Re&fresh Node"), this, [this, item] {
+            item->takeChildren();
+            onItemExpanded(item);
+            item->setExpanded(true);
+        });
+    } else if(foreign) {
+        /* reduced menu for anything under a non-primary database:
+         * browsing already works (the tree got here via connFor()),
+         * but no action below this point is safe to route through
+         * m_conn, so only offer what doesn't need it — Switch fixes
+         * that by making `physDb` the primary connection instead */
+        menu.addAction(QStringLiteral("&Switch to `%1`").arg(physDb),
+                       this, [this, physDb] {
+            emit switchDatabaseRequested(physDb);
+        });
+        menu.addAction(QStringLiteral("Connect to `%1` in New &Tab…").arg(physDb),
+                       this, [this, physDb] {
+            emit openDatabaseInNewTabRequested(physDb);
+        });
+        if(kind == KTable)
+            /* viewing data is safe on a foreign table — the data grid
+             * gets that database's own side connection (tableActivated
+             * carries physDb), unlike the Alter/Index/FK actions that
+             * stay primary-only below */
+            menu.addAction(QStringLiteral("Open Table &Data"), this,
+                           [this, item] {
+                emit tableActivated(item->data(0, Qt::UserRole + 1).toString(),
+                                    item->text(0),
+                                    item->data(0, RolePhysDb).toString());
+            });
+        if(kind == KDatabase || kind == KFolder || kind == KTable)
+            menu.addAction(QStringLiteral("Re&fresh Node"), this, [this, item] {
+                item->takeChildren();
+                onItemExpanded(item);
+                item->setExpanded(true);
+            });
+    } else if(kind == KDatabase) {
+        const QString db = item->text(0);
+        menu.addAction(QStringLiteral("Create &Table…"), this,
+                       [this, db] { emit createTableRequested(db); });
+        QMenu *create = menu.addMenu(QStringLiteral("&Create Object"));
+        for(const auto &kw : { QStringLiteral("VIEW"), QStringLiteral("PROCEDURE"),
+                               QStringLiteral("FUNCTION"), QStringLiteral("TRIGGER"),
+                               QStringLiteral("EVENT") }) {
+            const QString t = kw;
+            create->addAction(t.at(0) + t.mid(1).toLower() + QStringLiteral("…"),
+                              this, [this, db, t] { emit createObjectRequested(db, t); });
+        }
+        menu.addAction(QStringLiteral("&Copy Database…"), this,
+                       [this, db] { emit copyDatabaseRequested(db); });
+        menu.addAction(QStringLiteral("&Alter Database…"), this,
+                       [this, db] { emit alterDatabaseRequested(db); });
+        menu.addSeparator();
+        menu.addAction(QStringLiteral("&Backup Database As SQL Dump…"), this,
+                       [this, db] { emit dumpDatabaseRequested(db); });
+        menu.addSeparator();
+        menu.addAction(QStringLiteral("&Empty Database (truncate all tables)…"),
+                       this, [this, db] { emit emptyDatabaseRequested(db); });
+        menu.addAction(QStringLiteral("&Truncate Database (drop all objects)…"),
+                       this, [this, db] { emit truncateDatabaseRequested(db); });
+        menu.addAction(QStringLiteral("&Drop Database…"), this,
+                       [this, db] { emit dropDatabaseRequested(db); });
+    } else if(kind == KFolder
+              && item->text(0) == QStringLiteral("Tables")) {
+        const QString db = item->data(0, Qt::UserRole + 1).toString();
+        menu.addAction(QStringLiteral("Create &Table…"), this,
+                       [this, db] { emit createTableRequested(db); });
+    } else if(kind == KFolder && !folderObjType(item->text(0)).isEmpty()) {
+        const QString db = item->data(0, Qt::UserRole + 1).toString();
+        const QString t = folderObjType(item->text(0));
+        menu.addAction(QStringLiteral("&Create %1…").arg(
+                           t.at(0) + t.mid(1).toLower()),
+                       this, [this, db, t] { emit createObjectRequested(db, t); });
+    } else if(kind == KLeaf && item->parent()
+              && !folderObjType(item->parent()->text(0)).isEmpty()) {
+        const QString db = item->parent()->data(0, Qt::UserRole + 1).toString();
+        const QString t = folderObjType(item->parent()->text(0));
+        const QString name = item->text(0);
+        const QString nice = t.at(0) + t.mid(1).toLower();
+        menu.addAction(QStringLiteral("&Alter %1…").arg(nice), this,
+                       [this, db, t, name] { emit alterObjectRequested(db, t, name); });
+        menu.addAction(QStringLiteral("&Drop %1…").arg(nice), this,
+                       [this, db, t, name] { emit dropObjectRequested(db, t, name); });
+    } else if(kind == KTable) {
+        const QString db = item->data(0, Qt::UserRole + 1).toString();
+        const QString table = item->text(0);
+        menu.addAction(QStringLiteral("Open Table &Data"), this,
+                       [this, db, table, physDb] {
+                           emit tableActivated(db, table, physDb);
+                       });
+        menu.addAction(QStringLiteral("&Alter Table…"), this,
+                       [this, db, table] { emit alterTableRequested(db, table); });
+        menu.addAction(QStringLiteral("&Manage Indexes…"), this,
+                       [this, db, table] { emit manageIndexesRequested(db, table); });
+        menu.addAction(QStringLiteral("&Foreign Keys…"), this,
+                       [this, db, table] { emit manageForeignKeysRequested(db, table); });
+        menu.addAction(QStringLiteral("&Rename Table…"), this,
+                       [this, db, table] { emit renameTableRequested(db, table); });
+        menu.addAction(QStringLiteral("D&uplicate Table…"), this,
+                       [this, db, table] { emit copyTableRequested(db, table); });
+        menu.addAction(QStringLiteral("&Import CSV…"), this,
+                       [this, db, table] { emit importCsvRequested(db, table); });
+        menu.addAction(QStringLiteral("Import &XML…"), this,
+                       [this, db, table] { emit importXmlRequested(db, table); });
+        menu.addAction(QStringLiteral("&Export Table Data As…"), this,
+                       [this, db, table] { emit exportTableRequested(db, table); });
+        menu.addSeparator();
+        menu.addAction(QStringLiteral("Create &Table…"), this,
+                       [this, db] { emit createTableRequested(db); });
+        menu.addAction(QStringLiteral("&Drop Table…"), this,
+                       [this, db, table] { emit dropTableRequested(db, table); });
+        menu.addAction(QStringLiteral("&Truncate Table…"), this,
+                       [this, db, table] { emit truncateTableRequested(db, table); });
+        menu.addSeparator();
+        menu.addAction(QStringLiteral("&Copy CREATE Statement"), this,
+                       [this, db, table, physDb] { copyCreateTable(db, table, physDb); });
+        menu.addAction(QStringLiteral("Copy Column &Names"), this,
+                       [this, item] { copyColumnNames(item); });
+        menu.addAction(QStringLiteral("Re&fresh Node"), this,
+                       [this, item] {
+            item->takeChildren();
+            onItemExpanded(item);
+            item->setExpanded(true);
+        });
+    } else if(kind == KLeaf && item->parent()
+              && item->parent()->data(0, Qt::UserRole).toInt() == KFolder
+              && item->parent()->text(0) == QStringLiteral("Columns")) {
+        const QString col = item->text(0).section(QStringLiteral("  :  "), 0, 0);
+        menu.addAction(QStringLiteral("&Copy Column Name"), this, [col] {
+            QApplication::clipboard()->setText(col);
+        });
+    }
 }
 
 void ObjectBrowser::setConnectionLabel(const QString &label)
@@ -777,6 +783,38 @@ QStringList ObjectBrowser::dumpSubtree(const QString &path) const
                 walk(item->child(i), depth + 1);
         };
     walk(cur, 0);
+    return out;
+}
+
+QStringList ObjectBrowser::contextMenuItemsForTest(const QString &path)
+{
+    QTreeWidgetItem *cur = m_tree->topLevelItem(0);
+    if(!cur)
+        return {};
+    const QStringList parts = path.split(QLatin1Char('/'), Qt::SkipEmptyParts);
+    for(const QString &part : parts) {
+        QTreeWidgetItem *next = nullptr;
+        for(int i = 0; i < cur->childCount(); ++i)
+            if(cur->child(i)->text(0) == part) { next = cur->child(i); break; }
+        if(!next)
+            return {};   /* unresolved path — same silence as the walkers */
+        cur = next;
+    }
+    QMenu menu;
+    populateContextMenu(menu, cur);
+    QStringList out;
+    for(QAction *a : menu.actions()) {
+        if(a->isSeparator()) {
+            out << QStringLiteral("---");
+            continue;
+        }
+        out << a->text();
+        /* one level of submenu (e.g. "Create Object" ▸ View/Procedure/…) —
+         * enough for every menu this app builds, none nest deeper */
+        if(QMenu *sub = a->menu())
+            for(QAction *sa : sub->actions())
+                out << QStringLiteral("  › %1").arg(sa->text());
+    }
     return out;
 }
 

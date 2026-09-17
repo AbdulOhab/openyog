@@ -13,6 +13,7 @@
 #include <functional>
 
 class IDbConnection;
+class QMenu;
 
 /* Edit > Change Object Browser Color: persisted in OpenYog.ini
  * [UserInterface] browsercolor=#RRGGBB, same file Theme uses. An invalid
@@ -97,6 +98,15 @@ public:
      * (empty when the path doesn't resolve) — lets a selftest assert on
      * what actually got listed under a folder, not just screenshot it */
     QStringList dumpSubtree(const QString &path) const;
+    /* headless-test hook: same path walk, then builds the exact right-click
+     * context menu that item would show — without opening it (QMenu::exec()
+     * blocks in a nested event loop, same problem the modal guard dialogs
+     * had) — and returns the item texts in order ("---" for a separator,
+     * "› " prefix for a submenu's own items, flattened one level deep,
+     * enough for "Create Object"). Lets a selftest compare what menu a
+     * given tree node offers across drivers side by side, not just
+     * eyeball a screenshot. */
+    QStringList contextMenuItemsForTest(const QString &path);
 
 signals:
     void databaseActivated(const QString &db);      /* double click → USE */
@@ -157,6 +167,10 @@ private slots:
 private:
     void copyCreateTable(const QString &db, const QString &table, const QString &physDb);
     void copyColumnNames(QTreeWidgetItem *tableItem);
+    /* builds the right-click context menu for one tree item — factored out
+     * of the customContextMenuRequested handler so contextMenuItemsForTest()
+     * can build the same menu without executing it */
+    void populateContextMenu(QMenu &menu, QTreeWidgetItem *item);
 
     enum ItemRole { RoleKind = Qt::UserRole + 1, RoleName };
     enum Kind { KindConnection, KindDatabase, KindFolder, KindTable };
