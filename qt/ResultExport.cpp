@@ -173,7 +173,7 @@ QString render(Format fmt, const QStringList &headers, const std::function<QStri
             /* matches opt.sqlCreate's own dialect (the caller fills that in via
              * IDbConnection::showCreate(), already quoted correctly) rather
              * than always assuming backticks */
-            const bool ansiQuote = opt.driver != DriverType::Mysql;
+            const bool ansiQuote = opt.driver != SqlDriverType::Mysql;
             const auto qi = [&](const QString &s) {
                 return ansiQuote
                            ? QLatin1Char('"') + QString(s).replace('"', QStringLiteral("\"\"")) +

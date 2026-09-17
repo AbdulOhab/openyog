@@ -12,9 +12,9 @@
 #include <QVBoxLayout>
 
 namespace {
-QString qi(DriverType driver, const QString &ident)
+QString qi(SqlDriverType driver, const QString &ident)
 {
-    if(driver == DriverType::Postgres)
+    if(driver == SqlDriverType::Postgres)
         return QLatin1Char('"') + QString(ident).replace(QLatin1Char('"'), QStringLiteral("\"\"")) +
                QLatin1Char('"');
     return QLatin1Char('`') + QString(ident).replace(QLatin1Char('`'), QStringLiteral("``")) +
@@ -25,14 +25,14 @@ QString qi(DriverType driver, const QString &ident)
  * Postgres and SQLite — but a SQLite connection's `database` is routinely
  * empty (see IDbConnection::qualify()'s own doc comment on this exact
  * pattern), and an empty-then-dot prefix would be invalid syntax there */
-QString qualifyIndexName(DriverType driver, const QString &db, const QString &name)
+QString qualifyIndexName(SqlDriverType driver, const QString &db, const QString &name)
 {
     return db.isEmpty() ? qi(driver, name) : qi(driver, db) + QLatin1Char('.') + qi(driver, name);
 }
 } // namespace
 
 IndexDialog::IndexDialog(QString database, QString table, const QList<IndexDef> &indexes,
-                         QStringList tableColumns, QWidget *parent, DriverType driver)
+                         QStringList tableColumns, QWidget *parent, SqlDriverType driver)
     : QDialog(parent), m_driver(driver), m_database(std::move(database)), m_table(std::move(table)),
       m_columns(std::move(tableColumns))
 {
@@ -162,7 +162,7 @@ QString IndexDialog::buildSql() const
     /* neither Postgres nor SQLite has an ALTER TABLE ADD/DROP INDEX clause
      * at all — both need CREATE INDEX/DROP INDEX as their own top-level
      * statements (MySQL is the odd one out with an ALTER TABLE clause) */
-    const bool standalone = m_driver != DriverType::Mysql;
+    const bool standalone = m_driver != SqlDriverType::Mysql;
     QStringList current, adds;
     for(int r = 0; r < m_grid->rowCount(); ++r) {
         QTableWidgetItem *n = m_grid->item(r, 0);

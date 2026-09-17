@@ -30,7 +30,7 @@ struct Options
     /* SQL format only: picks identifier quoting (backtick vs double-quote)
      * to match sqlCreate's own dialect — the source connection's driver,
      * not necessarily the driver the exported file will ever be run against */
-    DriverType driver = DriverType::Mysql;
+    SqlDriverType driver = SqlDriverType::Mysql;
 };
 
 /* cell(row, col) returns the display string; a value equal to Options::nullText

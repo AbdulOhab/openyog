@@ -18,9 +18,9 @@ const QStringList kActions = {
     QStringLiteral("NO ACTION"),
 };
 
-QString qi(DriverType driver, const QString &ident)
+QString qi(SqlDriverType driver, const QString &ident)
 {
-    if(driver == DriverType::Postgres)
+    if(driver == SqlDriverType::Postgres)
         return QLatin1Char('"') + QString(ident).replace(QLatin1Char('"'), QStringLiteral("\"\"")) +
                QLatin1Char('"');
     return QLatin1Char('`') + QString(ident).replace(QLatin1Char('`'), QStringLiteral("``")) +
@@ -30,7 +30,7 @@ QString qi(DriverType driver, const QString &ident)
 
 ForeignKeyDialog::ForeignKeyDialog(QString database, QString table, const QList<FkDef> &fks,
                                    QStringList tableColumns, QStringList dbTables, QWidget *parent,
-                                   DriverType driver)
+                                   SqlDriverType driver)
     : QDialog(parent), m_driver(driver), m_database(std::move(database)), m_table(std::move(table)),
       m_columns(std::move(tableColumns)), m_dbTables(std::move(dbTables))
 {
@@ -164,7 +164,7 @@ void ForeignKeyDialog::removeSelected()
 QString ForeignKeyDialog::buildSql() const
 {
     m_limitation.clear();
-    if(m_driver == DriverType::Sqlite) {
+    if(m_driver == SqlDriverType::Sqlite) {
         /* neither adding nor dropping a foreign key constraint on an
          * existing table is possible via SQLite's ALTER TABLE at all —
          * both need a full create-new/copy-data/drop-old/rename rebuild,
@@ -215,8 +215,8 @@ QString ForeignKeyDialog::buildSql() const
 
     /* MySQL: DROP FOREIGN KEY name. Standard SQL/PostgreSQL: a foreign key
      * is just a constraint, dropped like any other — DROP CONSTRAINT name. */
-    const QString dropKw = m_driver == DriverType::Postgres ? QStringLiteral("DROP CONSTRAINT")
-                                                            : QStringLiteral("DROP FOREIGN KEY");
+    const QString dropKw = m_driver == SqlDriverType::Postgres ? QStringLiteral("DROP CONSTRAINT")
+                                                               : QStringLiteral("DROP FOREIGN KEY");
     QStringList clauses;
     for(const QString &orig : m_originalNames)
         if(!current.contains(orig))

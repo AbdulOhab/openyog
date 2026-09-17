@@ -15,9 +15,9 @@ public:
     explicit SqliteConnection(sqlite3 *db);
     ~SqliteConnection() override;
 
-    DriverType driverType() const override
+    SqlDriverType driverType() const override
     {
-        return DriverType::Sqlite;
+        return SqlDriverType::Sqlite;
     }
 
     void cancel() override;

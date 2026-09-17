@@ -382,9 +382,9 @@ ConnectionTab::ConnectionTab(const ConnectionParams &params, QWidget *parent)
     /* ---- right-top: editor tabs (Query 1 / History) --------------- */
     m_editor = new SqlEditor(this);
     m_editor->setPlainText(
-        m_params.driverType == DriverType::Sqlite
+        m_params.driverType == SqlDriverType::Sqlite
             ? QStringLiteral("SELECT sqlite_version();\nSELECT name FROM sqlite_master;")
-        : m_params.driverType == DriverType::Postgres
+        : m_params.driverType == SqlDriverType::Postgres
             ? QStringLiteral("SELECT version(), current_user;\n"
                              "SELECT schema_name FROM information_schema.schemata;")
             : QStringLiteral("SELECT VERSION(), CURRENT_USER();\nSHOW DATABASES;"));
@@ -553,7 +553,7 @@ ConnectionTab::ConnectionTab(const ConnectionParams &params, QWidget *parent)
      * thread's own connection, but there's no reason to add an extra query
      * on top of one already in flight. SQLite is a local file, not a
      * server socket that can time out — nothing to keep alive. */
-    if(m_params.driverType == DriverType::Mysql && m_params.keepAliveSecs > 0) {
+    if(m_params.driverType == SqlDriverType::Mysql && m_params.keepAliveSecs > 0) {
         m_keepAliveTimer = new QTimer(this);
         m_keepAliveTimer->setInterval(m_params.keepAliveSecs * 1000);
         connect(m_keepAliveTimer, &QTimer::timeout, this, [this] {
@@ -633,7 +633,7 @@ ConnectionTab::ConnectionTab(const ConnectionParams &params, QWidget *parent)
     connect(m_browser, &ObjectBrowser::alterDatabaseRequested, this,
             &ConnectionTab::promptAlterDatabase);
 
-    const bool isSqlite = m_params.driverType == DriverType::Sqlite;
+    const bool isSqlite = m_params.driverType == SqlDriverType::Sqlite;
 
     m_browser->setConnectionLabel(isSqlite
                                       ? QFileInfo(m_params.filePath).fileName()
@@ -687,20 +687,20 @@ void ConnectionTab::attachEditor(SqlEditor *ed, const QString &title)
 
 QString ConnectionTab::defaultDb() const
 {
-    if(m_params.driverType == DriverType::Postgres)
+    if(m_params.driverType == SqlDriverType::Postgres)
         return m_currentSchema.isEmpty() ? QStringLiteral("public") : m_currentSchema;
     /* SQLite names its one database "main" — a file connection carries no
      * database field, so an empty default would make db-less calls (Create
      * Procedure etc.) hit "Select a database first." instead of doing their
      * normal thing (which for PROCEDURE/FUNCTION/EVENT is the SQLite guard) */
-    if(m_params.driverType == DriverType::Sqlite)
+    if(m_params.driverType == SqlDriverType::Sqlite)
         return m_params.database.isEmpty() ? QStringLiteral("main") : m_params.database;
     return m_params.database;
 }
 
 QString ConnectionTab::activeConnectionLabel() const
 {
-    if(m_params.driverType == DriverType::Sqlite)
+    if(m_params.driverType == SqlDriverType::Sqlite)
         return m_params.filePath;
     const QString where = QStringLiteral("%1:%2").arg(m_params.host).arg(m_params.port);
     /* the visible grid came from another physical database's side
@@ -1334,9 +1334,9 @@ void ConnectionTab::explainCurrent(bool json)
     QString explainSql;
     if(!json) {
         explainSql = QStringLiteral("EXPLAIN %1").arg(stmt);
-    } else if(driverType() == DriverType::Postgres) {
+    } else if(driverType() == SqlDriverType::Postgres) {
         explainSql = QStringLiteral("EXPLAIN (FORMAT JSON) %1").arg(stmt);
-    } else if(driverType() == DriverType::Sqlite) {
+    } else if(driverType() == SqlDriverType::Sqlite) {
         QMessageBox::information(this, QStringLiteral("Explain"),
                                  QStringLiteral("SQLite has no EXPLAIN FORMAT=JSON — use plain "
                                                 "EXPLAIN instead."));
@@ -1940,7 +1940,7 @@ void ConnectionTab::createSchemaObject(const QString &database, const QString &o
                              QStringLiteral("Select a database first."));
         return;
     }
-    if(m_params.driverType == DriverType::Postgres && objType == QStringLiteral("EVENT")) {
+    if(m_params.driverType == SqlDriverType::Postgres && objType == QStringLiteral("EVENT")) {
         QMessageBox::information(
             this, QStringLiteral("Create Event"),
             QStringLiteral("PostgreSQL has no built-in scheduled-event feature."));
@@ -1954,7 +1954,7 @@ void ConnectionTab::createSchemaObject(const QString &database, const QString &o
      * branch and opens an editor tab pre-filled with MySQL-only syntax
      * that just fails with a bare syntax error on Run — View and Trigger
      * are genuinely fine on SQLite and stay unguarded. */
-    if(m_params.driverType == DriverType::Sqlite &&
+    if(m_params.driverType == SqlDriverType::Sqlite &&
        (objType == QStringLiteral("PROCEDURE") || objType == QStringLiteral("FUNCTION") ||
         objType == QStringLiteral("EVENT"))) {
         QMessageBox::information(this, QStringLiteral("Create %1").arg(nice),
@@ -2010,7 +2010,7 @@ void ConnectionTab::dropSchemaObject(const QString &database, const QString &obj
     /* PostgreSQL's DROP TRIGGER needs "ON table", not a db-qualified name —
      * pulled from pg_trigger since dropSchemaObject() has no table
      * parameter of its own to pass in */
-    if(m_params.driverType == DriverType::Postgres && objType == QStringLiteral("TRIGGER")) {
+    if(m_params.driverType == SqlDriverType::Postgres && objType == QStringLiteral("TRIGGER")) {
         DbResultSet rs;
         m_conn->query(
             QStringLiteral("SELECT c.relname FROM pg_trigger t "
@@ -2039,7 +2039,7 @@ void ConnectionTab::dropDatabase(const QString &database)
     const QString db = database.isEmpty() ? defaultDb() : database;
     if(db.isEmpty())
         return;
-    if(m_params.driverType == DriverType::Sqlite) {
+    if(m_params.driverType == SqlDriverType::Sqlite) {
         /* a SQLite "database" IS the open file — there's no DROP DATABASE
          * statement, and dropping the file out from under the very
          * connection reading it isn't something a DDL call can safely do
@@ -2063,7 +2063,7 @@ void ConnectionTab::dropDatabase(const QString &database)
      * a connection can't reach another actual Postgres database at all,
      * let alone drop one), and there's no DROP DATABASE for that; CASCADE
      * is required since a non-empty schema otherwise refuses to drop. */
-    execDdl(m_params.driverType == DriverType::Postgres
+    execDdl(m_params.driverType == SqlDriverType::Postgres
                 ? QStringLiteral("DROP SCHEMA %1 CASCADE").arg(m_conn->quoteIdent(db))
                 : QStringLiteral("DROP DATABASE `%1`").arg(db));
 }
@@ -2081,7 +2081,7 @@ void ConnectionTab::truncateDatabase(const QString &database)
                             QMessageBox::No) != QMessageBox::Yes)
         return;
 
-    if(m_params.driverType == DriverType::Postgres) {
+    if(m_params.driverType == SqlDriverType::Postgres) {
         /* no per-schema charset/collation to preserve (that's a whole-
          * database property in Postgres) — just drop and recreate empty */
         const QString qdb = m_conn->quoteIdent(db);
@@ -2089,7 +2089,7 @@ void ConnectionTab::truncateDatabase(const QString &database)
             execDdl(QStringLiteral("CREATE SCHEMA %1").arg(qdb));
         return;
     }
-    if(m_params.driverType == DriverType::Sqlite) {
+    if(m_params.driverType == SqlDriverType::Sqlite) {
         /* SQLite has no CREATE/DROP DATABASE at all — "truncate the
          * database, keep it empty" just means drop every object directly;
          * views first (harmless either order, but avoids a moment where a
@@ -2151,14 +2151,14 @@ void ConnectionTab::promptAlterDatabase(const QString &database)
     const QString db = database.isEmpty() ? defaultDb() : database;
     if(db.isEmpty())
         return;
-    if(m_params.driverType == DriverType::Postgres) {
+    if(m_params.driverType == SqlDriverType::Postgres) {
         QMessageBox::information(this, QStringLiteral("Alter Database"),
                                  QStringLiteral("Character set/collation are whole-database "
                                                 "properties in PostgreSQL, fixed at creation — "
                                                 "there's nothing here to alter for a schema."));
         return;
     }
-    if(m_params.driverType == DriverType::Sqlite) {
+    if(m_params.driverType == SqlDriverType::Sqlite) {
         QMessageBox::information(this, QStringLiteral("Alter Database"),
                                  QStringLiteral("SQLite has no per-database character set or "
                                                 "collation to alter — text encoding is fixed "
@@ -2220,7 +2220,7 @@ void ConnectionTab::promptRenameTable(const QString &database, const QString &ta
      * on both, within the same schema (there's no cross-schema form to
      * worry about since this function never changes db, only the name). */
     execDdl(
-        m_params.driverType != DriverType::Mysql
+        m_params.driverType != SqlDriverType::Mysql
             ? QStringLiteral("ALTER TABLE %1 RENAME TO %2")
                   .arg(m_conn->qualify(db, table), m_conn->quoteIdent(name.trimmed()))
             : QStringLiteral("RENAME TABLE `%1`.`%2` TO `%1`.`%3`").arg(db, table, name.trimmed()));
@@ -2269,13 +2269,13 @@ void ConnectionTab::promptCopyTable(const QString &database, const QString &tabl
 
     if(wantStructure->isChecked()) {
         bool ok;
-        if(m_params.driverType == DriverType::Postgres) {
+        if(m_params.driverType == SqlDriverType::Postgres) {
             /* PostgreSQL needs the parenthesized LIKE-clause form, and
              * INCLUDING ALL to get the same completeness a bare MySQL LIKE
              * gives by default (otherwise only column definitions copy,
              * not indexes/defaults/constraints) */
             ok = execDdl(QStringLiteral("CREATE TABLE %1 (LIKE %2 INCLUDING ALL)").arg(dst, src));
-        } else if(m_params.driverType == DriverType::Sqlite) {
+        } else if(m_params.driverType == SqlDriverType::Sqlite) {
             /* SQLite has no LIKE clause at all — showCreate("TABLE") for
              * SQLite replays the table's own original CREATE TABLE text
              * (sqlite_master.sql, byte-for-byte), so retarget just its
@@ -2392,7 +2392,7 @@ void ConnectionTab::promptCopyDatabase(const QString &database)
      * indexes/views/triggers with no per-object-type code needed), or
      * recreate just the schema (CREATE TABLE/VIEW from showCreate()) into
      * a fresh file when data isn't wanted. */
-    if(m_params.driverType == DriverType::Sqlite) {
+    if(m_params.driverType == SqlDriverType::Sqlite) {
         QDialog dlg(this);
         dlg.setWindowTitle(QStringLiteral("Copy Database"));
         auto *path = new QLineEdit(m_params.filePath + QStringLiteral("_copy.sqlite"), &dlg);
@@ -2462,7 +2462,7 @@ void ConnectionTab::promptCopyDatabase(const QString &database)
      * always a same-connection schema-to-schema copy; the target
      * host/port/user fields (meaningless here) are omitted entirely rather
      * than shown and silently ignored. */
-    const bool isPg = m_params.driverType == DriverType::Postgres;
+    const bool isPg = m_params.driverType == SqlDriverType::Postgres;
 
     QDialog dlg(this);
     dlg.setWindowTitle(
@@ -2545,7 +2545,7 @@ void ConnectionTab::promptCopyDatabase(const QString &database)
         tp.user = tUser->text().trimmed();
         tp.password = tPass->text();
         tp.port = tPort->value();
-        IDbConnection *dst = dbDriverFor(DriverType::Mysql)->connect(tp, &err);
+        IDbConnection *dst = dbDriverFor(SqlDriverType::Mysql)->connect(tp, &err);
         if(!dst) {
             err = QStringLiteral("target connect failed: %1").arg(err);
             ok = false;
@@ -2653,10 +2653,10 @@ bool ConnectionTab::importCsvBatched(const QString &db, const QString &table, co
      * an update that could silently target the wrong row. */
     QString verb = QStringLiteral("INSERT");
     QString conflictClause;
-    if(m_params.driverType == DriverType::Sqlite) {
+    if(m_params.driverType == SqlDriverType::Sqlite) {
         verb = onDup == QStringLiteral("REPLACE") ? QStringLiteral("INSERT OR REPLACE")
                                                   : QStringLiteral("INSERT OR IGNORE");
-    } else if(m_params.driverType == DriverType::Postgres) {
+    } else if(m_params.driverType == SqlDriverType::Postgres) {
         QStringList pkCols;
         for(const QStringList &row : m_conn->listIndexes(db, table).rows)
             if(row.value(2) == QStringLiteral("PRIMARY"))
@@ -2715,7 +2715,7 @@ bool ConnectionTab::importCsvBatched(const QString &db, const QString &table, co
 
 bool ConnectionTab::copySqliteFileTo(const QString &target, bool withData, QString *error)
 {
-    if(!m_conn || m_params.driverType != DriverType::Sqlite || target.isEmpty()) {
+    if(!m_conn || m_params.driverType != SqlDriverType::Sqlite || target.isEmpty()) {
         if(error)
             *error = QStringLiteral("bad source/target");
         return false;
@@ -2729,9 +2729,9 @@ bool ConnectionTab::copySqliteFileTo(const QString &target, bool withData, QStri
         return false;
     }
     ConnectionParams tp;
-    tp.driverType = DriverType::Sqlite;
+    tp.driverType = SqlDriverType::Sqlite;
     tp.filePath = target;
-    IDbConnection *dst = dbDriverFor(DriverType::Sqlite)->connect(tp, error);
+    IDbConnection *dst = dbDriverFor(SqlDriverType::Sqlite)->connect(tp, error);
     if(!dst)
         return false;
     bool ok = true;
@@ -2773,14 +2773,14 @@ void ConnectionTab::promptCopyTableToHost(const QString &database, const QString
      * this one is a bigger job than a bug fix; guarding it is the same
      * defensive choice already made everywhere else in this file (Flush,
      * Show, Set Autocommit, …) rather than sending SQL nobody asked for. */
-    if(m_params.driverType != DriverType::Mysql) {
+    if(m_params.driverType != SqlDriverType::Mysql) {
         QMessageBox::information(this, QStringLiteral("Copy Table To Different Host"),
                                  QStringLiteral("This only supports a MySQL/MariaDB source right "
                                                 "now — the target is always MySQL, and copying "
                                                 "a %1 table's structure across dialects isn't "
                                                 "implemented. Use Database ▸ Copy Database or "
                                                 "Backup Table(s) As SQL Dump instead.")
-                                     .arg(m_params.driverType == DriverType::Postgres
+                                     .arg(m_params.driverType == SqlDriverType::Postgres
                                               ? QStringLiteral("PostgreSQL")
                                               : QStringLiteral("SQLite")));
         return;
@@ -2830,13 +2830,13 @@ void ConnectionTab::promptCopyTableToHost(const QString &database, const QString
 
     QApplication::setOverrideCursor(Qt::WaitCursor);
     ConnectionParams tp;
-    tp.driverType = DriverType::Mysql;
+    tp.driverType = SqlDriverType::Mysql;
     tp.host = tHost->text().trimmed();
     tp.port = tPort->value();
     tp.user = tUser->text().trimmed();
     tp.password = tPass->text();
     QString err;
-    IDbConnection *dst = dbDriverFor(DriverType::Mysql)->connect(tp, &err);
+    IDbConnection *dst = dbDriverFor(SqlDriverType::Mysql)->connect(tp, &err);
     bool ok = dst != nullptr;
     if(ok) {
         const QString tb = QString(tgtDb).replace('`', QStringLiteral("``"));
@@ -3262,7 +3262,7 @@ void ConnectionTab::promptUserManager()
 {
     if(!m_conn)
         return;
-    if(m_params.driverType == DriverType::Sqlite) {
+    if(m_params.driverType == SqlDriverType::Sqlite) {
         QMessageBox::information(this, QStringLiteral("User Manager"),
                                  QStringLiteral("SQLite has no user/permission system — "
                                                 "a database file's access is just filesystem "
@@ -3308,12 +3308,12 @@ void ConnectionTab::tableDiagnostics(const QString &database, const QString &tab
     for(const Op &op : ops) {
         auto *row = new QHBoxLayout;
         auto *btn = new QPushButton(op.label, &dlg);
-        const QString sql = m_params.driverType == DriverType::Sqlite     ? op.sqliteSql
-                            : m_params.driverType == DriverType::Postgres ? op.pgSql
-                                                                          : op.mysqlSql;
-        const QString note = m_params.driverType == DriverType::Sqlite     ? op.note
-                             : m_params.driverType == DriverType::Postgres ? op.pgNote
-                                                                           : QString();
+        const QString sql = m_params.driverType == SqlDriverType::Sqlite     ? op.sqliteSql
+                            : m_params.driverType == SqlDriverType::Postgres ? op.pgSql
+                                                                             : op.mysqlSql;
+        const QString note = m_params.driverType == SqlDriverType::Sqlite     ? op.note
+                             : m_params.driverType == SqlDriverType::Postgres ? op.pgNote
+                                                                              : QString();
         btn->setEnabled(!sql.isEmpty());
         connect(btn, &QPushButton::clicked, &dlg, [this, &dlg, sql] {
             dlg.accept();
@@ -3338,8 +3338,8 @@ void ConnectionTab::showConnectionInfo()
     const QString msg =
         QStringLiteral("Driver: %1\nServer: %2\n%3: %4\nCurrent database: %5")
             .arg(dbDriverFor(m_params.driverType)->driverName(), m_conn->serverInfo(),
-                 m_params.driverType == DriverType::Sqlite ? QStringLiteral("File")
-                                                           : QStringLiteral("Host"),
+                 m_params.driverType == SqlDriverType::Sqlite ? QStringLiteral("File")
+                                                              : QStringLiteral("Host"),
                  hostLabel(),
                  m_params.database.isEmpty() ? QStringLiteral("(none)") : m_params.database);
     QMessageBox::information(this, QStringLiteral("Connection Info"), msg);
@@ -3353,7 +3353,7 @@ void ConnectionTab::showTableProperties(const QString &database, const QString &
     const QString qualified = m_conn->qualify(db, table);
     QString msg = QStringLiteral("Table: %1\n").arg(qualified);
 
-    if(m_params.driverType == DriverType::Sqlite) {
+    if(m_params.driverType == SqlDriverType::Sqlite) {
         DbResultSet rs;
         if(m_conn->query(QStringLiteral("SELECT COUNT(*) FROM %1").arg(qualified), &rs, nullptr) &&
            !rs.rows.isEmpty())
@@ -3366,11 +3366,11 @@ void ConnectionTab::showTableProperties(const QString &database, const QString &
             return names.size();
         }();
         msg += QStringLiteral("Indexes: %1\n").arg(idxCount);
-        if(m_params.driverType == DriverType::Sqlite) {
+        if(m_params.driverType == SqlDriverType::Sqlite) {
             const QFileInfo fi(m_params.filePath);
             msg += QStringLiteral("Database file size: %1 bytes\n").arg(fi.size());
         }
-    } else if(m_params.driverType == DriverType::Postgres) {
+    } else if(m_params.driverType == SqlDriverType::Postgres) {
         msg += QStringLiteral("Columns: %1\n").arg(m_conn->listColumns(db, table).rows.size());
         {
             QSet<QString> names;
@@ -3613,7 +3613,7 @@ void ConnectionTab::promptImportXml(const QString &database, const QString &tabl
 {
     if(!m_conn)
         return;
-    if(m_params.driverType != DriverType::Mysql) {
+    if(m_params.driverType != SqlDriverType::Mysql) {
         QMessageBox::information(this, QStringLiteral("Import XML"),
                                  QStringLiteral("XML import needs LOAD XML LOCAL INFILE, which is "
                                                 "MySQL-only — not available on this connection. "
@@ -3749,7 +3749,7 @@ void ConnectionTab::promptImportCsv(const QString &database, const QString &tabl
     lay->addLayout(form);
     lay->addWidget(new QLabel(QStringLiteral("File preview:"), &dlg));
     lay->addWidget(importFilePreview(&dlg, file));
-    const bool noBulkLoader = m_params.driverType != DriverType::Mysql;
+    const bool noBulkLoader = m_params.driverType != SqlDriverType::Mysql;
     lay->addWidget(new QLabel(
         noBulkLoader
             ? QStringLiteral("Parsed and inserted row by row inside one transaction "
@@ -3941,7 +3941,7 @@ void ConnectionTab::promptAlterTable(const QString &database, const QString &tab
         return;
 
     QString engine, charset;
-    if(m_params.driverType == DriverType::Mysql) {
+    if(m_params.driverType == SqlDriverType::Mysql) {
         /* ENGINE/TABLE_COLLATION: MySQL-only information_schema columns —
          * PostgreSQL's information_schema.tables has neither (no storage
          * engines, no per-table charset), so this stays MySQL-only rather
@@ -4094,7 +4094,7 @@ bool ConnectionTab::execDdl(const QString &sql)
         return false;
     QString error;
     bool ok;
-    if(m_params.driverType == DriverType::Sqlite) {
+    if(m_params.driverType == SqlDriverType::Sqlite) {
         /* sqlite3_prepare_v2 (see SqliteConnection::runBuffered) only ever
          * prepares the FIRST statement in a string and silently discards
          * anything after it — unlike PQexec, which runs a whole
@@ -4228,11 +4228,11 @@ void ConnectionTab::useDatabase(const QString &db)
      * this schema was picked before; also keeps the click+double-click
      * pair on one tree node from issuing the same SET/USE twice */
     const QString alreadyCurrent =
-        m_params.driverType == DriverType::Postgres ? m_currentSchema : m_params.database;
+        m_params.driverType == SqlDriverType::Postgres ? m_currentSchema : m_params.database;
     if(db != alreadyCurrent) {
         QString error;
         const bool ok =
-            m_params.driverType == DriverType::Postgres
+            m_params.driverType == SqlDriverType::Postgres
                 ? m_conn->query(QStringLiteral("SET search_path TO %1").arg(m_conn->quoteIdent(db)),
                                 nullptr, &error)
                 : m_conn->query(QStringLiteral("USE `%1`").arg(db), nullptr, &error);
@@ -4241,11 +4241,11 @@ void ConnectionTab::useDatabase(const QString &db)
             m_resultTabs->setCurrentWidget(m_messages);
             return;
         }
-        if(m_params.driverType == DriverType::Postgres)
+        if(m_params.driverType == SqlDriverType::Postgres)
             m_currentSchema = db;
         else
             m_params.database = db;
-        m_messages->setPlainText(m_params.driverType == DriverType::Postgres
+        m_messages->setPlainText(m_params.driverType == SqlDriverType::Postgres
                                      ? QStringLiteral("Schema changed to %1").arg(db)
                                      : QStringLiteral("Database changed to %1").arg(db));
         m_resultTabs->setCurrentWidget(m_messages);

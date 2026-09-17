@@ -27,15 +27,15 @@ bool ConnectionStore::load(const QString &name, ConnectionParams *out)
 
     /* "driver" is new — old files without it default to MySQL */
     wyIni::IniGetString(n, "driver", "mysql", &value, iniPath().toUtf8());
-    const DriverType driver = driverTypeFromString(QString::fromUtf8(value.GetString()));
+    const SqlDriverType driver = driverTypeFromString(QString::fromUtf8(value.GetString()));
 
     wyIni::IniGetString(n, "filepath", "", &value, iniPath().toUtf8());
     const QString filePath = value.GetString();
 
-    if(driver == DriverType::Sqlite) {
+    if(driver == SqlDriverType::Sqlite) {
         if(filePath.isEmpty())
             return false;
-        out->driverType = DriverType::Sqlite;
+        out->driverType = SqlDriverType::Sqlite;
         out->filePath = filePath;
         out->name = name;
         return true;
@@ -53,7 +53,7 @@ bool ConnectionStore::load(const QString &name, ConnectionParams *out)
     out->user = value.GetString();
     wyIni::IniGetString(n, "database", "", &value, iniPath().toUtf8());
     out->database = value.GetString();
-    out->port = wyIni::IniGetInt(n, "port", driver == DriverType::Postgres ? 5432 : 3306,
+    out->port = wyIni::IniGetInt(n, "port", driver == SqlDriverType::Postgres ? 5432 : 3306,
                                  iniPath().toUtf8());
 
     /* password is stored base64-encoded, like upstream connection files */
@@ -88,7 +88,7 @@ void ConnectionStore::save(const ConnectionParams &params)
 
     wyIni::IniWriteString(n, "driver", toUtf8(driverTypeToString(params.driverType)), p);
 
-    if(params.driverType == DriverType::Sqlite) {
+    if(params.driverType == SqlDriverType::Sqlite) {
         wyIni::IniWriteString(n, "filepath", toUtf8(params.filePath), p);
         return;
     }

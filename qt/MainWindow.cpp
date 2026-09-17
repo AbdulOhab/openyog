@@ -138,7 +138,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
                  * no meaningful host/port/user at all and a Postgres tab
                  * would get MySQL's wire protocol pointed at its host/port,
                  * so this was silently broken for both until fixed here. */
-                p.driverType = static_cast<DriverType>(t->property("driverType").toInt());
+                p.driverType = static_cast<SqlDriverType>(t->property("driverType").toInt());
                 p.filePath = t->property("filePath").toString();
                 p.name = t->title();
                 return p;
@@ -291,7 +291,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
             p.user = o.value("user").toString();
             p.database = o.value("database").toString();
             p.filePath = o.value("filepath").toString();
-            if(p.driverType == DriverType::Mysql) {
+            if(p.driverType == SqlDriverType::Mysql) {
                 bool ok = false;
                 p.password = QInputDialog::getText(
                     this, QStringLiteral("Open Session"),
@@ -854,7 +854,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
         auto *t = currentTab();
         if(!t)
             return;
-        if(t->driverType() != DriverType::Mysql) {
+        if(t->driverType() != SqlDriverType::Mysql) {
             QMessageBox::information(this, QStringLiteral("Flush"),
                                      QStringLiteral("FLUSH is MySQL-only."));
             return;
@@ -910,12 +910,12 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
         auto *t = currentTab();
         if(!t)
             return;
-        if(t->driverType() == DriverType::Sqlite) {
+        if(t->driverType() == SqlDriverType::Sqlite) {
             QMessageBox::information(this, tabTitle,
                                      QStringLiteral("SQLite has no server to show this for."));
             return;
         }
-        t->runStatements(QStringList{t->driverType() == DriverType::Postgres ? pgSql : mysqlSql},
+        t->runStatements(QStringList{t->driverType() == SqlDriverType::Postgres ? pgSql : mysqlSql},
                          tabTitle);
     };
     QAction *showVars = show->addAction(QStringLiteral("&Variables…"));
@@ -994,7 +994,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
         p.user = o.value("user").toString();
         p.database = o.value("database").toString();
         p.filePath = o.value("filepath").toString();
-        if(p.driverType == DriverType::Mysql) {
+        if(p.driverType == SqlDriverType::Mysql) {
             bool ok = false;
             p.password = QInputDialog::getText(
                 this, QStringLiteral("Import Connection Details"),
@@ -1117,7 +1117,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
         auto *t = currentTab();
         if(!t)
             return;
-        if(t->driverType() != DriverType::Mysql) {
+        if(t->driverType() != SqlDriverType::Mysql) {
             QMessageBox::information(this, QStringLiteral("Transactions"),
                                      QStringLiteral("MySQL only."));
             return;
@@ -1134,7 +1134,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
         auto *t = currentTab();
         if(!t)
             return;
-        if(t->driverType() == DriverType::Sqlite) {
+        if(t->driverType() == SqlDriverType::Sqlite) {
             QMessageBox::information(this, QStringLiteral("Transactions"),
                                      QStringLiteral("Not supported on SQLite."));
             return;
@@ -1172,8 +1172,8 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
         auto *t = currentTab();
         if(!t)
             return;
-        runTx(t->driverType() == DriverType::Sqlite ? QStringLiteral("BEGIN")
-                                                    : QStringLiteral("START TRANSACTION"));
+        runTx(t->driverType() == SqlDriverType::Sqlite ? QStringLiteral("BEGIN")
+                                                       : QStringLiteral("START TRANSACTION"));
     });
     /* "WITH CONSISTENT SNAPSHOT" is MySQL/InnoDB-specific phrasing for a
      * repeatable-read snapshot semantic Postgres reaches differently — but
@@ -1186,7 +1186,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
         auto *t = currentTab();
         if(!t)
             return;
-        notSqliteTx(t->driverType() == DriverType::Postgres
+        notSqliteTx(t->driverType() == SqlDriverType::Postgres
                         ? QStringLiteral("START TRANSACTION READ ONLY")
                         : QStringLiteral("START TRANSACTION WITH CONSISTENT SNAPSHOT, READ ONLY"));
     });
@@ -1195,7 +1195,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
         auto *t = currentTab();
         if(!t)
             return;
-        notSqliteTx(t->driverType() == DriverType::Postgres
+        notSqliteTx(t->driverType() == SqlDriverType::Postgres
                         ? QStringLiteral("START TRANSACTION READ WRITE")
                         : QStringLiteral("START TRANSACTION WITH CONSISTENT SNAPSHOT, READ WRITE"));
     });
@@ -1358,8 +1358,8 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
         auto *t = currentTab();
         if(!t)
             return;
-        runTx(t->driverType() == DriverType::Sqlite ? QStringLiteral("BEGIN")
-                                                    : QStringLiteral("START TRANSACTION"));
+        runTx(t->driverType() == SqlDriverType::Sqlite ? QStringLiteral("BEGIN")
+                                                       : QStringLiteral("START TRANSACTION"));
     });
     QAction *commitTool =
         toolbar->addAction(Icons::get(QStringLiteral("commit_16.ico")), QStringLiteral("Commit"));
@@ -1531,7 +1531,7 @@ void MainWindow::createDatabase()
     auto *tab = currentTab();
     if(!tab)
         return;
-    if(tab->driverType() == DriverType::Sqlite) {
+    if(tab->driverType() == SqlDriverType::Sqlite) {
         /* a SQLite "database" is a file — there's no CREATE DATABASE
          * statement to run against an existing connection at all; a new
          * database means a new connection to a new file */
@@ -1541,7 +1541,7 @@ void MainWindow::createDatabase()
                                                 "and pick a new .sqlite file path instead."));
         return;
     }
-    const bool pg = tab->driverType() == DriverType::Postgres;
+    const bool pg = tab->driverType() == SqlDriverType::Postgres;
     bool ok = false;
     const QString name = QInputDialog::getText(this, QStringLiteral("Create Database"),
                                                pg ? QStringLiteral("Schema name:")

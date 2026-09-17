@@ -29,7 +29,7 @@ QString qi(const QString &s)
 }
 } // namespace
 
-UserManagerDialog::UserManagerDialog(IDbConnection *conn, QWidget *parent, DriverType driver)
+UserManagerDialog::UserManagerDialog(IDbConnection *conn, QWidget *parent, SqlDriverType driver)
     : QDialog(parent), m_driver(driver), m_conn(conn)
 {
     setWindowTitle(QStringLiteral("User Manager"));
@@ -37,7 +37,7 @@ UserManagerDialog::UserManagerDialog(IDbConnection *conn, QWidget *parent, Drive
 
     m_users = new QTableWidget(0, 3, this);
     m_users->setHorizontalHeaderLabels(
-        m_driver == DriverType::Postgres
+        m_driver == SqlDriverType::Postgres
             ? QStringList{QStringLiteral("Role"), QStringLiteral("Can Login"),
                           QStringLiteral("Superuser")}
             : QStringList{QStringLiteral("User"), QStringLiteral("Host"),
@@ -104,7 +104,7 @@ void UserManagerDialog::reloadUsers()
     m_users->setRowCount(0);
     DbResultSet rs;
     QString error;
-    const bool pg = m_driver == DriverType::Postgres;
+    const bool pg = m_driver == SqlDriverType::Postgres;
     const bool ok = m_conn->query(
         pg ? QStringLiteral("SELECT rolname, CASE WHEN rolcanlogin THEN 'yes' ELSE 'no' END, "
                             "CASE WHEN rolsuper THEN 'yes' ELSE 'no' END "
@@ -129,7 +129,7 @@ QStringList UserManagerDialog::selectedUserHost() const
     const int r = m_users->currentRow();
     if(r < 0)
         return {};
-    if(m_driver == DriverType::Postgres)
+    if(m_driver == SqlDriverType::Postgres)
         return {m_users->item(r, 0)->text(), QString()};
     return {m_users->item(r, 0)->text(), m_users->item(r, 1)->text()};
 }
@@ -140,7 +140,7 @@ void UserManagerDialog::showGrantsForSelection()
     if(uh.size() < 2)
         return;
 
-    if(m_driver == DriverType::Postgres) {
+    if(m_driver == SqlDriverType::Postgres) {
         QString out;
         DbResultSet attrs;
         if(m_conn->query(QStringLiteral("SELECT rolsuper, rolcreatedb, rolcreaterole, rolcanlogin, "
@@ -215,7 +215,7 @@ void UserManagerDialog::showGrantsForSelection()
 
 void UserManagerDialog::createUser()
 {
-    const bool pg = m_driver == DriverType::Postgres;
+    const bool pg = m_driver == SqlDriverType::Postgres;
     QDialog d(this);
     d.setWindowTitle(QStringLiteral("New User"));
     auto *name = new QLineEdit(&d);
@@ -251,7 +251,7 @@ void UserManagerDialog::dropUser()
     const QStringList uh = selectedUserHost();
     if(uh.size() < 2)
         return;
-    const bool pg = m_driver == DriverType::Postgres;
+    const bool pg = m_driver == SqlDriverType::Postgres;
     if(QMessageBox::question(this, QStringLiteral("Drop User"),
                              pg ? QStringLiteral("Drop role \"%1\"?").arg(uh[0])
                                 : QStringLiteral("Drop '%1'@'%2'?").arg(uh[0], uh[1])) !=
@@ -268,7 +268,7 @@ void UserManagerDialog::setPassword()
     const QStringList uh = selectedUserHost();
     if(uh.size() < 2)
         return;
-    const bool pg = m_driver == DriverType::Postgres;
+    const bool pg = m_driver == SqlDriverType::Postgres;
     bool ok = false;
     const QString pw =
         QInputDialog::getText(this, QStringLiteral("Set Password"),

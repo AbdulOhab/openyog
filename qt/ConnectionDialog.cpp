@@ -72,10 +72,11 @@ ConnectionDialog::ConnectionDialog(QWidget *parent) : QDialog(parent)
     /* ---- driver picker --------------------------------------------- */
     m_driverCombo = new QComboBox(this);
     m_driverCombo->setObjectName(QStringLiteral("driverCombo")); /* --dialogdriver= selftest */
-    m_driverCombo->addItem(QStringLiteral("MySQL"), QVariant::fromValue(int(DriverType::Mysql)));
-    m_driverCombo->addItem(QStringLiteral("SQLite"), QVariant::fromValue(int(DriverType::Sqlite)));
+    m_driverCombo->addItem(QStringLiteral("MySQL"), QVariant::fromValue(int(SqlDriverType::Mysql)));
+    m_driverCombo->addItem(QStringLiteral("SQLite"),
+                           QVariant::fromValue(int(SqlDriverType::Sqlite)));
     m_driverCombo->addItem(QStringLiteral("PostgreSQL"),
-                           QVariant::fromValue(int(DriverType::Postgres)));
+                           QVariant::fromValue(int(SqlDriverType::Postgres)));
     connect(m_driverCombo, &QComboBox::currentIndexChanged, this, &ConnectionDialog::driverChanged);
     auto *driverLabel = new QLabel(QStringLiteral("Dri&ver"), this);
     driverLabel->setBuddy(m_driverCombo);
@@ -490,7 +491,7 @@ void ConnectionDialog::testConnection()
     QString error;
     IDbConnection *c = dbDriverFor(p.driverType)->connect(p, &error);
     const bool ok = c != nullptr;
-    const QString where = p.driverType == DriverType::Sqlite
+    const QString where = p.driverType == SqlDriverType::Sqlite
                               ? p.filePath
                               : QStringLiteral("%1:%2").arg(p.host).arg(p.port);
     const QString msg =
@@ -505,18 +506,18 @@ void ConnectionDialog::testConnection()
 
 void ConnectionDialog::driverChanged(int index)
 {
-    const auto dt = DriverType(m_driverCombo->itemData(index).toInt());
-    QWidget *tab = dt == DriverType::Sqlite     ? m_sqliteTab
-                   : dt == DriverType::Postgres ? m_postgresTab
-                                                : m_mysqlTab;
+    const auto dt = SqlDriverType(m_driverCombo->itemData(index).toInt());
+    QWidget *tab = dt == SqlDriverType::Sqlite     ? m_sqliteTab
+                   : dt == SqlDriverType::Postgres ? m_postgresTab
+                                                   : m_mysqlTab;
     m_tabs->setCurrentWidget(tab);
-    setWindowTitle(dt == DriverType::Sqlite     ? QStringLiteral("Connect to SQLite Database")
-                   : dt == DriverType::Postgres ? QStringLiteral("Connect to PostgreSQL Server")
-                                                : QStringLiteral("Connect to MySQL Host"));
+    setWindowTitle(dt == SqlDriverType::Sqlite     ? QStringLiteral("Connect to SQLite Database")
+                   : dt == SqlDriverType::Postgres ? QStringLiteral("Connect to PostgreSQL Server")
+                                                   : QStringLiteral("Connect to MySQL Host"));
     m_brandImage->setPixmap(QPixmap(
-        Icons::dir() + (dt == DriverType::Sqlite     ? QStringLiteral("connection_sqlite.png")
-                        : dt == DriverType::Postgres ? QStringLiteral("connection_postgres.png")
-                                                     : QStringLiteral("connection.png"))));
+        Icons::dir() + (dt == SqlDriverType::Sqlite     ? QStringLiteral("connection_sqlite.png")
+                        : dt == SqlDriverType::Postgres ? QStringLiteral("connection_postgres.png")
+                                                        : QStringLiteral("connection.png"))));
 }
 
 void ConnectionDialog::browseSqliteFile()
@@ -559,14 +560,14 @@ void ConnectionDialog::setParams(const ConnectionParams &p)
      * entry actually used (harmless: switching tabs just shows whichever
      * set the user actually wants) */
     m_pgHost->setText(p.host);
-    m_pgPort->setValue(p.driverType == DriverType::Postgres ? p.port : 5432);
+    m_pgPort->setValue(p.driverType == SqlDriverType::Postgres ? p.port : 5432);
     m_pgUser->setText(p.user);
     m_pgPassword->setText(p.password);
     m_pgSavePw->setChecked(!p.password.isEmpty());
     m_pgDatabase->setText(p.database);
-    m_driverCombo->setCurrentIndex(p.driverType == DriverType::Sqlite     ? 1
-                                   : p.driverType == DriverType::Postgres ? 2
-                                                                          : 0);
+    m_driverCombo->setCurrentIndex(p.driverType == SqlDriverType::Sqlite     ? 1
+                                   : p.driverType == SqlDriverType::Postgres ? 2
+                                                                             : 0);
     m_useSsl->setChecked(p.useSsl);
     m_sslCa->setText(p.sslCa);
     m_sslCert->setText(p.sslCert);
@@ -588,13 +589,13 @@ void ConnectionDialog::setParams(const ConnectionParams &p)
 ConnectionParams ConnectionDialog::params() const
 {
     ConnectionParams p;
-    p.driverType = m_tabs->currentWidget() == m_sqliteTab     ? DriverType::Sqlite
-                   : m_tabs->currentWidget() == m_postgresTab ? DriverType::Postgres
-                                                              : DriverType::Mysql;
+    p.driverType = m_tabs->currentWidget() == m_sqliteTab     ? SqlDriverType::Sqlite
+                   : m_tabs->currentWidget() == m_postgresTab ? SqlDriverType::Postgres
+                                                              : SqlDriverType::Mysql;
     const QString sel = m_saved->currentText().trimmed();
     const bool hasSavedName = !sel.isEmpty() && sel != QStringLiteral("New Connection");
 
-    if(p.driverType == DriverType::Sqlite) {
+    if(p.driverType == SqlDriverType::Sqlite) {
         p.filePath = m_sqlitePath->text().trimmed();
         p.name = hasSavedName ? sel : QFileInfo(p.filePath).baseName();
         if(p.name.isEmpty())
@@ -602,7 +603,7 @@ ConnectionParams ConnectionDialog::params() const
         return p;
     }
 
-    if(p.driverType == DriverType::Postgres) {
+    if(p.driverType == SqlDriverType::Postgres) {
         p.host = m_pgHost->text().trimmed();
         p.port = m_pgPort->value();
         p.user = m_pgUser->text().trimmed();

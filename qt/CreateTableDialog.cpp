@@ -34,16 +34,16 @@ const QStringList kPostgresTypes = {
     QStringLiteral("UUID"),
 };
 
-QString qi(DriverType driver, const QString &ident)
+QString qi(SqlDriverType driver, const QString &ident)
 {
-    if(driver == DriverType::Postgres)
+    if(driver == SqlDriverType::Postgres)
         return QLatin1Char('"') + QString(ident).replace(QLatin1Char('"'), QStringLiteral("\"\"")) +
                QLatin1Char('"');
     return QLatin1Char('`') + QString(ident).replace(QLatin1Char('`'), QStringLiteral("``")) +
            QLatin1Char('`');
 }
 
-QString qualifyName(DriverType driver, const QString &db, const QString &name)
+QString qualifyName(SqlDriverType driver, const QString &db, const QString &name)
 {
     return db.isEmpty() ? qi(driver, name) : qi(driver, db) + QLatin1Char('.') + qi(driver, name);
 }
@@ -77,7 +77,7 @@ QString formatDefault(const QString &def)
 }
 } // namespace
 
-CreateTableDialog::CreateTableDialog(QString database, QWidget *parent, DriverType driver)
+CreateTableDialog::CreateTableDialog(QString database, QWidget *parent, SqlDriverType driver)
     : QDialog(parent), m_mode(Mode::Create), m_driver(driver), m_database(std::move(database))
 {
     setWindowTitle(m_database.isEmpty() ? QStringLiteral("Create Table")
@@ -89,8 +89,9 @@ CreateTableDialog::CreateTableDialog(QString database, QWidget *parent, DriverTy
      * auto-increment mechanism only kicks in for a column declared with
      * that exact type name — see buildCreateSql()'s PK/AUTOINCREMENT
      * handling below. */
-    addColumnRow(QStringLiteral("id"),
-                 m_driver == DriverType::Mysql ? QStringLiteral("INT") : QStringLiteral("INTEGER"));
+    addColumnRow(QStringLiteral("id"), m_driver == SqlDriverType::Mysql
+                                           ? QStringLiteral("INT")
+                                           : QStringLiteral("INTEGER"));
     if(auto *pk = cellBox(m_grid->cellWidget(0, CPk)))
         pk->setChecked(true);
     if(auto *nn = cellBox(m_grid->cellWidget(0, CNotNull)))
@@ -102,7 +103,7 @@ CreateTableDialog::CreateTableDialog(QString database, QWidget *parent, DriverTy
 
 CreateTableDialog::CreateTableDialog(QString database, QString table,
                                      const QList<ColumnDef> &columns, QString engine,
-                                     QString charset, QWidget *parent, DriverType driver)
+                                     QString charset, QWidget *parent, SqlDriverType driver)
     : QDialog(parent), m_mode(Mode::Alter), m_driver(driver), m_database(std::move(database)),
       m_table(std::move(table))
 {
@@ -134,8 +135,8 @@ CreateTableDialog::CreateTableDialog(QString database, QString table,
 void CreateTableDialog::buildCommon()
 {
     resize(820, 420);
-    const bool pg = m_driver == DriverType::Postgres;
-    const bool mysql = m_driver == DriverType::Mysql;
+    const bool pg = m_driver == SqlDriverType::Postgres;
+    const bool mysql = m_driver == SqlDriverType::Mysql;
 
     m_name = new QLineEdit(this);
     m_name->setObjectName(QStringLiteral("tableName")); /* test discoverability */
@@ -225,7 +226,7 @@ void CreateTableDialog::buildCommon()
 
 void CreateTableDialog::addColumnRow(const QString &name, const QString &type)
 {
-    const bool pg = m_driver == DriverType::Postgres;
+    const bool pg = m_driver == SqlDriverType::Postgres;
     const int row = m_grid->rowCount();
     m_grid->insertRow(row);
     auto *nameItem = new QTableWidgetItem(name);
@@ -312,7 +313,7 @@ QString CreateTableDialog::defBody(const ColumnDef &c) const
         type += QStringLiteral("(%1)").arg(c.length);
 
     QString b = type;
-    if(m_driver == DriverType::Postgres) {
+    if(m_driver == SqlDriverType::Postgres) {
         if(c.notNull || c.pk)
             b += QStringLiteral(" NOT NULL");
         if(!c.def.isEmpty())
@@ -333,11 +334,11 @@ QString CreateTableDialog::defBody(const ColumnDef &c) const
      * a property of the PRIMARY KEY declaration itself (INTEGER PRIMARY KEY
      * [AUTOINCREMENT]), composed by buildCreateSql()/buildAlterSqlSqlite(),
      * not appended here */
-    if(c.autoInc && m_driver == DriverType::Mysql)
+    if(c.autoInc && m_driver == SqlDriverType::Mysql)
         b += QStringLiteral(" AUTO_INCREMENT");
     if(!c.def.isEmpty())
         b += QStringLiteral(" DEFAULT %1").arg(formatDefault(c.def));
-    if(!c.comment.isEmpty() && m_driver == DriverType::Mysql)
+    if(!c.comment.isEmpty() && m_driver == SqlDriverType::Mysql)
         b += QStringLiteral(" COMMENT '%1'")
                  .arg(QString(c.comment).replace('\'', QStringLiteral("''")));
     return b;
@@ -353,8 +354,8 @@ QString CreateTableDialog::buildCreateSql() const
     const QString table = m_name->text().trimmed();
     if(table.isEmpty())
         return {};
-    const bool pg = m_driver == DriverType::Postgres;
-    const bool sqlite = m_driver == DriverType::Sqlite;
+    const bool pg = m_driver == SqlDriverType::Postgres;
+    const bool sqlite = m_driver == SqlDriverType::Sqlite;
     const QString qualified = qualifyName(m_driver, m_database, table);
 
     /* SQLite's auto-increment is a property of the PRIMARY KEY declaration
@@ -404,7 +405,7 @@ QString CreateTableDialog::buildCreateSql() const
 
     QString sql =
         QStringLiteral("CREATE TABLE %1 (\n%2\n)").arg(qualified, defs.join(QStringLiteral(",\n")));
-    if(m_driver == DriverType::Mysql)
+    if(m_driver == SqlDriverType::Mysql)
         sql += QStringLiteral(" ENGINE=%1 DEFAULT CHARSET=%2")
                    .arg(m_engine->currentText(), m_charset->currentText());
     for(const QString &c : comments)
@@ -414,9 +415,9 @@ QString CreateTableDialog::buildCreateSql() const
 
 QString CreateTableDialog::buildAlterSql() const
 {
-    if(m_driver == DriverType::Postgres)
+    if(m_driver == SqlDriverType::Postgres)
         return buildAlterSqlPostgres();
-    if(m_driver == DriverType::Sqlite)
+    if(m_driver == SqlDriverType::Sqlite)
         return buildAlterSqlSqlite();
 
     QStringList clauses, newPk;

@@ -31,4 +31,4 @@ public:
 };
 
 /* The single place a new backend gets wired in. */
-IDbDriver *dbDriverFor(DriverType type);
+IDbDriver *dbDriverFor(SqlDriverType type);

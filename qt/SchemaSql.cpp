@@ -5,9 +5,9 @@
 namespace SchemaSql {
 
 namespace {
-QString qi(DriverType driver, const QString &ident)
+QString qi(SqlDriverType driver, const QString &ident)
 {
-    if(driver == DriverType::Postgres)
+    if(driver == SqlDriverType::Postgres)
         return QLatin1Char('"') + QString(ident).replace(QLatin1Char('"'), QStringLiteral("\"\"")) +
                QLatin1Char('"');
     return QLatin1Char('`') + QString(ident).replace(QLatin1Char('`'), QStringLiteral("``")) +
@@ -25,11 +25,11 @@ QString stripDefiner(const QString &ddl)
     return s;
 }
 
-QString createTemplate(const QString &objType, const QString &db, DriverType driver)
+QString createTemplate(const QString &objType, const QString &db, SqlDriverType driver)
 {
     const QString d = qi(driver, db);
 
-    if(driver == DriverType::Postgres) {
+    if(driver == SqlDriverType::Postgres) {
         if(objType == QStringLiteral("VIEW"))
             return QStringLiteral("CREATE VIEW %1.\"new_view\" AS\nSELECT 1 AS n;").arg(d);
         if(objType == QStringLiteral("PROCEDURE"))
@@ -107,7 +107,7 @@ int showCreateColumn(const QString &objType)
 }
 
 QString editorText(const QString &objType, const QString &db, const QString &name,
-                   const QString &createSql, bool create, DriverType driver)
+                   const QString &createSql, bool create, SqlDriverType driver)
 {
     const QString d = qi(driver, db);
     const QString n = qi(driver, name);
@@ -126,7 +126,7 @@ QString editorText(const QString &objType, const QString &db, const QString &nam
         return body + QLatin1Char(';') + QLatin1Char('\n');
     }
 
-    if(driver == DriverType::Postgres) {
+    if(driver == SqlDriverType::Postgres) {
         if(!create &&
            (objType == QStringLiteral("FUNCTION") || objType == QStringLiteral("PROCEDURE"))) {
             /* showCreate() already returns "CREATE OR REPLACE …" (that's
