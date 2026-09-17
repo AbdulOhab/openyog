@@ -206,6 +206,34 @@ void ObjectBrowser::populateContextMenu(QMenu &menu, QTreeWidgetItem *item)
 
     if(kind == KPgDatabase) {
         const QString database = item->text(0);
+        /* this node LOOKS like a MySQL/SQLite database node (same icon,
+         * same visual tree depth) but PostgreSQL wraps an extra "physical
+         * database" level around its schemas — so it used to get only
+         * Switch/Connect/Refresh below, never the rich Create Table/Alter
+         * Database/… menu a MySQL/SQLite database gets, even when this IS
+         * the tab's own already-connected database and every one of those
+         * actions is perfectly safe to run through m_conn directly (no
+         * cross-connection routing needed — that's only a problem for a
+         * *different*, foreign physical database, handled below). Reported
+         * by the owner as "SQLite/Postgres show less menu than MySQL". */
+        if(database == m_primaryDatabase) {
+            /* Postgres tables live in a schema, not "the database"
+             * directly, so these route to a schema name: prefer "public"
+             * (the default every fresh Postgres database starts with, and
+             * the same fallback ConnectionTab::defaultDb() itself uses),
+             * else whichever schema this database actually has. This
+             * node's schema children are populated eagerly for the
+             * primary database (see loadDatabases()), not lazily on
+             * expand, so childCount() is already accurate here. */
+            QString schema = QStringLiteral("public");
+            bool hasPublic = false;
+            for(int i = 0; i < item->childCount(); ++i)
+                if(item->child(i)->text(0) == schema) { hasPublic = true; break; }
+            if(!hasPublic && item->childCount() > 0)
+                schema = item->child(0)->text(0);
+            populateDatabaseMenu(menu, schema);
+            menu.addSeparator();
+        }
         menu.addAction(QStringLiteral("&Switch to `%1`").arg(database),
                        this, [this, database] {
             emit switchDatabaseRequested(database);
@@ -251,31 +279,7 @@ void ObjectBrowser::populateContextMenu(QMenu &menu, QTreeWidgetItem *item)
                 item->setExpanded(true);
             });
     } else if(kind == KDatabase) {
-        const QString db = item->text(0);
-        menu.addAction(QStringLiteral("Create &Table…"), this,
-                       [this, db] { emit createTableRequested(db); });
-        QMenu *create = menu.addMenu(QStringLiteral("&Create Object"));
-        for(const auto &kw : { QStringLiteral("VIEW"), QStringLiteral("PROCEDURE"),
-                               QStringLiteral("FUNCTION"), QStringLiteral("TRIGGER"),
-                               QStringLiteral("EVENT") }) {
-            const QString t = kw;
-            create->addAction(t.at(0) + t.mid(1).toLower() + QStringLiteral("…"),
-                              this, [this, db, t] { emit createObjectRequested(db, t); });
-        }
-        menu.addAction(QStringLiteral("&Copy Database…"), this,
-                       [this, db] { emit copyDatabaseRequested(db); });
-        menu.addAction(QStringLiteral("&Alter Database…"), this,
-                       [this, db] { emit alterDatabaseRequested(db); });
-        menu.addSeparator();
-        menu.addAction(QStringLiteral("&Backup Database As SQL Dump…"), this,
-                       [this, db] { emit dumpDatabaseRequested(db); });
-        menu.addSeparator();
-        menu.addAction(QStringLiteral("&Empty Database (truncate all tables)…"),
-                       this, [this, db] { emit emptyDatabaseRequested(db); });
-        menu.addAction(QStringLiteral("&Truncate Database (drop all objects)…"),
-                       this, [this, db] { emit truncateDatabaseRequested(db); });
-        menu.addAction(QStringLiteral("&Drop Database…"), this,
-                       [this, db] { emit dropDatabaseRequested(db); });
+        populateDatabaseMenu(menu, item->text(0));
     } else if(kind == KFolder
               && item->text(0) == QStringLiteral("Tables")) {
         const QString db = item->data(0, Qt::UserRole + 1).toString();
@@ -346,6 +350,34 @@ void ObjectBrowser::populateContextMenu(QMenu &menu, QTreeWidgetItem *item)
             QApplication::clipboard()->setText(col);
         });
     }
+}
+
+void ObjectBrowser::populateDatabaseMenu(QMenu &menu, const QString &db)
+{
+    menu.addAction(QStringLiteral("Create &Table…"), this,
+                   [this, db] { emit createTableRequested(db); });
+    QMenu *create = menu.addMenu(QStringLiteral("&Create Object"));
+    for(const auto &kw : { QStringLiteral("VIEW"), QStringLiteral("PROCEDURE"),
+                           QStringLiteral("FUNCTION"), QStringLiteral("TRIGGER"),
+                           QStringLiteral("EVENT") }) {
+        const QString t = kw;
+        create->addAction(t.at(0) + t.mid(1).toLower() + QStringLiteral("…"),
+                          this, [this, db, t] { emit createObjectRequested(db, t); });
+    }
+    menu.addAction(QStringLiteral("&Copy Database…"), this,
+                   [this, db] { emit copyDatabaseRequested(db); });
+    menu.addAction(QStringLiteral("&Alter Database…"), this,
+                   [this, db] { emit alterDatabaseRequested(db); });
+    menu.addSeparator();
+    menu.addAction(QStringLiteral("&Backup Database As SQL Dump…"), this,
+                   [this, db] { emit dumpDatabaseRequested(db); });
+    menu.addSeparator();
+    menu.addAction(QStringLiteral("&Empty Database (truncate all tables)…"),
+                   this, [this, db] { emit emptyDatabaseRequested(db); });
+    menu.addAction(QStringLiteral("&Truncate Database (drop all objects)…"),
+                   this, [this, db] { emit truncateDatabaseRequested(db); });
+    menu.addAction(QStringLiteral("&Drop Database…"), this,
+                   [this, db] { emit dropDatabaseRequested(db); });
 }
 
 void ObjectBrowser::setConnectionLabel(const QString &label)
