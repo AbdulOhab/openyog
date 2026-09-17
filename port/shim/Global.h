@@ -47,6 +47,18 @@ const wyChar *wyWideToUtf8(const wyWChar *wide);   /* static buffer; cs-guarded 
 #define WriteFile(fd, buf, len, written, overlapped)                \
     ((*(written) = (write((fd), (buf), (len)) >= 0 ? (len) : 0)), 1)
 
+#else /* _WIN32: the mingw core build — windows.h is real here, so the
+ * stand-in GLOBALS wraps a real CRITICAL_SECTION (initialized in
+ * port/stubs.cpp; the genuine one lives in the GUI app's Global.cpp). */
+#include <windows.h>
+
+struct GLOBALS
+{
+    CRITICAL_SECTION m_csiniglobal;
+};
+
+typedef GLOBALS *PGLOBALS;
+
 #endif /* !_WIN32 */
 
 #endif /* PORT_SHIM_GLOBAL_H */

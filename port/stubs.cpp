@@ -46,14 +46,26 @@ int strnicmp(const char *a, const char *b, int count)
     return 0;
 }
 
+#ifndef _WIN32
 my_ulonglong _atoi64(const char *nptr)
 {
     return (my_ulonglong)std::strtoll(nptr, nullptr, 10);
 }
+#endif /* mingw's CRT ships the real _atoi64 */
 
 /* See port/shim/Global.h: core-build stand-in for the app-wide globals.
- * Only the members core files actually touch exist here. */
+ * Only the members core files actually touch exist here. Linux initializes
+ * statically; Windows needs InitializeCriticalSection() at startup. */
+#ifdef _WIN32
+static GLOBALS g_core_globals;
+struct GlobalsInit
+{
+    GlobalsInit() { InitializeCriticalSection(&g_core_globals.m_csiniglobal); }
+};
+static GlobalsInit g_globals_init;
+#else
 static GLOBALS g_core_globals = { PTHREAD_MUTEX_INITIALIZER };
+#endif
 PGLOBALS pGlobals = &g_core_globals;
 
 /* Linux has no _wfopen(); paths are narrow UTF-8 bytes. Converts wchar_t* ->
@@ -77,7 +89,9 @@ const wyChar *wyWideToUtf8(const wyWChar *wide)
     return buf;
 }
 
-/* Windows CRT function used by wyIni.cpp (Int to ASCII, up to 10 digits). */
+/* CRT function used by wyIni.cpp (Int to ASCII, up to 10 digits).
+ * mingw's CRT already ships itoa(); this is for the Linux path. */
+#ifndef _WIN32
 wyChar *itoa(int value, wyChar *str, int radix)
 {
     if(!str || (radix < 2 || radix > 36)) {
@@ -97,6 +111,7 @@ wyChar *itoa(int value, wyChar *str, int radix)
     std::reverse(str, p);
     return str;
 }
+#endif /* !_WIN32 */
 
 /* Real one writes into the app log directory (CommonHelper.cpp). */
 wyBool WriteToLogFile(wyChar *message)

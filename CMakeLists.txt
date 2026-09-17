@@ -7,19 +7,31 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+# Upstream's vcxproj builds Unicode (CreateFile etc. resolve to the ...W
+# wide APIs); mingw defaults to ANSI, which breaks every wide-char Windows
+# call in the ported code. Inert on native Linux (no windows.h there).
+if(WIN32)
+    add_compile_definitions(UNICODE _UNICODE)
+endif()
+
 # The bundled include/mysql (Connector/C 2.3.3) predates the system client lib;
 # resolve <mysql/mysql.h> to the SYSTEM headers first. We do this by linking
 # port/shim/mysql -> the dir containing mysql/mysql.h (same mechanism build.sh
-# uses), so both build paths share one precedence story.
+# uses), so both build paths share one precedence story. The system
+# include/mysql dir is ALSO added as an include path directly: upstream's
+# Windows spellings (Datatype.h's flat <mysql.h> under _WIN32, live again in
+# the mingw cross build) need mysql.h and its flat siblings (mariadb_com.h
+# ...) lookup-able together, which a single symlinked header can't provide.
 find_path(MDB_MYSQL_DIR mysql/mysql.h
           PATHS /usr/include /usr/local/include
           DOC "Directory containing mysql/mysql.h"
           REQUIRED)
-get_filename_component(MDB_PARENT "${MDB_MYSQL_DIR}" DIRECTORY)
 # always refresh: a build tree configured for the other target (native Linux
 # vs mingw-w64 cross) leaves a stale shim pointing at the wrong headers
-file(REMOVE "${CMAKE_CURRENT_SOURCE_DIR}/port/shim/mysql")
-file(CREATE_LINK "${MDB_PARENT}" "${CMAKE_CURRENT_SOURCE_DIR}/port/shim/mysql" SYMBOLIC)
+file(REMOVE_RECURSE "${CMAKE_CURRENT_SOURCE_DIR}/port/shim/mysql")
+file(REMOVE "${CMAKE_CURRENT_SOURCE_DIR}/port/shim/mysql.h")
+file(MAKE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/port/shim/mysql")
+file(CREATE_LINK "${MDB_MYSQL_DIR}/mysql" "${CMAKE_CURRENT_SOURCE_DIR}/port/shim/mysql/mysql" SYMBOLIC)
 
 # Same story for sqlite3.h: include/sqlite3.h is a bundled amalgamation
 # header that predates the system libsqlite3 we link against below — shim
@@ -42,7 +54,7 @@ add_library(wycore STATIC
     port/stubs.cpp       # upstream-declared CRT externs + copied base64 helpers
 )
 target_compile_definitions(wycore PUBLIC COMMUNITY)   # upstream vcxproj default
-target_include_directories(wycore PUBLIC port/shim include)
+target_include_directories(wycore PUBLIC port/shim include "${MDB_MYSQL_DIR}/mysql")
 target_compile_options(wycore PRIVATE -Wall -Wno-unknown-pragmas)
 
 find_package(Threads REQUIRED)

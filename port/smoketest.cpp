@@ -90,8 +90,14 @@ static void test_wyfile()
     check(f.OpenWithPermission(GENERIC_WRITE, CREATE_NEW) != -1,
           "OpenWithPermission(GENERIC_WRITE, CREATE_NEW)");
 
-    const char *msg = "linux port works";
+    const char *msg = "port works";
+#ifdef _WIN32
+    DWORD written = 0;
+    bool wrote = WriteFile(f.m_hfile, msg, (DWORD)strlen(msg), &written, 0)
+                 && written == strlen(msg);
+#else
     bool wrote = write(f.m_hfile, msg, strlen(msg)) == (ssize_t)strlen(msg);
+#endif
     check(wrote, "write() through wyFile fd");
     check(f.Close() == 0, "Close()");
 
