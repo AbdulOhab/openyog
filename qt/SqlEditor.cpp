@@ -1,6 +1,9 @@
 #include "SqlEditor.h"
 
+#include "wyIni.h"
+
 #include <QClipboard>
+#include <QDir>
 #include <QFile>
 #include <QFileDialog>
 #include <QFontDatabase>
@@ -8,7 +11,17 @@
 #include <QKeyEvent>
 #include <QPalette>
 #include <QRegularExpression>
+#include <QStandardPaths>
 #include <Qsci/qscilexersql.h>
+
+namespace {
+QString uiIniPath()
+{
+    QDir dir(QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation));
+    dir.mkpath(".");
+    return dir.filePath("OpenYog.ini");
+}
+} // namespace
 
 namespace {
 /* SQL keywords always offered by the completer */
@@ -149,6 +162,18 @@ void SqlEditor::reskin()
             if(d.f)
                 lx->setFont(*d.f, d.style);
         }
+        /* upstream EditorFont::SetCase (src/EditorFont.cpp): keywords render
+         * uppercase however they were typed — SCI_STYLESETCASE is display
+         * only, the buffer keeps the typed case. KeywordCase takes the same
+         * three values upstream's sqlyog.ini key does. */
+        wyString caseStr;
+        wyIni::IniGetString("UserInterface", "KeywordCase", "UPPERCASE", &caseStr,
+                            uiIniPath().toUtf8());
+        const QByteArray kv = QString::fromUtf8(caseStr.GetString()).toLower().toUtf8();
+        const int caseVal = kv == "lowercase"   ? SC_CASE_LOWER
+                            : kv == "unchanged" ? SC_CASE_MIXED
+                                                : SC_CASE_UPPER;
+        SendScintilla(SCI_STYLESETCASE, QsciLexerSQL::Keyword, caseVal);
     }
 }
 

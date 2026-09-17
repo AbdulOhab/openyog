@@ -32,6 +32,7 @@
 #include "SqlSplit.h"
 #include "SqlFormat.h"
 #include "SqlEditor.h"
+#include <Qsci/qscilexersql.h>
 #include "CustomFilterDialog.h"
 #include "Theme.h"
 #include "db/IDbDriver.h"
@@ -1256,6 +1257,26 @@ int main(int argc, char *argv[])
                                     << (pass ? "PASS" : "FAIL got=[" + got + "]") << "\n";
             }
             return ok ? 0 : 1;
+        }
+        /* --casetest — keyword display case, upstream EditorFont::SetCase's
+         * behavior: lowercase typed text RENDERS uppercase (SCI_STYLESETCASE
+         * on the keyword style) while the buffer keeps the typed case */
+        if(a == QStringLiteral("--casetest")) {
+            QApplication app2(argc, argv);
+            const QString sql = QStringLiteral("select id, name from t1 where id = 1;");
+            SqlEditor ed;
+            ed.resize(560, 140);
+            ed.setPlainText(sql);
+            const int got =
+                ed.SendScintilla(QsciScintillaBase::SCI_STYLEGETCASE, QsciLexerSQL::Keyword);
+            const bool upper = got == QsciScintillaBase::SC_CASE_UPPER;
+            const bool kept = ed.text() == sql;
+            ed.grab().save(QStringLiteral("/tmp/openyog-casetest.png"));
+            QTextStream(stdout) << "casetest: keyword-style-case=" << got << " ("
+                                << (upper ? "UPPER" : "NOT-UPPER")
+                                << "), buffer-kept=" << (kept ? "yes" : "NO")
+                                << ", shot=/tmp/openyog-casetest.png\n";
+            return upper && kept ? 0 : 1;
         }
         if(a == QStringLiteral("--filtertest")) {
             /* Custom Filter dialog's WHERE-building — the part faithfully
