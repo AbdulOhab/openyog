@@ -16,9 +16,9 @@
 
 #include <functional>
 
+class QCheckBox;
 class QComboBox;
 class QLineEdit;
-class QLabel;
 
 class CustomFilterDialog : public QDialog
 {
@@ -60,12 +60,10 @@ private:
     QVector<RowWidgets> m_rowWidgets;
     QLineEdit *m_previewEdit = nullptr;
     QWidget   *m_previewRow  = nullptr;
-    QLabel    *m_previewToggle = nullptr;
-    bool       m_previewShown = false;
+    QCheckBox *m_previewToggle = nullptr;
 
     std::function<QString(const QString &)> m_quoteIdent;
     std::function<QString(const QString &)> m_escapeValue;
 
     void updatePreview();
-    void togglePreview();
 };

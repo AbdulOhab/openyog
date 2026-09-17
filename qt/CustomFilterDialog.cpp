@@ -1,5 +1,6 @@
 #include "CustomFilterDialog.h"
 
+#include <QCheckBox>
 #include <QComboBox>
 #include <QDialogButtonBox>
 #include <QGridLayout>
@@ -58,11 +59,14 @@ CustomFilterDialog::CustomFilterDialog(const QStringList &columns,
     }
     grid->setColumnStretch(2, 1);
 
-    m_previewToggle = new QLabel(
-        QStringLiteral("<a href=\"#\">Show SQL Preview</a>"), this);
-    m_previewToggle->setTextFormat(Qt::RichText);
-    connect(m_previewToggle, &QLabel::linkActivated, this,
-            [this](const QString &) { togglePreview(); });
+    /* a QLabel styled as a clickable "Show/Hide SQL Preview" link looked
+     * right but was unreliable to actually click (Qt's rich-text link hit-
+     * testing on a plain QLabel — confirmed both by the owner on a real
+     * desktop and by a synthesized click here landing on nothing); a plain
+     * checkbox is completely reliable and just as compact */
+    m_previewToggle = new QCheckBox(QStringLiteral("Show SQL Preview"), this);
+    connect(m_previewToggle, &QCheckBox::toggled, this,
+            [this](bool on) { m_previewRow->setVisible(on); });
 
     m_previewEdit = new QLineEdit(this);
     m_previewEdit->setReadOnly(true);
@@ -88,15 +92,6 @@ CustomFilterDialog::CustomFilterDialog(const QStringList &columns,
     setMinimumWidth(480);
 
     updatePreview();
-}
-
-void CustomFilterDialog::togglePreview()
-{
-    m_previewShown = !m_previewShown;
-    m_previewRow->setVisible(m_previewShown);
-    m_previewToggle->setText(m_previewShown
-        ? QStringLiteral("<a href=\"#\">Hide SQL Preview</a>")
-        : QStringLiteral("<a href=\"#\">Show SQL Preview</a>"));
 }
 
 void CustomFilterDialog::updatePreview()
