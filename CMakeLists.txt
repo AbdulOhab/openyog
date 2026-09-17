@@ -16,9 +16,10 @@ find_path(MDB_MYSQL_DIR mysql/mysql.h
           DOC "Directory containing mysql/mysql.h"
           REQUIRED)
 get_filename_component(MDB_PARENT "${MDB_MYSQL_DIR}" DIRECTORY)
-if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/port/shim/mysql")
-    file(CREATE_LINK "${MDB_PARENT}" "${CMAKE_CURRENT_SOURCE_DIR}/port/shim/mysql" SYMBOLIC)
-endif()
+# always refresh: a build tree configured for the other target (native Linux
+# vs mingw-w64 cross) leaves a stale shim pointing at the wrong headers
+file(REMOVE "${CMAKE_CURRENT_SOURCE_DIR}/port/shim/mysql")
+file(CREATE_LINK "${MDB_PARENT}" "${CMAKE_CURRENT_SOURCE_DIR}/port/shim/mysql" SYMBOLIC)
 
 # Same story for sqlite3.h: include/sqlite3.h is a bundled amalgamation
 # header that predates the system libsqlite3 we link against below — shim
@@ -29,10 +30,9 @@ find_path(SYS_SQLITE3_DIR sqlite3.h
           PATHS /usr/include /usr/local/include
           DOC "Directory containing sqlite3.h"
           REQUIRED)
-if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/port/shim/sqlite3.h")
-    file(CREATE_LINK "${SYS_SQLITE3_DIR}/sqlite3.h"
-         "${CMAKE_CURRENT_SOURCE_DIR}/port/shim/sqlite3.h" SYMBOLIC)
-endif()
+file(REMOVE "${CMAKE_CURRENT_SOURCE_DIR}/port/shim/sqlite3.h")
+file(CREATE_LINK "${SYS_SQLITE3_DIR}/sqlite3.h"
+     "${CMAKE_CURRENT_SOURCE_DIR}/port/shim/sqlite3.h" SYMBOLIC)
 
 add_library(wycore STATIC
     src/wyString.cpp     # portable string class everything depends on
