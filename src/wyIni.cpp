@@ -1289,8 +1289,21 @@ wyIni::SectionSize(wyChar *sec)
 void 
 wyIni::Trim(wyChar *buffer)
 {
-	if(buffer[strlen(buffer)-1] == '\n')
-		buffer[strlen(buffer)-2] = '\0';
+    // PORT: the original unconditionally chopped the last 2 bytes, assuming
+    // every line ends "\r\n" (true for anything this class writes itself —
+    // SaveFile() always emits CRLF, Windows-style, even on Linux). But a
+    // config file hand-edited with a Linux text editor is LF-only, and the
+    // old code silently ate the line's real last character along with it
+    // (e.g. "[UserInterface]\n" -> "[UserInterface" -> the missing ']'
+    // makes the section unrecognizable, and any value the same way). Strip
+    // '\r' only when it's actually there.
+    wyInt32 len = strlen(buffer);
+    if(len > 0 && buffer[len - 1] == '\n') {
+        --len;
+        if(len > 0 && buffer[len - 1] == '\r')
+            --len;
+        buffer[len] = '\0';
+    }
 }
 
 void 
