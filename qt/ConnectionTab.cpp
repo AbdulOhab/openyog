@@ -752,40 +752,71 @@ QString ConnectionTab::buildObjectInfoHtml(IDbConnection *conn, const QString &d
     if(!conn)
         return QStringLiteral("<p style='color:#c0392b'>Not connected.</p>");
 
+    /* header row: palette(highlight)/(highlighted-text) rather than a
+     * hardcoded blue, so this still looks right in Dark/Twilight (their
+     * own highlight colors — see Theme.cpp), matching the reference
+     * screenshot's solid-blue header only because Light's highlight
+     * happens to be blue. Row striping is inline (alternating background)
+     * rather than a ":nth-child" CSS rule — QTextDocument's HTML/CSS
+     * support is a limited subset and doesn't reliably cover that
+     * selector, so this is the one way guaranteed to render everywhere. */
+    const auto sectionHeader = [](const QString &title, int count = -1) {
+        return QStringLiteral("<h4>%1%2</h4>")
+            .arg(title.toHtmlEscaped(), count < 0 ? QString() : QStringLiteral(" (%1)").arg(count));
+    };
+    const auto tableOpen = [](std::initializer_list<const char *> cols) {
+        QString h = QStringLiteral("<table><tr>");
+        for(const char *c : cols)
+            h += QStringLiteral("<th>%1</th>").arg(QLatin1String(c));
+        return h + QStringLiteral("</tr>");
+    };
+    const auto rowOpen = [](int i) {
+        return i % 2 ? QStringLiteral("<tr style='background:palette(alternate-base)'>")
+                     : QStringLiteral("<tr>");
+    };
+
     const QString nice = objType.left(1) + objType.mid(1).toLower();
     QString html = QStringLiteral(
         "<style>"
-        "table{border-collapse:collapse;margin:4px 0 12px 0}"
-        "th,td{border:1px solid palette(mid);padding:2px 8px;font-size:12px;text-align:left}"
-        "th{background:palette(alternate-base)}"
-        "h4{margin:12px 0 2px 0}"
+        "table{border-collapse:collapse;margin:4px 0 14px 0}"
+        "th,td{border:1px solid palette(mid);padding:3px 8px;font-size:12px;text-align:left}"
+        "th{background:palette(highlight);color:palette(highlighted-text);font-weight:bold}"
+        "h3{border-bottom:2px solid palette(highlight);padding-bottom:4px;margin-bottom:10px}"
+        "h4{margin:14px 0 4px 0;color:palette(highlight)}"
         "pre{background:palette(alternate-base);border:1px solid palette(mid);"
         "padding:6px;white-space:pre-wrap;font-size:12px}"
         "</style>");
     html += QStringLiteral("<h3>%1: %2</h3>").arg(nice, name.toHtmlEscaped());
 
     if(objType == QStringLiteral("TABLE") || objType == QStringLiteral("VIEW")) {
-        html += QStringLiteral("<h4>Column Information</h4><table><tr><th>Field</th>"
-                               "<th>Type</th><th>Null</th><th>Key</th><th>Default</th>"
-                               "<th>Extra</th><th>Comment</th></tr>");
-        for(const QStringList &row : conn->listColumns(db, name).rows) {
-            html += QStringLiteral("<tr>");
-            for(int i = 0; i < 7; ++i)
-                html += QStringLiteral("<td>%1</td>").arg(row.value(i).toHtmlEscaped());
+        const DbResultSet cols = conn->listColumns(db, name);
+        html += sectionHeader(QStringLiteral("Columns"), cols.rows.size());
+        html += tableOpen({"Field", "Type", "Null", "Key", "Default", "Extra", "Comment"});
+        int i = 0;
+        for(const QStringList &row : cols.rows) {
+            html += rowOpen(i++);
+            /* 🔑 next to a primary-key field — Unicode text, no image asset
+             * needed, renders the same in every theme */
+            const bool pk = row.value(3) == QStringLiteral("PRI");
+            html += QStringLiteral("<td>%1%2</td>")
+                        .arg(pk ? QStringLiteral("🔑 ") : QString(), row.value(0).toHtmlEscaped());
+            for(int c = 1; c < 7; ++c)
+                html += QStringLiteral("<td>%1</td>").arg(row.value(c).toHtmlEscaped());
             html += QStringLiteral("</tr>");
         }
         html += QStringLiteral("</table>");
 
         if(objType == QStringLiteral("TABLE")) {
-            html += QStringLiteral("<h4>Index Information</h4>");
             const DbResultSet idx = conn->listIndexes(db, name);
+            html += sectionHeader(QStringLiteral("Index Information"), idx.rows.size());
             if(idx.rows.isEmpty()) {
                 html += QStringLiteral("<p style='color:palette(disabled-text)'>No indexes.</p>");
             } else {
-                html += QStringLiteral("<table><tr><th>Key name</th><th>Column</th>"
-                                       "<th>Seq</th><th>Unique</th></tr>");
+                html += tableOpen({"Key name", "Column", "Seq", "Unique"});
+                i = 0;
                 for(const QStringList &row : idx.rows)
-                    html += QStringLiteral("<tr><td>%1</td><td>%2</td><td>%3</td><td>%4</td></tr>")
+                    html += rowOpen(i++) +
+                            QStringLiteral("<td>%1</td><td>%2</td><td>%3</td><td>%4</td></tr>")
                                 .arg(row.value(2).toHtmlEscaped(), row.value(4).toHtmlEscaped(),
                                      row.value(3).toHtmlEscaped(),
                                      row.value(1) == QStringLiteral("0") ? QStringLiteral("yes")
@@ -795,11 +826,12 @@ QString ConnectionTab::buildObjectInfoHtml(IDbConnection *conn, const QString &d
 
             const DbResultSet fks = conn->listForeignKeys(db, name);
             if(!fks.rows.isEmpty()) {
-                html += QStringLiteral("<h4>Foreign Keys</h4><table><tr><th>Name</th>"
-                                       "<th>Column</th><th>References</th><th>On Update</th>"
-                                       "<th>On Delete</th></tr>");
+                html += sectionHeader(QStringLiteral("Foreign Keys"), fks.rows.size());
+                html += tableOpen({"Name", "Column", "References", "On Update", "On Delete"});
+                i = 0;
                 for(const QStringList &row : fks.rows)
-                    html += QStringLiteral("<tr><td>%1</td><td>%2</td><td>%3.%4</td>"
+                    html += rowOpen(i++) +
+                            QStringLiteral("<td>%1</td><td>%2</td><td>%3.%4</td>"
                                            "<td>%5</td><td>%6</td></tr>")
                                 .arg(row.value(0).toHtmlEscaped(), row.value(1).toHtmlEscaped(),
                                      row.value(2).toHtmlEscaped(), row.value(3).toHtmlEscaped(),
@@ -809,7 +841,7 @@ QString ConnectionTab::buildObjectInfoHtml(IDbConnection *conn, const QString &d
         }
     }
 
-    html += QStringLiteral("<h4>DDL Information</h4>");
+    html += sectionHeader(QStringLiteral("DDL Information"));
     QString error;
     const QString ddl = conn->showCreate(objType, db, name, &error);
     html += (ddl.isEmpty() && !error.isEmpty())
