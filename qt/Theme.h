@@ -6,9 +6,8 @@
 #include <QString>
 class QApplication;
 
-namespace Theme
-{
-    QString load();                     /* "light" | "dark" | "twilight" */
-    void    save(const QString &theme);
-    void    apply(QApplication &app, const QString &theme);
-}
+namespace Theme {
+QString load(); /* "light" | "dark" | "twilight" */
+void save(const QString &theme);
+void apply(QApplication &app, const QString &theme);
+} // namespace Theme

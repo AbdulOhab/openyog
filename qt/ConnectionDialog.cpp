@@ -29,8 +29,7 @@ QWidget *placeholderTab(const QString &what)
 {
     auto *w = new QWidget;
     auto *l = new QVBoxLayout(w);
-    auto *lbl = new QLabel(
-        QStringLiteral("%1 options arrive in a later version.").arg(what), w);
+    auto *lbl = new QLabel(QStringLiteral("%1 options arrive in a later version.").arg(what), w);
     lbl->setEnabled(false);
     l->addWidget(lbl);
     l->addStretch(1);
@@ -39,11 +38,10 @@ QWidget *placeholderTab(const QString &what)
 
 } // namespace
 
-ConnectionDialog::ConnectionDialog(QWidget *parent)
-    : QDialog(parent)
+ConnectionDialog::ConnectionDialog(QWidget *parent) : QDialog(parent)
 {
     setWindowTitle(QStringLiteral("Connect to MySQL Host"));
-    setMinimumWidth(660);   /* fits all 7 driver tabs' now-visible borders without a scroll arrow */
+    setMinimumWidth(660); /* fits all 7 driver tabs' now-visible borders without a scroll arrow */
     /* keep port / seconds fields as plain ASCII digits, like SQLyog */
     setLocale(QLocale::c());
 
@@ -56,9 +54,9 @@ ConnectionDialog::ConnectionDialog(QWidget *parent)
     m_brandImage->setFixedWidth(150);
 
     /* ---- New / Clone / Save / Rename / Delete ----------------------- */
-    auto *newBtn  = new QPushButton(QStringLiteral("&New…"), this);
-    m_clone  = new QPushButton(QStringLiteral("Clon&e…"), this);
-    m_save   = new QPushButton(QStringLiteral("&Save"), this);
+    auto *newBtn = new QPushButton(QStringLiteral("&New…"), this);
+    m_clone = new QPushButton(QStringLiteral("Clon&e…"), this);
+    m_save = new QPushButton(QStringLiteral("&Save"), this);
     m_rename = new QPushButton(QStringLiteral("&Rename…"), this);
     m_delete = new QPushButton(QStringLiteral("&Delete"), this);
     connect(newBtn, &QPushButton::clicked, this, &ConnectionDialog::newConnection);
@@ -67,19 +65,18 @@ ConnectionDialog::ConnectionDialog(QWidget *parent)
     connect(m_rename, &QPushButton::clicked, this, &ConnectionDialog::renameConnection);
     connect(m_delete, &QPushButton::clicked, this, &ConnectionDialog::deleteConnection);
     auto *btnRow = new QHBoxLayout;
-    for(QPushButton *b : { newBtn, m_clone, m_save, m_rename, m_delete })
+    for(QPushButton *b : {newBtn, m_clone, m_save, m_rename, m_delete})
         btnRow->addWidget(b);
     btnRow->addStretch(1);
 
     /* ---- driver picker --------------------------------------------- */
     m_driverCombo = new QComboBox(this);
-    m_driverCombo->setObjectName(QStringLiteral("driverCombo"));   /* --dialogdriver= selftest */
+    m_driverCombo->setObjectName(QStringLiteral("driverCombo")); /* --dialogdriver= selftest */
     m_driverCombo->addItem(QStringLiteral("MySQL"), QVariant::fromValue(int(DriverType::Mysql)));
     m_driverCombo->addItem(QStringLiteral("SQLite"), QVariant::fromValue(int(DriverType::Sqlite)));
     m_driverCombo->addItem(QStringLiteral("PostgreSQL"),
                            QVariant::fromValue(int(DriverType::Postgres)));
-    connect(m_driverCombo, &QComboBox::currentIndexChanged, this,
-            &ConnectionDialog::driverChanged);
+    connect(m_driverCombo, &QComboBox::currentIndexChanged, this, &ConnectionDialog::driverChanged);
     auto *driverLabel = new QLabel(QStringLiteral("Dri&ver"), this);
     driverLabel->setBuddy(m_driverCombo);
     auto *driverRow = new QHBoxLayout;
@@ -90,8 +87,7 @@ ConnectionDialog::ConnectionDialog(QWidget *parent)
     /* ---- Saved Connections combo ---------------------------------- */
     m_saved = new QComboBox(this);
     m_saved->setMinimumWidth(220);
-    connect(m_saved, &QComboBox::activated, this,
-            &ConnectionDialog::loadSelected);
+    connect(m_saved, &QComboBox::activated, this, &ConnectionDialog::loadSelected);
     auto *savedLabel = new QLabel(QStringLiteral("Sa&ved Connections"), this);
     savedLabel->setBuddy(m_saved);
     auto *savedRow = new QHBoxLayout;
@@ -99,13 +95,13 @@ ConnectionDialog::ConnectionDialog(QWidget *parent)
     savedRow->addWidget(m_saved, 1);
 
     /* ---- MySQL tab fields ---------------------------------------- */
-    m_host     = new QLineEdit(QStringLiteral("127.0.0.1"), this);
-    m_user     = new QLineEdit(this);
+    m_host = new QLineEdit(QStringLiteral("127.0.0.1"), this);
+    m_user = new QLineEdit(this);
     m_password = new QLineEdit(this);
     m_password->setEchoMode(QLineEdit::Password);
-    m_savePw   = new QCheckBox(QStringLiteral("Save Pass&word"), this);
+    m_savePw = new QCheckBox(QStringLiteral("Save Pass&word"), this);
     m_savePw->setChecked(true);
-    m_port     = new QSpinBox(this);
+    m_port = new QSpinBox(this);
     m_port->setRange(1, 65535);
     m_port->setValue(3306);
     m_port->setGroupSeparatorShown(false);
@@ -126,8 +122,8 @@ ConnectionDialog::ConnectionDialog(QWidget *parent)
     form->addRow(pwLabel, pwRow);
     form->addRow(QStringLiteral("P&ort"), m_port);
     form->addRow(QStringLiteral("Data&base(s)"), m_database);
-    auto *hint = new QLabel(QStringLiteral(
-        "(Use ';' to separate multiple databases. Leave blank to display all)"),
+    auto *hint = new QLabel(
+        QStringLiteral("(Use ';' to separate multiple databases. Leave blank to display all)"),
         this);
     hint->setEnabled(false);
     form->addRow(QString(), hint);
@@ -171,8 +167,7 @@ ConnectionDialog::ConnectionDialog(QWidget *parent)
     m_sqliteTab = new QWidget(this);
     m_sqlitePath = new QLineEdit(m_sqliteTab);
     auto *sqliteBrowse = new QPushButton(QStringLiteral("&Browse…"), m_sqliteTab);
-    connect(sqliteBrowse, &QPushButton::clicked, this,
-            &ConnectionDialog::browseSqliteFile);
+    connect(sqliteBrowse, &QPushButton::clicked, this, &ConnectionDialog::browseSqliteFile);
     auto *sqliteForm = new QFormLayout;
     auto *pathRow = new QHBoxLayout;
     pathRow->addWidget(m_sqlitePath, 1);
@@ -195,13 +190,13 @@ ConnectionDialog::ConnectionDialog(QWidget *parent)
      * compression for a plain TCP connection, so there's nothing to wire
      * it to — shown anyway (rather than just missing) so the gap reads as
      * "not available here" instead of "forgotten". ------------------- */
-    m_pgHost     = new QLineEdit(QStringLiteral("127.0.0.1"), this);
-    m_pgUser     = new QLineEdit(QStringLiteral("postgres"), this);
+    m_pgHost = new QLineEdit(QStringLiteral("127.0.0.1"), this);
+    m_pgUser = new QLineEdit(QStringLiteral("postgres"), this);
     m_pgPassword = new QLineEdit(this);
     m_pgPassword->setEchoMode(QLineEdit::Password);
-    m_pgSavePw   = new QCheckBox(QStringLiteral("Save Pass&word"), this);
+    m_pgSavePw = new QCheckBox(QStringLiteral("Save Pass&word"), this);
     m_pgSavePw->setChecked(true);
-    m_pgPort     = new QSpinBox(this);
+    m_pgPort = new QSpinBox(this);
     m_pgPort->setRange(1, 65535);
     m_pgPort->setValue(5432);
     m_pgPort->setGroupSeparatorShown(false);
@@ -209,9 +204,9 @@ ConnectionDialog::ConnectionDialog(QWidget *parent)
     m_pgDatabase = new QLineEdit(QStringLiteral("postgres"), this);
     auto *pgCompress = new QCheckBox(QStringLiteral("Use Compressed Protocol"), this);
     pgCompress->setEnabled(false);
-    pgCompress->setToolTip(QStringLiteral(
-        "Not available on PostgreSQL — libpq has no protocol compression "
-        "for a plain TCP connection."));
+    pgCompress->setToolTip(
+        QStringLiteral("Not available on PostgreSQL — libpq has no protocol compression "
+                       "for a plain TCP connection."));
 
     auto *pgPwRow = new QHBoxLayout;
     pgPwRow->addWidget(m_pgPassword, 1);
@@ -225,10 +220,10 @@ ConnectionDialog::ConnectionDialog(QWidget *parent)
     pgForm->addRow(pgPwLabel, pgPwRow);
     pgForm->addRow(QStringLiteral("P&ort"), m_pgPort);
     pgForm->addRow(QStringLiteral("Data&base"), m_pgDatabase);
-    auto *pgHint = new QLabel(QStringLiteral(
-        "(A PostgreSQL connection runs its queries in one database, but the "
-        "object browser lists every database on the server — expand one for "
-        "its schemas, double-click or right-click it to switch.)"),
+    auto *pgHint = new QLabel(
+        QStringLiteral("(A PostgreSQL connection runs its queries in one database, but the "
+                       "object browser lists every database on the server — expand one for "
+                       "its schemas, double-click or right-click it to switch.)"),
         this);
     pgHint->setEnabled(false);
     pgHint->setWordWrap(true);
@@ -273,18 +268,18 @@ ConnectionDialog::ConnectionDialog(QWidget *parent)
     /* ---- SSL tab: client-cert TLS, wired to mysql_ssl_set()/libpq ---- */
     auto *sslTab = new QWidget(this);
     m_useSsl = new QCheckBox(QStringLiteral("Use SS&L"), sslTab);
-    m_sslCa   = new QLineEdit(sslTab);
+    m_sslCa = new QLineEdit(sslTab);
     m_sslCert = new QLineEdit(sslTab);
-    m_sslKey  = new QLineEdit(sslTab);
-    auto *sslCaBrowse   = new QPushButton(QStringLiteral("Browse…"), sslTab);
+    m_sslKey = new QLineEdit(sslTab);
+    auto *sslCaBrowse = new QPushButton(QStringLiteral("Browse…"), sslTab);
     auto *sslCertBrowse = new QPushButton(QStringLiteral("Browse…"), sslTab);
-    auto *sslKeyBrowse  = new QPushButton(QStringLiteral("Browse…"), sslTab);
-    connect(sslCaBrowse, &QPushButton::clicked, this, [this] {
-        browseSslFile(m_sslCa, QStringLiteral("CA Certificate")); });
-    connect(sslCertBrowse, &QPushButton::clicked, this, [this] {
-        browseSslFile(m_sslCert, QStringLiteral("Client Certificate")); });
-    connect(sslKeyBrowse, &QPushButton::clicked, this, [this] {
-        browseSslFile(m_sslKey, QStringLiteral("Client Key")); });
+    auto *sslKeyBrowse = new QPushButton(QStringLiteral("Browse…"), sslTab);
+    connect(sslCaBrowse, &QPushButton::clicked, this,
+            [this] { browseSslFile(m_sslCa, QStringLiteral("CA Certificate")); });
+    connect(sslCertBrowse, &QPushButton::clicked, this,
+            [this] { browseSslFile(m_sslCert, QStringLiteral("Client Certificate")); });
+    connect(sslKeyBrowse, &QPushButton::clicked, this,
+            [this] { browseSslFile(m_sslKey, QStringLiteral("Client Key")); });
     auto sslRow = [](QLineEdit *edit, QPushButton *browse) {
         auto *l = new QHBoxLayout;
         l->addWidget(edit, 1);
@@ -318,7 +313,7 @@ ConnectionDialog::ConnectionDialog(QWidget *parent)
     sslLayout->addStretch(1);
 
     m_tabs = new QTabWidget(this);
-    m_tabs->setObjectName(QStringLiteral("connectDialogTabs"));   /* Theme.cpp styling */
+    m_tabs->setObjectName(QStringLiteral("connectDialogTabs")); /* Theme.cpp styling */
     m_tabs->addTab(m_mysqlTab, QStringLiteral("MySQL"));
     m_tabs->addTab(m_sqliteTab, QStringLiteral("SQLite"));
     m_tabs->addTab(m_postgresTab, QStringLiteral("PostgreSQL"));
@@ -372,8 +367,7 @@ ConnectionDialog::ConnectionDialog(QWidget *parent)
 
 void ConnectionDialog::updateButtonState()
 {
-    const bool haveSel = m_saved->count() > 0
-                         && !m_saved->currentText().trimmed().isEmpty();
+    const bool haveSel = m_saved->count() > 0 && !m_saved->currentText().trimmed().isEmpty();
     m_clone->setEnabled(haveSel);
     m_rename->setEnabled(haveSel);
     m_delete->setEnabled(haveSel);
@@ -428,9 +422,8 @@ void ConnectionDialog::cloneConnection()
 {
     bool ok = false;
     const QString name = QInputDialog::getText(
-        this, QStringLiteral("Clone Connection"),
-        QStringLiteral("Name for the copy:"), QLineEdit::Normal,
-        m_saved->currentText() + QStringLiteral(" (copy)"), &ok);
+        this, QStringLiteral("Clone Connection"), QStringLiteral("Name for the copy:"),
+        QLineEdit::Normal, m_saved->currentText() + QStringLiteral(" (copy)"), &ok);
     if(!ok || name.trimmed().isEmpty())
         return;
     ConnectionParams p = params();
@@ -448,7 +441,7 @@ bool ConnectionDialog::savePasswordChecked() const
     if(m_tabs->currentWidget() == m_postgresTab)
         return m_pgSavePw->isChecked();
     if(m_tabs->currentWidget() == m_sqliteTab)
-        return true;   /* SQLite has no password field to begin with */
+        return true; /* SQLite has no password field to begin with */
     return m_savePw->isChecked();
 }
 
@@ -458,14 +451,14 @@ void ConnectionDialog::renameConnection()
     if(oldName.isEmpty())
         return;
     bool ok = false;
-    const QString name = QInputDialog::getText(
-        this, QStringLiteral("Rename Connection"),
-        QStringLiteral("New name:"), QLineEdit::Normal, oldName, &ok);
+    const QString name =
+        QInputDialog::getText(this, QStringLiteral("Rename Connection"),
+                              QStringLiteral("New name:"), QLineEdit::Normal, oldName, &ok);
     if(!ok || name.trimmed().isEmpty() || name == oldName)
         return;
     if(!ConnectionStore::rename(oldName, name.trimmed())) {
         QMessageBox::warning(this, QStringLiteral("Rename Connection"),
-            QStringLiteral("Could not rename '%1'.").arg(oldName));
+                             QStringLiteral("Could not rename '%1'.").arg(oldName));
         return;
     }
     reloadSavedList();
@@ -480,8 +473,8 @@ void ConnectionDialog::deleteConnection()
     if(name.isEmpty())
         return;
     if(QMessageBox::question(this, QStringLiteral("Delete Connection"),
-           QStringLiteral("Delete the saved connection '%1'?").arg(name))
-           != QMessageBox::Yes)
+                             QStringLiteral("Delete the saved connection '%1'?").arg(name)) !=
+       QMessageBox::Yes)
         return;
     ConnectionStore::remove(name);
     reloadSavedList();
@@ -498,10 +491,11 @@ void ConnectionDialog::testConnection()
     IDbConnection *c = dbDriverFor(p.driverType)->connect(p, &error);
     const bool ok = c != nullptr;
     const QString where = p.driverType == DriverType::Sqlite
-        ? p.filePath : QStringLiteral("%1:%2").arg(p.host).arg(p.port);
-    const QString msg = ok
-        ? QStringLiteral("Connected to %1\nServer: %2").arg(where, c->serverInfo())
-        : QStringLiteral("Connection failed:\n%1").arg(error);
+                              ? p.filePath
+                              : QStringLiteral("%1:%2").arg(p.host).arg(p.port);
+    const QString msg =
+        ok ? QStringLiteral("Connected to %1\nServer: %2").arg(where, c->serverInfo())
+           : QStringLiteral("Connection failed:\n%1").arg(error);
     delete c;
     if(ok)
         QMessageBox::information(this, QStringLiteral("Test Connection"), msg);
@@ -512,26 +506,25 @@ void ConnectionDialog::testConnection()
 void ConnectionDialog::driverChanged(int index)
 {
     const auto dt = DriverType(m_driverCombo->itemData(index).toInt());
-    QWidget *tab = dt == DriverType::Sqlite   ? m_sqliteTab
-                 : dt == DriverType::Postgres ? m_postgresTab
-                                              : m_mysqlTab;
+    QWidget *tab = dt == DriverType::Sqlite     ? m_sqliteTab
+                   : dt == DriverType::Postgres ? m_postgresTab
+                                                : m_mysqlTab;
     m_tabs->setCurrentWidget(tab);
-    setWindowTitle(dt == DriverType::Sqlite   ? QStringLiteral("Connect to SQLite Database")
-                  : dt == DriverType::Postgres ? QStringLiteral("Connect to PostgreSQL Server")
-                                               : QStringLiteral("Connect to MySQL Host"));
-    m_brandImage->setPixmap(QPixmap(Icons::dir() + (
-        dt == DriverType::Sqlite   ? QStringLiteral("connection_sqlite.png")
-      : dt == DriverType::Postgres ? QStringLiteral("connection_postgres.png")
-                                   : QStringLiteral("connection.png"))));
+    setWindowTitle(dt == DriverType::Sqlite     ? QStringLiteral("Connect to SQLite Database")
+                   : dt == DriverType::Postgres ? QStringLiteral("Connect to PostgreSQL Server")
+                                                : QStringLiteral("Connect to MySQL Host"));
+    m_brandImage->setPixmap(QPixmap(
+        Icons::dir() + (dt == DriverType::Sqlite     ? QStringLiteral("connection_sqlite.png")
+                        : dt == DriverType::Postgres ? QStringLiteral("connection_postgres.png")
+                                                     : QStringLiteral("connection.png"))));
 }
 
 void ConnectionDialog::browseSqliteFile()
 {
     QString path = QFileDialog::getSaveFileName(
-        this, QStringLiteral("Choose or Create a SQLite Database File"),
-        m_sqlitePath->text(),
-        QStringLiteral("SQLite database (*.sqlite *.db *.sqlite3);;All files (*)"),
-        nullptr, QFileDialog::DontConfirmOverwrite);
+        this, QStringLiteral("Choose or Create a SQLite Database File"), m_sqlitePath->text(),
+        QStringLiteral("SQLite database (*.sqlite *.db *.sqlite3);;All files (*)"), nullptr,
+        QFileDialog::DontConfirmOverwrite);
     if(!path.isEmpty())
         m_sqlitePath->setText(path);
 }
@@ -571,8 +564,9 @@ void ConnectionDialog::setParams(const ConnectionParams &p)
     m_pgPassword->setText(p.password);
     m_pgSavePw->setChecked(!p.password.isEmpty());
     m_pgDatabase->setText(p.database);
-    m_driverCombo->setCurrentIndex(p.driverType == DriverType::Sqlite ? 1
-                                  : p.driverType == DriverType::Postgres ? 2 : 0);
+    m_driverCombo->setCurrentIndex(p.driverType == DriverType::Sqlite     ? 1
+                                   : p.driverType == DriverType::Postgres ? 2
+                                                                          : 0);
     m_useSsl->setChecked(p.useSsl);
     m_sslCa->setText(p.sslCa);
     m_sslCert->setText(p.sslCert);
@@ -594,9 +588,9 @@ void ConnectionDialog::setParams(const ConnectionParams &p)
 ConnectionParams ConnectionDialog::params() const
 {
     ConnectionParams p;
-    p.driverType = m_tabs->currentWidget() == m_sqliteTab ? DriverType::Sqlite
-                 : m_tabs->currentWidget() == m_postgresTab ? DriverType::Postgres
-                                                            : DriverType::Mysql;
+    p.driverType = m_tabs->currentWidget() == m_sqliteTab     ? DriverType::Sqlite
+                   : m_tabs->currentWidget() == m_postgresTab ? DriverType::Postgres
+                                                              : DriverType::Mysql;
     const QString sel = m_saved->currentText().trimmed();
     const bool hasSavedName = !sel.isEmpty() && sel != QStringLiteral("New Connection");
 
@@ -609,35 +603,33 @@ ConnectionParams ConnectionDialog::params() const
     }
 
     if(p.driverType == DriverType::Postgres) {
-        p.host     = m_pgHost->text().trimmed();
-        p.port     = m_pgPort->value();
-        p.user     = m_pgUser->text().trimmed();
+        p.host = m_pgHost->text().trimmed();
+        p.port = m_pgPort->value();
+        p.user = m_pgUser->text().trimmed();
         p.password = m_pgPassword->text();
         p.database = m_pgDatabase->text().trimmed();
-        p.useSsl   = m_useSsl->isChecked();
-        p.sslCa    = m_sslCa->text().trimmed();
-        p.sslCert  = m_sslCert->text().trimmed();
-        p.sslKey   = m_sslKey->text().trimmed();
+        p.useSsl = m_useSsl->isChecked();
+        p.sslCa = m_sslCa->text().trimmed();
+        p.sslCert = m_sslCert->text().trimmed();
+        p.sslKey = m_sslKey->text().trimmed();
         p.idleTimeoutSecs = m_pgIdleCustom->isChecked() ? m_pgIdleSecs->value() : 0;
-        p.keepAliveSecs   = m_pgKeepAlive->value();
-        p.name = hasSavedName ? sel
-                              : QStringLiteral("%1@%2:%3").arg(p.user, p.host).arg(p.port);
+        p.keepAliveSecs = m_pgKeepAlive->value();
+        p.name = hasSavedName ? sel : QStringLiteral("%1@%2:%3").arg(p.user, p.host).arg(p.port);
         return p;
     }
 
-    p.host     = m_host->text().trimmed();
-    p.port     = m_port->value();
-    p.user     = m_user->text().trimmed();
+    p.host = m_host->text().trimmed();
+    p.port = m_port->value();
+    p.user = m_user->text().trimmed();
     p.password = m_password->text();
     p.database = m_database->text().trimmed();
-    p.useSsl   = m_useSsl->isChecked();
-    p.sslCa    = m_sslCa->text().trimmed();
-    p.sslCert  = m_sslCert->text().trimmed();
-    p.sslKey   = m_sslKey->text().trimmed();
+    p.useSsl = m_useSsl->isChecked();
+    p.sslCa = m_sslCa->text().trimmed();
+    p.sslCert = m_sslCert->text().trimmed();
+    p.sslKey = m_sslKey->text().trimmed();
     p.compress = m_compress->isChecked();
     p.idleTimeoutSecs = m_idleCustom->isChecked() ? m_idleSecs->value() : 0;
-    p.keepAliveSecs   = m_keepAlive->value();
-    p.name = hasSavedName ? sel
-                          : QStringLiteral("%1@%2:%3").arg(p.user, p.host).arg(p.port);
+    p.keepAliveSecs = m_keepAlive->value();
+    p.name = hasSavedName ? sel : QStringLiteral("%1@%2:%3").arg(p.user, p.host).arg(p.port);
     return p;
 }

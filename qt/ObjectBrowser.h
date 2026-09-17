@@ -20,9 +20,9 @@ class QMenu;
  * (default-constructed) QColor means "use the theme's own color" — no
  * override applied. */
 namespace ObjectBrowserColor {
-    QColor load();
-    void   save(const QColor &c);
-}
+QColor load();
+void save(const QColor &c);
+} // namespace ObjectBrowserColor
 
 class ObjectBrowser : public QWidget
 {
@@ -55,13 +55,13 @@ public:
      * browsed and this call is just a database switch, so the top-level
      * node only reveals its own schema list instead of also diving two
      * levels deeper than an ordinary expand-arrow click would. */
-    void loadDatabases(IDbConnection *conn, const QString &currentDb,
-                       const QString &primaryDb = {}, bool autoDrill = true);
+    void loadDatabases(IDbConnection *conn, const QString &currentDb, const QString &primaryDb = {},
+                       bool autoDrill = true);
 
     /* [db, table] of the currently selected table item, else empty */
     QStringList currentTableInfo() const;
 
-    void collapseTree();   /* Edit ▸ Collapse All in Object Browser */
+    void collapseTree(); /* Edit ▸ Collapse All in Object Browser */
     /* PostgreSQL multi-database tree, headless-test hook: expand the
      * top-level database node named `name` exactly as a real click on its
      * arrow would (QTreeWidget::expandItem() triggers the same
@@ -109,13 +109,13 @@ public:
     QStringList contextMenuItemsForTest(const QString &path);
 
 signals:
-    void databaseActivated(const QString &db);      /* double click → USE */
+    void databaseActivated(const QString &db); /* double click → USE */
     void tableActivated(const QString &db, const QString &table,
-                        const QString &physDb = {});   /* → SELECT; physDb routes
-                        the data grid at the right connection (PostgreSQL's
-                        multi-database tree: a table under a non-primary
-                        database must load via that database's side
-                        connection, not m_conn) */
+                        const QString &physDb = {}); /* → SELECT; physDb routes
+                      the data grid at the right connection (PostgreSQL's
+                      multi-database tree: a table under a non-primary
+                      database must load via that database's side
+                      connection, not m_conn) */
     void dropTableRequested(const QString &db, const QString &table);
     void truncateTableRequested(const QString &db, const QString &table);
     void createTableRequested(const QString &db);
@@ -132,10 +132,8 @@ signals:
     /* schema objects — objType is the SQL keyword: VIEW / PROCEDURE / FUNCTION
      * / TRIGGER / EVENT */
     void createObjectRequested(const QString &db, const QString &objType);
-    void alterObjectRequested(const QString &db, const QString &objType,
-                              const QString &name);
-    void dropObjectRequested(const QString &db, const QString &objType,
-                             const QString &name);
+    void alterObjectRequested(const QString &db, const QString &objType, const QString &name);
+    void dropObjectRequested(const QString &db, const QString &objType, const QString &name);
     void dropDatabaseRequested(const QString &db);
     void truncateDatabaseRequested(const QString &db);
     void emptyDatabaseRequested(const QString &db);
@@ -185,10 +183,10 @@ private:
      * connection it should use (see setConnectionResolver()'s doc comment) */
     IDbConnection *connFor(const QString &physDb, QString *error = nullptr) const;
 
-    QLabel        *m_filterLabel = nullptr;
-    QLineEdit     *m_filter = nullptr;
-    QTreeWidget   *m_tree   = nullptr;
-    IDbConnection *m_conn   = nullptr;
-    QString        m_primaryDatabase;   /* PostgreSQL: this tab's own connected db */
+    QLabel *m_filterLabel = nullptr;
+    QLineEdit *m_filter = nullptr;
+    QTreeWidget *m_tree = nullptr;
+    IDbConnection *m_conn = nullptr;
+    QString m_primaryDatabase; /* PostgreSQL: this tab's own connected db */
     std::function<IDbConnection *(const QString &, QString *)> m_resolveConn;
 };

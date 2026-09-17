@@ -6,8 +6,14 @@
 class PostgresDriver : public IDbDriver
 {
 public:
-    QString driverName() const override { return QStringLiteral("PostgreSQL"); }
-    int     defaultPort() const override { return 5432; }
+    QString driverName() const override
+    {
+        return QStringLiteral("PostgreSQL");
+    }
+    int defaultPort() const override
+    {
+        return 5432;
+    }
 
     IDbConnection *connect(const ConnectionParams &params, QString *error,
                            bool localInfile = false) override;

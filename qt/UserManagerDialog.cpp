@@ -17,11 +17,17 @@
 
 namespace {
 /* 'x' with quotes doubled */
-QString q(const QString &s) { return QString(s).replace('\'', QStringLiteral("''")); }
-/* "x" with quotes doubled, for a PostgreSQL role identifier */
-QString qi(const QString &s) { return QLatin1Char('"')
-    + QString(s).replace(QLatin1Char('"'), QStringLiteral("\"\"")) + QLatin1Char('"'); }
+QString q(const QString &s)
+{
+    return QString(s).replace('\'', QStringLiteral("''"));
 }
+/* "x" with quotes doubled, for a PostgreSQL role identifier */
+QString qi(const QString &s)
+{
+    return QLatin1Char('"') + QString(s).replace(QLatin1Char('"'), QStringLiteral("\"\"")) +
+           QLatin1Char('"');
+}
+} // namespace
 
 UserManagerDialog::UserManagerDialog(IDbConnection *conn, QWidget *parent, DriverType driver)
     : QDialog(parent), m_driver(driver), m_conn(conn)
@@ -32,10 +38,10 @@ UserManagerDialog::UserManagerDialog(IDbConnection *conn, QWidget *parent, Drive
     m_users = new QTableWidget(0, 3, this);
     m_users->setHorizontalHeaderLabels(
         m_driver == DriverType::Postgres
-            ? QStringList{ QStringLiteral("Role"), QStringLiteral("Can Login"),
-                          QStringLiteral("Superuser") }
-            : QStringList{ QStringLiteral("User"), QStringLiteral("Host"),
-                          QStringLiteral("Auth plugin") });
+            ? QStringList{QStringLiteral("Role"), QStringLiteral("Can Login"),
+                          QStringLiteral("Superuser")}
+            : QStringList{QStringLiteral("User"), QStringLiteral("Host"),
+                          QStringLiteral("Auth plugin")});
     m_users->horizontalHeader()->setStretchLastSection(true);
     m_users->setSelectionBehavior(QAbstractItemView::SelectRows);
     m_users->setSelectionMode(QAbstractItemView::SingleSelection);
@@ -43,16 +49,16 @@ UserManagerDialog::UserManagerDialog(IDbConnection *conn, QWidget *parent, Drive
     connect(m_users, &QTableWidget::itemSelectionChanged, this,
             &UserManagerDialog::showGrantsForSelection);
 
-    auto *newBtn  = new QPushButton(QStringLiteral("&New User…"), this);
+    auto *newBtn = new QPushButton(QStringLiteral("&New User…"), this);
     auto *dropBtn = new QPushButton(QStringLiteral("&Drop User"), this);
-    auto *pwBtn   = new QPushButton(QStringLiteral("Set &Password…"), this);
+    auto *pwBtn = new QPushButton(QStringLiteral("Set &Password…"), this);
     auto *refresh = new QPushButton(QStringLiteral("&Refresh"), this);
-    connect(newBtn,  &QPushButton::clicked, this, &UserManagerDialog::createUser);
+    connect(newBtn, &QPushButton::clicked, this, &UserManagerDialog::createUser);
     connect(dropBtn, &QPushButton::clicked, this, &UserManagerDialog::dropUser);
-    connect(pwBtn,   &QPushButton::clicked, this, &UserManagerDialog::setPassword);
+    connect(pwBtn, &QPushButton::clicked, this, &UserManagerDialog::setPassword);
     connect(refresh, &QPushButton::clicked, this, &UserManagerDialog::reloadUsers);
     auto *btnRow = new QHBoxLayout;
-    for(QPushButton *b : { newBtn, dropBtn, pwBtn, refresh })
+    for(QPushButton *b : {newBtn, dropBtn, pwBtn, refresh})
         btnRow->addWidget(b);
     btnRow->addStretch(1);
 
@@ -99,13 +105,11 @@ void UserManagerDialog::reloadUsers()
     DbResultSet rs;
     QString error;
     const bool pg = m_driver == DriverType::Postgres;
-    const bool ok = m_conn->query(pg
-        ? QStringLiteral(
-              "SELECT rolname, CASE WHEN rolcanlogin THEN 'yes' ELSE 'no' END, "
-              "CASE WHEN rolsuper THEN 'yes' ELSE 'no' END "
-              "FROM pg_roles ORDER BY rolname")
-        : QStringLiteral(
-              "SELECT User, Host, plugin FROM mysql.user ORDER BY User, Host"),
+    const bool ok = m_conn->query(
+        pg ? QStringLiteral("SELECT rolname, CASE WHEN rolcanlogin THEN 'yes' ELSE 'no' END, "
+                            "CASE WHEN rolsuper THEN 'yes' ELSE 'no' END "
+                            "FROM pg_roles ORDER BY rolname")
+           : QStringLiteral("SELECT User, Host, plugin FROM mysql.user ORDER BY User, Host"),
         &rs, &error);
     if(!ok) {
         QMessageBox::warning(this, QStringLiteral("User Manager"), error);
@@ -126,8 +130,8 @@ QStringList UserManagerDialog::selectedUserHost() const
     if(r < 0)
         return {};
     if(m_driver == DriverType::Postgres)
-        return { m_users->item(r, 0)->text(), QString() };
-    return { m_users->item(r, 0)->text(), m_users->item(r, 1)->text() };
+        return {m_users->item(r, 0)->text(), QString()};
+    return {m_users->item(r, 0)->text(), m_users->item(r, 1)->text()};
 }
 
 void UserManagerDialog::showGrantsForSelection()
@@ -139,17 +143,18 @@ void UserManagerDialog::showGrantsForSelection()
     if(m_driver == DriverType::Postgres) {
         QString out;
         DbResultSet attrs;
-        if(m_conn->query(QStringLiteral(
-               "SELECT rolsuper, rolcreatedb, rolcreaterole, rolcanlogin, "
-               "rolreplication, rolbypassrls, rolconnlimit, "
-               "COALESCE(rolvaliduntil::text, 'never') "
-               "FROM pg_roles WHERE rolname = '%1'").arg(q(uh[0])), &attrs, nullptr)
-           && !attrs.rows.isEmpty()) {
+        if(m_conn->query(QStringLiteral("SELECT rolsuper, rolcreatedb, rolcreaterole, rolcanlogin, "
+                                        "rolreplication, rolbypassrls, rolconnlimit, "
+                                        "COALESCE(rolvaliduntil::text, 'never') "
+                                        "FROM pg_roles WHERE rolname = '%1'")
+                             .arg(q(uh[0])),
+                         &attrs, nullptr) &&
+           !attrs.rows.isEmpty()) {
             const QStringList &a = attrs.rows.first();
             static const QStringList labels = {
-                QStringLiteral("SUPERUSER"), QStringLiteral("CREATEDB"),
-                QStringLiteral("CREATEROLE"), QStringLiteral("LOGIN"),
-                QStringLiteral("REPLICATION"), QStringLiteral("BYPASSRLS") };
+                QStringLiteral("SUPERUSER"),   QStringLiteral("CREATEDB"),
+                QStringLiteral("CREATEROLE"),  QStringLiteral("LOGIN"),
+                QStringLiteral("REPLICATION"), QStringLiteral("BYPASSRLS")};
             QStringList on;
             for(int i = 0; i < labels.size(); ++i)
                 if(a.value(i) == QStringLiteral("t"))
@@ -162,12 +167,13 @@ void UserManagerDialog::showGrantsForSelection()
         }
 
         DbResultSet mem;
-        if(m_conn->query(QStringLiteral(
-               "SELECT r.rolname FROM pg_auth_members m "
-               "JOIN pg_roles r ON r.oid = m.roleid "
-               "JOIN pg_roles m2 ON m2.oid = m.member "
-               "WHERE m2.rolname = '%1'").arg(q(uh[0])), &mem, nullptr)
-           && !mem.rows.isEmpty()) {
+        if(m_conn->query(QStringLiteral("SELECT r.rolname FROM pg_auth_members m "
+                                        "JOIN pg_roles r ON r.oid = m.roleid "
+                                        "JOIN pg_roles m2 ON m2.oid = m.member "
+                                        "WHERE m2.rolname = '%1'")
+                             .arg(q(uh[0])),
+                         &mem, nullptr) &&
+           !mem.rows.isEmpty()) {
             out += QStringLiteral("-- role membership\n");
             for(const QStringList &row : mem.rows)
                 out += QStringLiteral("GRANT %1 TO %2;\n").arg(qi(row.value(0)), qi(uh[0]));
@@ -176,12 +182,12 @@ void UserManagerDialog::showGrantsForSelection()
 
         DbResultSet grants;
         QString error;
-        if(!m_conn->query(QStringLiteral(
-               "SELECT table_schema, table_name, privilege_type "
-               "FROM information_schema.role_table_grants "
-               "WHERE grantee = '%1' "
-               "ORDER BY table_schema, table_name, privilege_type").arg(q(uh[0])),
-               &grants, &error)) {
+        if(!m_conn->query(QStringLiteral("SELECT table_schema, table_name, privilege_type "
+                                         "FROM information_schema.role_table_grants "
+                                         "WHERE grantee = '%1' "
+                                         "ORDER BY table_schema, table_name, privilege_type")
+                              .arg(q(uh[0])),
+                          &grants, &error)) {
             m_grants->setPlainText(out + error);
             return;
         }
@@ -196,8 +202,8 @@ void UserManagerDialog::showGrantsForSelection()
 
     DbResultSet rs;
     QString error;
-    if(!m_conn->query(QStringLiteral("SHOW GRANTS FOR '%1'@'%2'")
-                          .arg(q(uh[0]), q(uh[1])), &rs, &error)) {
+    if(!m_conn->query(QStringLiteral("SHOW GRANTS FOR '%1'@'%2'").arg(q(uh[0]), q(uh[1])), &rs,
+                      &error)) {
         m_grants->setPlainText(error);
         return;
     }
@@ -214,7 +220,7 @@ void UserManagerDialog::createUser()
     d.setWindowTitle(QStringLiteral("New User"));
     auto *name = new QLineEdit(&d);
     QLineEdit *host = nullptr;
-    auto *pw   = new QLineEdit(&d);
+    auto *pw = new QLineEdit(&d);
     pw->setEchoMode(QLineEdit::Password);
     auto *form = new QFormLayout;
     form->addRow(pg ? QStringLiteral("Role name") : QStringLiteral("User name"), name);
@@ -231,12 +237,11 @@ void UserManagerDialog::createUser()
     lay->addWidget(bb);
     if(d.exec() != QDialog::Accepted || name->text().trimmed().isEmpty())
         return;
-    const bool ok = pg
-        ? run(QStringLiteral("CREATE USER %1 WITH LOGIN PASSWORD '%2'")
-                  .arg(qi(name->text().trimmed()), q(pw->text())))
-        : run(QStringLiteral("CREATE USER '%1'@'%2' IDENTIFIED BY '%3'")
-                  .arg(q(name->text().trimmed()), q(host->text().trimmed()),
-                       q(pw->text())));
+    const bool ok =
+        pg ? run(QStringLiteral("CREATE USER %1 WITH LOGIN PASSWORD '%2'")
+                     .arg(qi(name->text().trimmed()), q(pw->text())))
+           : run(QStringLiteral("CREATE USER '%1'@'%2' IDENTIFIED BY '%3'")
+                     .arg(q(name->text().trimmed()), q(host->text().trimmed()), q(pw->text())));
     if(ok)
         reloadUsers();
 }
@@ -248,12 +253,12 @@ void UserManagerDialog::dropUser()
         return;
     const bool pg = m_driver == DriverType::Postgres;
     if(QMessageBox::question(this, QStringLiteral("Drop User"),
-           pg ? QStringLiteral("Drop role \"%1\"?").arg(uh[0])
-              : QStringLiteral("Drop '%1'@'%2'?").arg(uh[0], uh[1])) != QMessageBox::Yes)
+                             pg ? QStringLiteral("Drop role \"%1\"?").arg(uh[0])
+                                : QStringLiteral("Drop '%1'@'%2'?").arg(uh[0], uh[1])) !=
+       QMessageBox::Yes)
         return;
-    const bool ok = pg
-        ? run(QStringLiteral("DROP USER %1").arg(qi(uh[0])))
-        : run(QStringLiteral("DROP USER '%1'@'%2'").arg(q(uh[0]), q(uh[1])));
+    const bool ok = pg ? run(QStringLiteral("DROP USER %1").arg(qi(uh[0])))
+                       : run(QStringLiteral("DROP USER '%1'@'%2'").arg(q(uh[0]), q(uh[1])));
     if(ok)
         reloadUsers();
 }
@@ -265,18 +270,18 @@ void UserManagerDialog::setPassword()
         return;
     const bool pg = m_driver == DriverType::Postgres;
     bool ok = false;
-    const QString pw = QInputDialog::getText(
-        this, QStringLiteral("Set Password"),
-        pg ? QStringLiteral("New password for \"%1\":").arg(uh[0])
-           : QStringLiteral("New password for '%1'@'%2':").arg(uh[0], uh[1]),
-        QLineEdit::Password, QString(), &ok);
+    const QString pw =
+        QInputDialog::getText(this, QStringLiteral("Set Password"),
+                              pg ? QStringLiteral("New password for \"%1\":").arg(uh[0])
+                                 : QStringLiteral("New password for '%1'@'%2':").arg(uh[0], uh[1]),
+                              QLineEdit::Password, QString(), &ok);
     if(!ok)
         return;
     if(pg)
         run(QStringLiteral("ALTER USER %1 WITH PASSWORD '%2'").arg(qi(uh[0]), q(pw)));
     else
         run(QStringLiteral("ALTER USER '%1'@'%2' IDENTIFIED BY '%3'")
-                 .arg(q(uh[0]), q(uh[1]), q(pw)));
+                .arg(q(uh[0]), q(uh[1]), q(pw)));
 }
 
 void UserManagerDialog::runRawGrant()

@@ -38,23 +38,24 @@ public:
     /* programmatic path used by the --autoconnect selftest (main.cpp) */
     bool openAndRun(const ConnectionParams &params);
     void openTableData(const QString &db, const QString &table);
-    void setDataViewMode(const QString &mode);   /* selftest: "text" | "grid" */
-    void openSchemaObjectTab(const QString &objType);   /* selftest */
-    void selftestUseDatabase(const QString &db);   /* --usedb= selftest */
-    void selftestExpandDatabase(const QString &name);   /* --expandpgdb= selftest */
+    void setDataViewMode(const QString &mode);             /* selftest: "text" | "grid" */
+    void openSchemaObjectTab(const QString &objType);      /* selftest */
+    void selftestUseDatabase(const QString &db);           /* --usedb= selftest */
+    void selftestExpandDatabase(const QString &name);      /* --expandpgdb= selftest */
     void selftestSelectBrowserItem(const QString &path);   /* --selecttreepath= selftest */
     void selftestClickBrowserItem(const QString &path);    /* --clicktreepath= selftest */
     void selftestCollapseBrowserItem(const QString &path); /* --collapsetreepath= selftest */
     void selftestExpandBrowserItem(const QString &path);
-    QStringList selftestDumpTree(const QString &path);   /* --dumptree= selftest */   /* --expandtreepath= selftest */
-    QStringList selftestTreeMenu(const QString &path);   /* --treemenu= selftest */
+    QStringList selftestDumpTree(const QString &path);
+        /* --dumptree= selftest */                            /* --expandtreepath= selftest */
+    QStringList selftestTreeMenu(const QString &path);        /* --treemenu= selftest */
     void selftestDoubleClickBrowserItem(const QString &path); /* --dblclicktreepath= selftest */
-    void copySelectedTableToHost();   /* Table menu + --copytablehost selftest */
-    void selftestRunAgain();   /* --runagain selftest: F9 a second time */
-    void selftestExplain(const QString &mode);   /* --explain=json|plain selftest */
-    QStringList selftestComboItems() const;   /* --dumpcombo selftest */
-    void selftestSwitchDatabase(const QString &db);   /* --switchdb= selftest */
-    int selftestTabCount() const;   /* --dumpcombo selftest */
+    void copySelectedTableToHost();                 /* Table menu + --copytablehost selftest */
+    void selftestRunAgain();                        /* --runagain selftest: F9 a second time */
+    void selftestExplain(const QString &mode);      /* --explain=json|plain selftest */
+    QStringList selftestComboItems() const;         /* --dumpcombo selftest */
+    void selftestSwitchDatabase(const QString &db); /* --switchdb= selftest */
+    int selftestTabCount() const;                   /* --dumpcombo selftest */
     /* --dumpcombo selftest: simulates an actual combo click (not calling
      * useDatabaseFromCombo() directly, which wouldn't first update the
      * widget's own displayed text/selection the way a real click does) */
@@ -74,8 +75,8 @@ public:
     bool selftestCopySqliteFile(const QString &target, bool withData);
     /* --sqlitecsvimport=file.csv:table / --pgcsvimport=file.csv:table[:onDup]
      * selftests (db is "" for SQLite, a schema for PostgreSQL) */
-    bool selftestCsvImportBatched(const QString &db, const QString &file,
-                                  const QString &table, const QString &onDup);
+    bool selftestCsvImportBatched(const QString &db, const QString &file, const QString &table,
+                                  const QString &onDup);
     /* --schemahtmltest=out.html selftest */
     bool selftestSchemaHtml(const QString &outFile);
 
@@ -87,14 +88,14 @@ private:
     QAction *addDisabled(QMenu *menu, const QString &text);
 
     class QStackedWidget *m_stack = nullptr;
-    QTabWidget *m_tabs    = nullptr;
-    QComboBox  *m_dbCombo = nullptr;
-    QLabel     *m_statusMsg        = nullptr;
-    QLabel     *m_driverLabel      = nullptr;   /* MySQL / PostgreSQL / SQLite */
-    QLabel     *m_connectionLabel  = nullptr;   /* which connection is in front */
-    QLabel     *m_execLabel        = nullptr;
-    QLabel     *m_totalLabel       = nullptr;
-    QLabel     *m_cursorLabel      = nullptr;
-    QLabel     *m_connectionsLabel = nullptr;
-    QString     m_sessionFile;   /* File > Save/Open Session */
+    QTabWidget *m_tabs = nullptr;
+    QComboBox *m_dbCombo = nullptr;
+    QLabel *m_statusMsg = nullptr;
+    QLabel *m_driverLabel = nullptr;     /* MySQL / PostgreSQL / SQLite */
+    QLabel *m_connectionLabel = nullptr; /* which connection is in front */
+    QLabel *m_execLabel = nullptr;
+    QLabel *m_totalLabel = nullptr;
+    QLabel *m_cursorLabel = nullptr;
+    QLabel *m_connectionsLabel = nullptr;
+    QString m_sessionFile; /* File > Save/Open Session */
 };

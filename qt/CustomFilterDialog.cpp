@@ -11,18 +11,16 @@
 namespace {
 /* FT_EQUAL..FT_LIKE in upstream's SortAndFilter.h, same order */
 const QStringList kConditions = {
-    QStringLiteral("="), QStringLiteral("<>"), QStringLiteral(">"),
+    QStringLiteral("="), QStringLiteral("<>"),   QStringLiteral(">"),
     QStringLiteral("<"), QStringLiteral("LIKE"),
 };
-}
+} // namespace
 
-CustomFilterDialog::CustomFilterDialog(const QStringList &columns,
-                                       const QVector<Row> &initial,
+CustomFilterDialog::CustomFilterDialog(const QStringList &columns, const QVector<Row> &initial,
                                        std::function<QString(const QString &)> quoteIdent,
                                        std::function<QString(const QString &)> escapeValue,
                                        QWidget *parent)
-    : QDialog(parent), m_quoteIdent(std::move(quoteIdent)),
-      m_escapeValue(std::move(escapeValue))
+    : QDialog(parent), m_quoteIdent(std::move(quoteIdent)), m_escapeValue(std::move(escapeValue))
 {
     setWindowTitle(QStringLiteral("Custom Filter"));
 
@@ -34,7 +32,7 @@ CustomFilterDialog::CustomFilterDialog(const QStringList &columns,
     m_rowWidgets.reserve(kRows);
     for(int i = 0; i < kRows; ++i) {
         auto *field = new QComboBox(this);
-        field->addItem(QString());   /* blank = skip this row */
+        field->addItem(QString()); /* blank = skip this row */
         field->addItems(columns);
         auto *cond = new QComboBox(this);
         cond->addItems(kConditions);
@@ -55,7 +53,7 @@ CustomFilterDialog::CustomFilterDialog(const QStringList &columns,
         grid->addWidget(field, row, 0);
         grid->addWidget(cond, row, 1);
         grid->addWidget(value, row, 2);
-        m_rowWidgets.append({ field, cond, value });
+        m_rowWidgets.append({field, cond, value});
     }
     grid->setColumnStretch(2, 1);
 
@@ -78,8 +76,7 @@ CustomFilterDialog::CustomFilterDialog(const QStringList &columns,
     previewLayout->addWidget(m_previewEdit);
     m_previewRow->hide();
 
-    auto *buttons = new QDialogButtonBox(
-        QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
+    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
     connect(buttons, &QDialogButtonBox::accepted, this, &QDialog::accept);
     connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
 
@@ -104,7 +101,7 @@ QVector<CustomFilterDialog::Row> CustomFilterDialog::rows() const
     QVector<Row> out;
     out.reserve(m_rowWidgets.size());
     for(const RowWidgets &w : m_rowWidgets)
-        out.append({ w.field->currentText(), w.cond->currentText(), w.value->text() });
+        out.append({w.field->currentText(), w.cond->currentText(), w.value->text()});
     return out;
 }
 
@@ -113,10 +110,9 @@ QString CustomFilterDialog::whereClause() const
     return buildWhere(rows(), m_quoteIdent, m_escapeValue);
 }
 
-QString CustomFilterDialog::buildWhere(
-    const QVector<Row> &rows,
-    const std::function<QString(const QString &)> &quoteIdent,
-    const std::function<QString(const QString &)> &escapeValue)
+QString CustomFilterDialog::buildWhere(const QVector<Row> &rows,
+                                       const std::function<QString(const QString &)> &quoteIdent,
+                                       const std::function<QString(const QString &)> &escapeValue)
 {
     QStringList parts;
     for(const Row &r : rows) {
@@ -129,11 +125,11 @@ QString CustomFilterDialog::buildWhere(
          * comparison — SetFilterString()'s special case */
         if(r.condition == QStringLiteral("=") || r.condition == QStringLiteral("<>")) {
             const QString v = r.value.trimmed();
-            if(v.compare(QStringLiteral("NULL"), Qt::CaseInsensitive) == 0
-               || v.compare(QStringLiteral("(NULL)"), Qt::CaseInsensitive) == 0) {
-                parts << QStringLiteral("%1 IS %2NULL").arg(col,
-                    r.condition == QStringLiteral("<>") ? QStringLiteral("NOT ")
-                                                        : QString());
+            if(v.compare(QStringLiteral("NULL"), Qt::CaseInsensitive) == 0 ||
+               v.compare(QStringLiteral("(NULL)"), Qt::CaseInsensitive) == 0) {
+                parts << QStringLiteral("%1 IS %2NULL")
+                             .arg(col, r.condition == QStringLiteral("<>") ? QStringLiteral("NOT ")
+                                                                           : QString());
                 continue;
             }
         }
@@ -146,18 +142,18 @@ QString CustomFilterDialog::buildWhere(
              * (ProcessFilter()'s FT_LIKEBEGIN/FT_LIKEEND/FT_LIKEBOTH) */
             QString v = r.value;
             const bool pre = v.startsWith(QLatin1Char('%'));
-            if(pre) v = v.mid(1);
+            if(pre)
+                v = v.mid(1);
             const bool post = v.endsWith(QLatin1Char('%'));
-            if(post) v.chop(1);
-            parts << QStringLiteral("%1 LIKE '%2%3%4'").arg(col,
-                pre ? QStringLiteral("%") : QString(),
-                escapeValue(v),
-                post ? QStringLiteral("%") : QString());
+            if(post)
+                v.chop(1);
+            parts << QStringLiteral("%1 LIKE '%2%3%4'")
+                         .arg(col, pre ? QStringLiteral("%") : QString(), escapeValue(v),
+                              post ? QStringLiteral("%") : QString());
             continue;
         }
 
-        parts << QStringLiteral("%1 %2 '%3'")
-                     .arg(col, r.condition, escapeValue(r.value));
+        parts << QStringLiteral("%1 %2 '%3'").arg(col, r.condition, escapeValue(r.value));
     }
     return parts.join(QStringLiteral(" AND "));
 }

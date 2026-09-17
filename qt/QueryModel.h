@@ -30,6 +30,6 @@ public:
     QVariant headerData(int section, Qt::Orientation o, int role) const override;
 
 private:
-    QStringList        m_cols;
+    QStringList m_cols;
     QVector<QStringList> m_rows;
 };

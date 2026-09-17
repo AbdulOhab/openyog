@@ -32,15 +32,17 @@ class ObjectBrowser;
 class TableDataView;
 class FindBar;
 class QPlainTextEdit;
-namespace SqlDump { struct Options; }
+namespace SqlDump {
+struct Options;
+}
 
 /* one statement's outcome, collected on the worker thread */
 struct QueryResult
 {
-    bool     ok      = false;
-    double   secs    = 0.0;
-    QString  message;
-    QStringList      headers;
+    bool ok = false;
+    double secs = 0.0;
+    QString message;
+    QStringList headers;
     QVector<QStringList> rows;
 };
 
@@ -51,10 +53,22 @@ public:
     explicit ConnectionTab(const ConnectionParams &params, QWidget *parent = nullptr);
     ~ConnectionTab() override;
 
-    bool isConnected() const { return m_conn != nullptr; }
-    QString title() const { return m_params.name; }
-    QStringList databases() const { return m_databases; }
-    QString currentDatabase() const { return m_params.database; }
+    bool isConnected() const
+    {
+        return m_conn != nullptr;
+    }
+    QString title() const
+    {
+        return m_params.name;
+    }
+    QStringList databases() const
+    {
+        return m_databases;
+    }
+    QString currentDatabase() const
+    {
+        return m_params.database;
+    }
     /* the schema/database actually being *browsed* right now — same as
      * currentDatabase() for MySQL/SQLite, but for PostgreSQL that's the
      * connected database (needed for the libpq conninfo on reconnect),
@@ -110,8 +124,8 @@ public:
     QString hostLabel() const
     {
         return m_params.driverType == DriverType::Sqlite
-            ? m_params.filePath
-            : m_params.host + ':' + QString::number(m_params.port);
+                   ? m_params.filePath
+                   : m_params.host + ':' + QString::number(m_params.port);
     }
     /* what the status bar's connection field should show right now: the
      * tab's primary connection in "user@host:port/database" form (SQLite:
@@ -132,27 +146,33 @@ public:
     }
     /* [db, table] of the browser's selected table, or empty */
     QStringList selectedTableInfo() const;
-    DriverType driverType() const { return m_params.driverType; }
-    const ConnectionParams &params() const { return m_params; }
+    DriverType driverType() const
+    {
+        return m_params.driverType;
+    }
+    const ConnectionParams &params() const
+    {
+        return m_params;
+    }
 
     /* Query timeout, persisted in OpenYog.ini [Query] (0 = disabled, the
      * default). Global, not per-tab — mirrors Theme::load()/save(). */
-    static int  queryTimeoutSecs();
+    static int queryTimeoutSecs();
     static void setQueryTimeoutSecs(int secs);
 
 public slots:
-    void runQuery();                 /* F9 — selection or current statement */
-    void runAll();                   /* Ctrl+F9 — the whole editor */
-    void runAndEdit();               /* F8 — run, and open a single-table SELECT editable */
-    void explainCurrent(bool json);  /* EXPLAIN [FORMAT=JSON] the current stmt */
-    void selftestExplain(const QString &mode);   /* --explain=json|plain selftest */
-    void renameCurrentEditorTab();   /* Alt+F2 */
-    void dumpTable(const QString &db, const QString &table);   /* one-table SQL dump */
-    void editorCopyNormalizedWhitespace();   /* Alt+C */
+    void runQuery();                /* F9 — selection or current statement */
+    void runAll();                  /* Ctrl+F9 — the whole editor */
+    void runAndEdit();              /* F8 — run, and open a single-table SELECT editable */
+    void explainCurrent(bool json); /* EXPLAIN [FORMAT=JSON] the current stmt */
+    void selftestExplain(const QString &mode);               /* --explain=json|plain selftest */
+    void renameCurrentEditorTab();                           /* Alt+F2 */
+    void dumpTable(const QString &db, const QString &table); /* one-table SQL dump */
+    void editorCopyNormalizedWhitespace();                   /* Alt+C */
     void editorInsertFromFile();
     void collapseBrowser();
     void runStatements(const QStringList &statements, const QString &tabPrefix);
-    void cancelQuery();   /* best-effort: ask the in-flight batch to stop */
+    void cancelQuery(); /* best-effort: ask the in-flight batch to stop */
     void openTable(const QString &db, const QString &table);
     void useDatabase(const QString &db);
     /* autoDrill forwarded to ObjectBrowser::loadDatabases() — false only
@@ -169,12 +189,12 @@ public slots:
     void collapseBrowserItem(const QString &path);
     /* headless-test hook, forwards to ObjectBrowser::expandTreeItem() */
     void expandBrowserItem(const QString &path);
-    QStringList dumpBrowserSubtree(const QString &path);   /* --dumptree= selftest */
-    QStringList browserContextMenuItems(const QString &path);   /* --treemenu= selftest */
+    QStringList dumpBrowserSubtree(const QString &path);      /* --dumptree= selftest */
+    QStringList browserContextMenuItems(const QString &path); /* --treemenu= selftest */
     /* headless-test hook, forwards to ObjectBrowser::doubleClickTreeItem() */
     void doubleClickBrowserItem(const QString &path);
     bool execDdl(const QString &sql);
-    void pasteSqlTemplate(int kind);   /* 0=INSERT 1=UPDATE 2=DELETE 3=SELECT */
+    void pasteSqlTemplate(int kind); /* 0=INSERT 1=UPDATE 2=DELETE 3=SELECT */
     void toggleBrowserPane();
     void toggleResultPane();
     void toggleEditorPane();
@@ -195,12 +215,10 @@ public slots:
      * the file itself and runs batched INSERT inside one transaction: SQLite
      * via INSERT OR IGNORE/REPLACE, PostgreSQL via INSERT ... ON CONFLICT),
      * also used by the --sqlitecsvimport=/--pgcsvimport= selftests */
-    bool importCsvBatched(const QString &db, const QString &table,
-                          const QString &file, const QString &sep,
-                          const QString &quote, const QString &escCh,
-                          bool hasHeader, int extraSkipLines,
-                          bool truncateFirst, const QString &onDup,
-                          int *rowsInserted, QString *error);
+    bool importCsvBatched(const QString &db, const QString &table, const QString &file,
+                          const QString &sep, const QString &quote, const QString &escCh,
+                          bool hasHeader, int extraSkipLines, bool truncateFirst,
+                          const QString &onDup, int *rowsInserted, QString *error);
     /* export every row of a table (re-queries — not just the loaded page) */
     void exportTableData(const QString &database, const QString &table);
     /* Tools ▸ Export All Rows… — picks table-data vs result grid by context */
@@ -210,16 +228,14 @@ public slots:
     void showTableProperties(const QString &database, const QString &table);
     void showConnectionInfo();
     /* non-interactive core, also used by the --copydb selftest */
-    bool copyDatabaseTo(const QString &srcDb, const QString &tgtDb,
-                        bool withData, bool dropFirst, bool withRoutines,
-                        QString *error);
+    bool copyDatabaseTo(const QString &srcDb, const QString &tgtDb, bool withData, bool dropFirst,
+                        bool withRoutines, QString *error);
     /* PostgreSQL's same-connection analog of copyDatabaseTo() — "database"
      * here means schema (a Postgres connection can't reach a sibling
      * database at all), so this is schema-to-schema within the same
      * connection, also used by the --pgcopydb selftest */
-    bool copyDatabaseToPostgres(const QString &srcSchema, const QString &tgtSchema,
-                                bool withData, bool dropFirst, bool withRoutines,
-                                QString *error);
+    bool copyDatabaseToPostgres(const QString &srcSchema, const QString &tgtSchema, bool withData,
+                                bool dropFirst, bool withRoutines, QString *error);
     void promptManageIndexes(const QString &database, const QString &table);
     void promptDropColumn(const QString &database, const QString &table);
     void promptManageForeignKeys(const QString &database, const QString &table);
@@ -227,13 +243,11 @@ public slots:
     void truncateTable(const QString &database, const QString &table);
     /* schema objects — objType is VIEW / PROCEDURE / FUNCTION / TRIGGER / EVENT */
     void createSchemaObject(const QString &db, const QString &objType);
-    void alterSchemaObject(const QString &db, const QString &objType,
-                           const QString &name);
-    void dropSchemaObject(const QString &db, const QString &objType,
-                          const QString &name);
+    void alterSchemaObject(const QString &db, const QString &objType, const QString &name);
+    void dropSchemaObject(const QString &db, const QString &objType, const QString &name);
     void dropDatabase(const QString &db);
-    void truncateDatabase(const QString &db);   /* drop every object */
-    void emptyDatabase(const QString &db);      /* TRUNCATE every base table */
+    void truncateDatabase(const QString &db); /* drop every object */
+    void emptyDatabase(const QString &db);    /* TRUNCATE every base table */
     void promptAlterDatabase(const QString &db);
     void promptDumpDatabase(const QString &database = {});
     void promptSchemaHtml(const QString &database = {});
@@ -241,32 +255,30 @@ public slots:
     /* non-interactive core, also used by the --schemahtmltest= selftest */
     QString buildSchemaHtml(const QString &db);
     /* non-interactive core, also used by the --dumpdb selftest */
-    bool dumpDatabaseToFile(const QString &database, const QString &path,
-                            QString *error);
-    bool dumpDatabaseToFile(const QString &database, const QString &path,
-                            const QStringList &tables, const SqlDump::Options &opt,
-                            QString *error);
+    bool dumpDatabaseToFile(const QString &database, const QString &path, QString *error);
+    bool dumpDatabaseToFile(const QString &database, const QString &path, const QStringList &tables,
+                            const SqlDump::Options &opt, QString *error);
     void addEditorTab();
-    void closeEditorTab(int index);   /* × on a Query / schema-object tab */
-    void closeResultTab(int index);   /* × on an "Execute Query N" result tab */
-    void wireResultGrid(QTableView *grid);   /* right-click menu on a result grid */
+    void closeEditorTab(int index);        /* × on a Query / schema-object tab */
+    void closeResultTab(int index);        /* × on an "Execute Query N" result tab */
+    void wireResultGrid(QTableView *grid); /* right-click menu on a result grid */
     /* new editor tab pre-filled with `sql` and titled `title` (schema-object
      * editors open here, like SQLyog, instead of a modal dialog) */
     SqlEditor *openEditorWithSql(const QString &title, const QString &sql);
     void openTableData(const QString &db, const QString &table);
-    void setDataViewMode(const QString &mode);   /* selftest: "text" | "grid" */
+    void setDataViewMode(const QString &mode); /* selftest: "text" | "grid" */
     void editTableCell(int row, int col, const QString &value, bool stageOnly = false);
     void openSqlFile(const QString &path);
     void saveEditor();
     void showHistory();
     void renderHistory();
     void clearHistory();
-    void exportResult();   /* CSV / HTML / JSON / Markdown, by chosen filter */
+    void exportResult(); /* CSV / HTML / JSON / Markdown, by chosen filter */
 
     /* Favorites: named, saved SQL snippets (Favorites menu) */
-    void addCurrentToFavorites();     /* selection, or whole editor if none */
-    void organizeFavorites();         /* rename / delete / insert */
-    void insertFavorite(const QString &name);   /* menu item -> editor */
+    void addCurrentToFavorites();             /* selection, or whole editor if none */
+    void organizeFavorites();                 /* rename / delete / insert */
+    void insertFavorite(const QString &name); /* menu item -> editor */
 
     /* editor Edit-menu ops on the active Query tab */
     void promptFind();
@@ -274,13 +286,13 @@ public slots:
     void promptReplace();
     void promptGoto();
     void commentSelection(bool add);
-    void listTags();               /* force the autocomplete popup */
-    void formatQuery(int scope);   /* 0 = current stmt, 1 = selection, 2 = all */
+    void listTags();             /* force the autocomplete popup */
+    void formatQuery(int scope); /* 0 = current stmt, 1 = selection, 2 = all */
 
 signals:
     void databasesChanged(const QStringList &dbs, const QString &current);
-    void executed(const QString &info);      /* "Exec: 0.01 sec" etc. */
-    void cursorMoved(const QString &posText);/* "Ln 1, Col 1"        */
+    void executed(const QString &info);       /* "Exec: 0.01 sec" etc. */
+    void cursorMoved(const QString &posText); /* "Ln 1, Col 1"        */
     /* PostgreSQL multi-database tree only: user asked to open a different
      * physical database as its own tab (see ObjectBrowser::
      * openDatabaseInNewTabRequested()'s doc comment) — MainWindow actually
@@ -298,8 +310,8 @@ private:
     void logHistory(const QString &sql);
     void addResultGrid(const QueryResult &r, const QString &title);
 
-    ConnectionParams   m_params;
-    IDbConnection    * m_conn       = nullptr;   /* browsing (GUI thread) */
+    ConnectionParams m_params;
+    IDbConnection *m_conn = nullptr; /* browsing (GUI thread) */
     /* PostgreSQL only: side connections to *other* physical databases on
      * the same server, opened lazily the first time the Object Browser's
      * multi-database view expands one, keyed by database name. A Postgres
@@ -310,42 +322,43 @@ private:
      * rest of the tab in the destructor. */
     QHash<QString, IDbConnection *> m_sideConnections;
 
-    ObjectBrowser    * m_browser    = nullptr;
-    TableDataView    * m_tableData  = nullptr;
-    QComboBox        * m_limitCombo = nullptr;
-    QTabWidget       * m_editorTabs = nullptr;
-    SqlEditor        * m_editor     = nullptr;
-    QWidget          * m_historyPage = nullptr;
-    class QTextBrowser * m_history  = nullptr;
-    class QLineEdit  * m_historySearch = nullptr;
-    QStringList        m_historyLines;    /* display: "[ts] flattened sql" (or divider) */
-    QStringList        m_historyQueries;  /* index-aligned: the real query text ("" = divider) */
+    ObjectBrowser *m_browser = nullptr;
+    TableDataView *m_tableData = nullptr;
+    QComboBox *m_limitCombo = nullptr;
+    QTabWidget *m_editorTabs = nullptr;
+    SqlEditor *m_editor = nullptr;
+    QWidget *m_historyPage = nullptr;
+    class QTextBrowser *m_history = nullptr;
+    class QLineEdit *m_historySearch = nullptr;
+    QStringList m_historyLines;   /* display: "[ts] flattened sql" (or divider) */
+    QStringList m_historyQueries; /* index-aligned: the real query text ("" = divider) */
     void sendHistoryToEditor(const QString &sql);
     void copyAllShownHistory();
-    FindBar          * m_findBar    = nullptr;
+    FindBar *m_findBar = nullptr;
 
-    QTabWidget       * m_resultTabs = nullptr;
-    QPlainTextEdit   * m_messages   = nullptr;
-    QLabel           * m_info       = nullptr;
-    QTableView       * m_lastGrid   = nullptr;
+    QTabWidget *m_resultTabs = nullptr;
+    QPlainTextEdit *m_messages = nullptr;
+    QLabel *m_info = nullptr;
+    QTableView *m_lastGrid = nullptr;
 
-    QVector<QWidget*>   m_dynamicResultTabs;     /* one per query run, closable; stay until the user closes them */
-    int                 m_resultTabCounter = 0;  /* ever-increasing, not reset per run — keeps titles unique */
-    double              m_totalSecs = 0.0;
-    bool                m_running   = false;
+    QVector<QWidget *>
+        m_dynamicResultTabs;    /* one per query run, closable; stay until the user closes them */
+    int m_resultTabCounter = 0; /* ever-increasing, not reset per run — keeps titles unique */
+    double m_totalSecs = 0.0;
+    bool m_running = false;
     /* shared (not owned outright): a detached worker thread launched by
      * runStatements() keeps its own reference for the query's duration, so
      * closing this tab mid-query can't leave it pointing at freed memory —
      * see cancelQuery() and runOnConnection() in the .cpp. */
     std::shared_ptr<LiveConnection> m_cancelState;
-    int                 m_batchGen  = 0;   /* invalidates a stale timeout timer */
-    class QTimer       *m_keepAliveTimer = nullptr;   /* Connect dialog's keep-alive */
+    int m_batchGen = 0;                       /* invalidates a stale timeout timer */
+    class QTimer *m_keepAliveTimer = nullptr; /* Connect dialog's keep-alive */
 
-    QStringList         m_databases;
-    QString             m_lastFind;       /* for Find Next / F3 */
-    QStringList         m_completions;    /* schema identifiers for autocomplete (union) */
-    QStringList         m_tableNames;     /* offered after FROM / JOIN / INTO / UPDATE */
-    QStringList         m_columnNames;    /* offered after SELECT / WHERE / ON / SET … */
+    QStringList m_databases;
+    QString m_lastFind;        /* for Find Next / F3 */
+    QStringList m_completions; /* schema identifiers for autocomplete (union) */
+    QStringList m_tableNames;  /* offered after FROM / JOIN / INTO / UPDATE */
+    QStringList m_columnNames; /* offered after SELECT / WHERE / ON / SET … */
     void updateCompletions();
     /* defaultDb() (see public section above): the schema/database to
      * operate on when nothing more specific was selected (no table chosen
@@ -376,6 +389,6 @@ private:
 
     /* selected table in the browser: [db, table] or empty */
     QStringList currentTableInfo() const;
-    SqlEditor  *currentEditor() const;
+    SqlEditor *currentEditor() const;
     void attachEditor(SqlEditor *ed, const QString &title);
 };

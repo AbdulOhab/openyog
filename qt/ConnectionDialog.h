@@ -52,46 +52,46 @@ private:
 private:
     void setParams(const ConnectionParams &p);
 
-    QComboBox    *m_saved    = nullptr;
-    QPushButton  *m_clone    = nullptr;
-    QPushButton  *m_save     = nullptr;
-    QPushButton  *m_rename   = nullptr;
-    QPushButton  *m_delete   = nullptr;
+    QComboBox *m_saved = nullptr;
+    QPushButton *m_clone = nullptr;
+    QPushButton *m_save = nullptr;
+    QPushButton *m_rename = nullptr;
+    QPushButton *m_delete = nullptr;
 
-    QComboBox    *m_driverCombo = nullptr;
-    QTabWidget   *m_tabs        = nullptr;
-    QWidget      *m_mysqlTab    = nullptr;
-    QWidget      *m_sqliteTab   = nullptr;
-    QWidget      *m_postgresTab = nullptr;
-    QLineEdit    *m_sqlitePath  = nullptr;
+    QComboBox *m_driverCombo = nullptr;
+    QTabWidget *m_tabs = nullptr;
+    QWidget *m_mysqlTab = nullptr;
+    QWidget *m_sqliteTab = nullptr;
+    QWidget *m_postgresTab = nullptr;
+    QLineEdit *m_sqlitePath = nullptr;
 
-    QLineEdit    *m_pgHost     = nullptr;
-    QLineEdit    *m_pgUser     = nullptr;
-    QLineEdit    *m_pgPassword = nullptr;
-    QCheckBox    *m_pgSavePw   = nullptr;
-    QSpinBox     *m_pgPort     = nullptr;
-    QLineEdit    *m_pgDatabase = nullptr;
+    QLineEdit *m_pgHost = nullptr;
+    QLineEdit *m_pgUser = nullptr;
+    QLineEdit *m_pgPassword = nullptr;
+    QCheckBox *m_pgSavePw = nullptr;
+    QSpinBox *m_pgPort = nullptr;
+    QLineEdit *m_pgDatabase = nullptr;
     QRadioButton *m_pgIdleDefault = nullptr;
-    QRadioButton *m_pgIdleCustom  = nullptr;
-    QSpinBox     *m_pgIdleSecs    = nullptr;
-    QSpinBox     *m_pgKeepAlive   = nullptr;
+    QRadioButton *m_pgIdleCustom = nullptr;
+    QSpinBox *m_pgIdleSecs = nullptr;
+    QSpinBox *m_pgKeepAlive = nullptr;
 
-    QLabel       *m_brandImage  = nullptr;   /* left strip, swaps with the driver */
+    QLabel *m_brandImage = nullptr; /* left strip, swaps with the driver */
 
-    QLineEdit    *m_host     = nullptr;
-    QLineEdit    *m_user     = nullptr;
-    QLineEdit    *m_password = nullptr;
-    QCheckBox    *m_savePw   = nullptr;
-    QSpinBox     *m_port     = nullptr;
-    QLineEdit    *m_database = nullptr;
-    QCheckBox    *m_compress = nullptr;
+    QLineEdit *m_host = nullptr;
+    QLineEdit *m_user = nullptr;
+    QLineEdit *m_password = nullptr;
+    QCheckBox *m_savePw = nullptr;
+    QSpinBox *m_port = nullptr;
+    QLineEdit *m_database = nullptr;
+    QCheckBox *m_compress = nullptr;
     QRadioButton *m_idleDefault = nullptr;
     QRadioButton *m_idleCustom = nullptr;
-    QSpinBox     *m_idleSecs = nullptr;
-    QSpinBox     *m_keepAlive = nullptr;
+    QSpinBox *m_idleSecs = nullptr;
+    QSpinBox *m_keepAlive = nullptr;
 
-    QCheckBox    *m_useSsl  = nullptr;
-    QLineEdit    *m_sslCa   = nullptr;
-    QLineEdit    *m_sslCert = nullptr;
-    QLineEdit    *m_sslKey  = nullptr;
+    QCheckBox *m_useSsl = nullptr;
+    QLineEdit *m_sslCa = nullptr;
+    QLineEdit *m_sslCert = nullptr;
+    QLineEdit *m_sslKey = nullptr;
 };

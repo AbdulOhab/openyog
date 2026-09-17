@@ -18,7 +18,7 @@
 /* Buffered result set: one query, fully materialized. */
 struct DbResultSet
 {
-    QStringList          headers;
+    QStringList headers;
     QVector<QStringList> rows;
 };
 
@@ -51,11 +51,10 @@ public:
      * unmodified. `onRow` returning false aborts the fetch early. Returns
      * false and fills `error` on failure (including a mid-stream abort by
      * `onRow` returning false is NOT an error — it's a normal early stop). */
-    virtual bool streamQuery(
-        const QString &sql, QString *error,
-        const std::function<void(const QStringList &headers)> &onHeaders,
-        const std::function<bool(const QVector<QByteArray> &fields,
-                                  const QVector<bool> &isNull)> &onRow) = 0;
+    virtual bool streamQuery(const QString &sql, QString *error,
+                             const std::function<void(const QStringList &headers)> &onHeaders,
+                             const std::function<bool(const QVector<QByteArray> &fields,
+                                                      const QVector<bool> &isNull)> &onRow) = 0;
 
     /* Escapes raw bytes for embedding in a single-quoted SQL literal (the
      * caller supplies the quotes). Does not add quoting itself. */
@@ -78,7 +77,7 @@ public:
     }
 
     virtual QString lastError() = 0;
-    virtual qint64  affectedRows() = 0;
+    virtual qint64 affectedRows() = 0;
     virtual QString serverInfo() = 0;
     /* extra status text after DML (e.g. LOAD DATA's "Records: N  Deleted: N
      * Skipped: N  Warnings: N"); empty when the server has nothing to add. */
@@ -118,7 +117,10 @@ public:
      * another database at all) while this means "every database on the
      * server," used by the Object Browser to show them all and lazily open
      * a side connection to any one the user actually expands. */
-    virtual QStringList listPhysicalDatabases() { return listDatabases(); }
+    virtual QStringList listPhysicalDatabases()
+    {
+        return listDatabases();
+    }
     virtual QStringList listTables(const QString &db, const QString &typeFilter = {}) = 0;
     virtual DbResultSet listColumns(const QString &db, const QString &table) = 0;
     /* every distinct column name across every table/view in `db`, for
@@ -132,8 +134,8 @@ public:
     virtual QStringList listAllColumnNames(const QString &db)
     {
         QSet<QString> columns;
-        for(const QString &t : listTables(db, QStringLiteral("BASE TABLE"))
-                                    + listTables(db, QStringLiteral("VIEW")))
+        for(const QString &t :
+            listTables(db, QStringLiteral("BASE TABLE")) + listTables(db, QStringLiteral("VIEW")))
             for(const QStringList &row : listColumns(db, t).rows)
                 if(!row.value(0).isEmpty())
                     columns.insert(row.value(0));
@@ -149,8 +151,8 @@ public:
     /* SHOW CREATE <kind> equivalent. `kind`: TABLE / VIEW / PROCEDURE /
      * FUNCTION / TRIGGER / EVENT. Returns the DDL text, or empty + *error set
      * (an unsupported kind on this backend is an error, not an empty DDL). */
-    virtual QString showCreate(const QString &kind, const QString &db,
-                               const QString &name, QString *error) = 0;
+    virtual QString showCreate(const QString &kind, const QString &db, const QString &name,
+                               QString *error) = 0;
 
     /* ---- dialect fragments -------------------------------------------
      * The handful of statement shapes that differ between backends, so the

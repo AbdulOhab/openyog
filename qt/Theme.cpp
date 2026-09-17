@@ -1,6 +1,6 @@
 #include "Theme.h"
 
-#include "CommonHelper.h"   /* port shim: wyString */
+#include "CommonHelper.h" /* port shim: wyString */
 #include "wyIni.h"
 
 #include <QApplication>
@@ -179,8 +179,7 @@ QTreeView::item { height: 18px; }
 QString Theme::load()
 {
     wyString value;
-    wyIni::IniGetString("UserInterface", "theme", "light", &value,
-                        themePath().toUtf8());
+    wyIni::IniGetString("UserInterface", "theme", "light", &value, themePath().toUtf8());
     const QString v = QString::fromUtf8(value.GetString());
     if(v == QStringLiteral("dark") || v == QStringLiteral("twilight"))
         return v;
@@ -189,78 +188,74 @@ QString Theme::load()
 
 void Theme::save(const QString &theme)
 {
-    wyIni::IniWriteString("UserInterface", "theme", theme.toUtf8(),
-                          themePath().toUtf8());
+    wyIni::IniWriteString("UserInterface", "theme", theme.toUtf8(), themePath().toUtf8());
 }
 
 void Theme::apply(QApplication &app, const QString &theme)
 {
     if(theme == QStringLiteral("twilight")) {
         QPalette p;
-        const QColor window(0x29, 0x39, 0x55), base(0x21, 0x2E, 0x44),
-                     text(0xE9, 0xEC, 0xEE), button(0x3A, 0x52, 0x78),
-                     disabled(0x7A, 0x86, 0x9C), highlight(0xE5, 0xC3, 0x65);
-        p.setColor(QPalette::Window,          window);
-        p.setColor(QPalette::WindowText,      text);
-        p.setColor(QPalette::Base,            base);
-        p.setColor(QPalette::AlternateBase,   window);
-        p.setColor(QPalette::Text,            text);
-        p.setColor(QPalette::Button,          button);
-        p.setColor(QPalette::ButtonText,      text);
-        p.setColor(QPalette::ToolTipBase,     button);
-        p.setColor(QPalette::ToolTipText,     text);
+        const QColor window(0x29, 0x39, 0x55), base(0x21, 0x2E, 0x44), text(0xE9, 0xEC, 0xEE),
+            button(0x3A, 0x52, 0x78), disabled(0x7A, 0x86, 0x9C), highlight(0xE5, 0xC3, 0x65);
+        p.setColor(QPalette::Window, window);
+        p.setColor(QPalette::WindowText, text);
+        p.setColor(QPalette::Base, base);
+        p.setColor(QPalette::AlternateBase, window);
+        p.setColor(QPalette::Text, text);
+        p.setColor(QPalette::Button, button);
+        p.setColor(QPalette::ButtonText, text);
+        p.setColor(QPalette::ToolTipBase, button);
+        p.setColor(QPalette::ToolTipText, text);
         p.setColor(QPalette::PlaceholderText, disabled);
-        p.setColor(QPalette::Highlight,       highlight);
+        p.setColor(QPalette::Highlight, highlight);
         p.setColor(QPalette::HighlightedText, QColor(0x29, 0x39, 0x55));
-        p.setColor(QPalette::Disabled, QPalette::Text,        disabled);
-        p.setColor(QPalette::Disabled, QPalette::ButtonText,  disabled);
-        p.setColor(QPalette::Disabled, QPalette::WindowText,  disabled);
+        p.setColor(QPalette::Disabled, QPalette::Text, disabled);
+        p.setColor(QPalette::Disabled, QPalette::ButtonText, disabled);
+        p.setColor(QPalette::Disabled, QPalette::WindowText, disabled);
         app.setPalette(p);
         app.setStyleSheet(QString::fromUtf8(kTwilightTabSheet));
     } else if(theme == QStringLiteral("dark")) {
         QPalette p;
-        const QColor window(0x2B, 0x2B, 0x2B), base(0x1E, 0x1E, 0x1E),
-                     text(0xD4, 0xD4, 0xD4), button(0x3C, 0x3F, 0x41),
-                     disabled(0x80, 0x80, 0x80), highlight(0x2A, 0x5D, 0x9F);
-        p.setColor(QPalette::Window,          window);
-        p.setColor(QPalette::WindowText,      text);
-        p.setColor(QPalette::Base,            base);
-        p.setColor(QPalette::AlternateBase,   window);
-        p.setColor(QPalette::Text,            text);
-        p.setColor(QPalette::Button,          button);
-        p.setColor(QPalette::ButtonText,      text);
-        p.setColor(QPalette::ToolTipBase,     button);
-        p.setColor(QPalette::ToolTipText,     text);
+        const QColor window(0x2B, 0x2B, 0x2B), base(0x1E, 0x1E, 0x1E), text(0xD4, 0xD4, 0xD4),
+            button(0x3C, 0x3F, 0x41), disabled(0x80, 0x80, 0x80), highlight(0x2A, 0x5D, 0x9F);
+        p.setColor(QPalette::Window, window);
+        p.setColor(QPalette::WindowText, text);
+        p.setColor(QPalette::Base, base);
+        p.setColor(QPalette::AlternateBase, window);
+        p.setColor(QPalette::Text, text);
+        p.setColor(QPalette::Button, button);
+        p.setColor(QPalette::ButtonText, text);
+        p.setColor(QPalette::ToolTipBase, button);
+        p.setColor(QPalette::ToolTipText, text);
         p.setColor(QPalette::PlaceholderText, disabled);
-        p.setColor(QPalette::Highlight,       highlight);
+        p.setColor(QPalette::Highlight, highlight);
         p.setColor(QPalette::HighlightedText, Qt::white);
-        p.setColor(QPalette::Disabled, QPalette::Text,        disabled);
-        p.setColor(QPalette::Disabled, QPalette::ButtonText,  disabled);
-        p.setColor(QPalette::Disabled, QPalette::WindowText,  disabled);
+        p.setColor(QPalette::Disabled, QPalette::Text, disabled);
+        p.setColor(QPalette::Disabled, QPalette::ButtonText, disabled);
+        p.setColor(QPalette::Disabled, QPalette::WindowText, disabled);
         app.setPalette(p);
         app.setStyleSheet(QString::fromUtf8(kDarkTabSheet));
     } else {
         /* explicit light palette — never derive from the system style, which
          * may itself be dark (that's the "toggle stays dark" bug) */
         QPalette p;
-        const QColor window(0xFF, 0xFF, 0xFF), base(Qt::white),
-                     text(0x1E, 0x1E, 0x1E), button(0xFF, 0xFF, 0xFF),
-                     disabled(0xA2, 0xA2, 0xA2), highlight(0x89, 0xBC, 0xED);
-        p.setColor(QPalette::Window,          window);
-        p.setColor(QPalette::WindowText,      text);
-        p.setColor(QPalette::Base,            base);
-        p.setColor(QPalette::AlternateBase,   QColor(0xF5, 0xF9, 0xFD));
-        p.setColor(QPalette::Text,            text);
-        p.setColor(QPalette::Button,          button);
-        p.setColor(QPalette::ButtonText,      text);
-        p.setColor(QPalette::ToolTipBase,     QColor(0xFF, 0xFF, 0xDC));
-        p.setColor(QPalette::ToolTipText,     text);
+        const QColor window(0xFF, 0xFF, 0xFF), base(Qt::white), text(0x1E, 0x1E, 0x1E),
+            button(0xFF, 0xFF, 0xFF), disabled(0xA2, 0xA2, 0xA2), highlight(0x89, 0xBC, 0xED);
+        p.setColor(QPalette::Window, window);
+        p.setColor(QPalette::WindowText, text);
+        p.setColor(QPalette::Base, base);
+        p.setColor(QPalette::AlternateBase, QColor(0xF5, 0xF9, 0xFD));
+        p.setColor(QPalette::Text, text);
+        p.setColor(QPalette::Button, button);
+        p.setColor(QPalette::ButtonText, text);
+        p.setColor(QPalette::ToolTipBase, QColor(0xFF, 0xFF, 0xDC));
+        p.setColor(QPalette::ToolTipText, text);
         p.setColor(QPalette::PlaceholderText, disabled);
-        p.setColor(QPalette::Highlight,       highlight);
+        p.setColor(QPalette::Highlight, highlight);
         p.setColor(QPalette::HighlightedText, QColor(0x1E, 0x1E, 0x1E));
-        p.setColor(QPalette::Disabled, QPalette::Text,        disabled);
-        p.setColor(QPalette::Disabled, QPalette::ButtonText,  disabled);
-        p.setColor(QPalette::Disabled, QPalette::WindowText,  disabled);
+        p.setColor(QPalette::Disabled, QPalette::Text, disabled);
+        p.setColor(QPalette::Disabled, QPalette::ButtonText, disabled);
+        p.setColor(QPalette::Disabled, QPalette::WindowText, disabled);
         app.setPalette(p);
         app.setStyleSheet(QString::fromUtf8(kLightSheet));
     }

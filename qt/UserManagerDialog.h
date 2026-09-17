@@ -41,16 +41,16 @@ private slots:
     void runRawGrant();
 
 private:
-    bool run(const QString &sql);            /* run + message box on error */
+    bool run(const QString &sql); /* run + message box on error */
     /* {user, host} for MySQL; {role, QString()} for PostgreSQL (kept as a
      * 2-element list either way so every call site's existing ".size() < 2"
      * empty-selection check works unchanged) — or empty when nothing's
      * selected */
     QStringList selectedUserHost() const;
 
-    DriverType      m_driver = DriverType::Mysql;
-    IDbConnection  *m_conn = nullptr;
-    QTableWidget   *m_users = nullptr;
+    DriverType m_driver = DriverType::Mysql;
+    IDbConnection *m_conn = nullptr;
+    QTableWidget *m_users = nullptr;
     QPlainTextEdit *m_grants = nullptr;
-    QLineEdit      *m_raw = nullptr;
+    QLineEdit *m_raw = nullptr;
 };

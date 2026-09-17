@@ -4,10 +4,7 @@
 
 #include <algorithm>
 
-SqliteConnection::SqliteConnection(sqlite3 *db)
-    : m_db(db)
-{
-}
+SqliteConnection::SqliteConnection(sqlite3 *db) : m_db(db) {}
 
 SqliteConnection::~SqliteConnection()
 {
@@ -28,7 +25,8 @@ bool SqliteConnection::runBuffered(const QString &sql, DbResultSet *out, QString
     sqlite3_stmt *stmt = nullptr;
     const QByteArray utf8 = sql.toUtf8();
     if(sqlite3_prepare_v2(m_db, utf8.constData(), -1, &stmt, nullptr) != SQLITE_OK) {
-        if(error) *error = QString::fromUtf8(sqlite3_errmsg(m_db));
+        if(error)
+            *error = QString::fromUtf8(sqlite3_errmsg(m_db));
         return false;
     }
     const int n = sqlite3_column_count(stmt);
@@ -46,9 +44,8 @@ bool SqliteConnection::runBuffered(const QString &sql, DbResultSet *out, QString
                 row << QStringLiteral("NULL");
                 continue;
             }
-            row << QString::fromUtf8(
-                reinterpret_cast<const char *>(sqlite3_column_text(stmt, i)),
-                sqlite3_column_bytes(stmt, i));
+            row << QString::fromUtf8(reinterpret_cast<const char *>(sqlite3_column_text(stmt, i)),
+                                     sqlite3_column_bytes(stmt, i));
         }
         out->rows << row;
     }
@@ -67,22 +64,22 @@ bool SqliteConnection::query(const QString &sql, DbResultSet *result, QString *m
         return false;
     if(message) {
         *message = target->headers.isEmpty()
-            ? QStringLiteral("OK, %1 row(s) affected").arg(affectedRows())
-            : QStringLiteral("%1 row(s) in result set").arg(target->rows.size());
+                       ? QStringLiteral("OK, %1 row(s) affected").arg(affectedRows())
+                       : QStringLiteral("%1 row(s) in result set").arg(target->rows.size());
     }
     return true;
 }
 
-bool SqliteConnection::streamQuery(
-    const QString &sql, QString *error,
-    const std::function<void(const QStringList &headers)> &onHeaders,
-    const std::function<bool(const QVector<QByteArray> &fields,
-                              const QVector<bool> &isNull)> &onRow)
+bool SqliteConnection::streamQuery(const QString &sql, QString *error,
+                                   const std::function<void(const QStringList &headers)> &onHeaders,
+                                   const std::function<bool(const QVector<QByteArray> &fields,
+                                                            const QVector<bool> &isNull)> &onRow)
 {
     sqlite3_stmt *stmt = nullptr;
     const QByteArray utf8 = sql.toUtf8();
     if(sqlite3_prepare_v2(m_db, utf8.constData(), -1, &stmt, nullptr) != SQLITE_OK) {
-        if(error) *error = QString::fromUtf8(sqlite3_errmsg(m_db));
+        if(error)
+            *error = QString::fromUtf8(sqlite3_errmsg(m_db));
         return false;
     }
     const int n = sqlite3_column_count(stmt);
@@ -101,9 +98,8 @@ bool SqliteConnection::streamQuery(
         for(int i = 0; i < n; ++i) {
             isNull[i] = sqlite3_column_type(stmt, i) == SQLITE_NULL;
             if(!isNull[i])
-                fields[i] = QByteArray(
-                    reinterpret_cast<const char *>(sqlite3_column_blob(stmt, i)),
-                    sqlite3_column_bytes(stmt, i));
+                fields[i] = QByteArray(reinterpret_cast<const char *>(sqlite3_column_blob(stmt, i)),
+                                       sqlite3_column_bytes(stmt, i));
         }
         if(onRow && !onRow(fields, isNull)) {
             stopped = true;
@@ -135,14 +131,26 @@ QByteArray SqliteConnection::escape(const QByteArray &raw)
 
 QString SqliteConnection::quoteIdent(const QString &ident)
 {
-    return QLatin1Char('"') + QString(ident).replace(QLatin1Char('"'), QStringLiteral("\"\""))
-         + QLatin1Char('"');
+    return QLatin1Char('"') + QString(ident).replace(QLatin1Char('"'), QStringLiteral("\"\"")) +
+           QLatin1Char('"');
 }
 
-QString SqliteConnection::lastError() { return QString::fromUtf8(sqlite3_errmsg(m_db)); }
-qint64  SqliteConnection::affectedRows() { return (qint64)sqlite3_changes(m_db); }
-QString SqliteConnection::serverInfo() { return QString::fromUtf8(sqlite3_libversion()); }
-QString SqliteConnection::info() { return {}; }   /* no mysql_info() equivalent */
+QString SqliteConnection::lastError()
+{
+    return QString::fromUtf8(sqlite3_errmsg(m_db));
+}
+qint64 SqliteConnection::affectedRows()
+{
+    return (qint64)sqlite3_changes(m_db);
+}
+QString SqliteConnection::serverInfo()
+{
+    return QString::fromUtf8(sqlite3_libversion());
+}
+QString SqliteConnection::info()
+{
+    return {};
+} /* no mysql_info() equivalent */
 
 QString SqliteConnection::masterTable(const QString &db)
 {
@@ -167,19 +175,19 @@ QStringList SqliteConnection::listDatabases()
     QStringList out;
     if(runBuffered(QStringLiteral("PRAGMA database_list"), &rs, nullptr))
         for(const QStringList &row : rs.rows)
-            out << row.value(1);   /* seq(0), name(1), file(2) */
+            out << row.value(1); /* seq(0), name(1), file(2) */
     return out;
 }
 
 QStringList SqliteConnection::listTables(const QString &db, const QString &typeFilter)
 {
     const QString type = typeFilter.compare(QStringLiteral("VIEW"), Qt::CaseInsensitive) == 0
-        ? QStringLiteral("view")
-        : QStringLiteral("table");   /* "" and "BASE TABLE" both mean base */
+                             ? QStringLiteral("view")
+                             : QStringLiteral("table"); /* "" and "BASE TABLE" both mean base */
     DbResultSet rs;
     QStringList out;
-    if(runBuffered(QStringLiteral("SELECT name FROM %1 WHERE type='%2'")
-                       .arg(masterTable(db), type), &rs, nullptr))
+    if(runBuffered(QStringLiteral("SELECT name FROM %1 WHERE type='%2'").arg(masterTable(db), type),
+                   &rs, nullptr))
         for(const QStringList &row : rs.rows)
             out << row.value(0);
     return out;
@@ -205,22 +213,20 @@ DbResultSet SqliteConnection::listColumns(const QString &db, const QString &tabl
     }
 
     DbResultSet out;
-    out.headers << QStringLiteral("Field") << QStringLiteral("Type")
-                << QStringLiteral("Null") << QStringLiteral("Key")
-                << QStringLiteral("Default") << QStringLiteral("Extra")
+    out.headers << QStringLiteral("Field") << QStringLiteral("Type") << QStringLiteral("Null")
+                << QStringLiteral("Key") << QStringLiteral("Default") << QStringLiteral("Extra")
                 << QStringLiteral("Comment");
     for(const QStringList &row : ti.rows) {
         const bool isPk = row.value(5).toInt() > 0;
         QStringList r;
-        r << row.value(1)                                     /* Field */
-          << row.value(2)                                     /* Type */
-          << (row.value(3).toInt() || isPk
-                  ? QStringLiteral("NO") : QStringLiteral("YES"))  /* Null */
-          << (isPk ? QStringLiteral("PRI") : QString())       /* Key */
-          << row.value(4)                                     /* Default */
-          << (isPk && pkCols == 1 && pkIsInteger
-                  ? QStringLiteral("auto_increment") : QString())
-          << QString();   /* Comment — SQLite has no column comments */
+        r << row.value(1) /* Field */
+          << row.value(2) /* Type */
+          << (row.value(3).toInt() || isPk ? QStringLiteral("NO")
+                                           : QStringLiteral("YES")) /* Null */
+          << (isPk ? QStringLiteral("PRI") : QString())             /* Key */
+          << row.value(4)                                           /* Default */
+          << (isPk && pkCols == 1 && pkIsInteger ? QStringLiteral("auto_increment") : QString())
+          << QString(); /* Comment — SQLite has no column comments */
         out.rows << r;
     }
     return out;
@@ -238,8 +244,8 @@ DbResultSet SqliteConnection::listIndexes(const QString &db, const QString &tabl
     out.headers << QStringLiteral("Table") << QStringLiteral("Non_unique")
                 << QStringLiteral("Key_name") << QStringLiteral("Seq_in_index")
                 << QStringLiteral("Column_name");
-    const auto emitRow = [&](const QString &name, const QString &unique,
-                             int seq, const QString &col) {
+    const auto emitRow = [&](const QString &name, const QString &unique, int seq,
+                             const QString &col) {
         QStringList r;
         r << table << unique << name << QString::number(seq) << col;
         out.rows << r;
@@ -254,14 +260,14 @@ DbResultSet SqliteConnection::listIndexes(const QString &db, const QString &tabl
         const bool isPk = ix.value(3) == QStringLiteral("pk");
         havePk |= isPk;
         DbResultSet ii;
-        runBuffered(pragma(db, QStringLiteral("index_info"), quoteIdent(ix.value(1))),
-                    &ii, nullptr);
+        runBuffered(pragma(db, QStringLiteral("index_info"), quoteIdent(ix.value(1))), &ii,
+                    nullptr);
         /* index_list's unique flag inverts into SHOW INDEX's Non_unique */
-        const QString nonUnique = ix.value(2) == QStringLiteral("1")
-            ? QStringLiteral("0") : QStringLiteral("1");
+        const QString nonUnique =
+            ix.value(2) == QStringLiteral("1") ? QStringLiteral("0") : QStringLiteral("1");
         for(const QStringList &c : ii.rows)
-            emitRow(isPk ? QStringLiteral("PRIMARY") : ix.value(1),
-                    nonUnique, c.value(0).toInt() + 1, c.value(2));
+            emitRow(isPk ? QStringLiteral("PRIMARY") : ix.value(1), nonUnique,
+                    c.value(0).toInt() + 1, c.value(2));
     }
 
     /* synthesize PRIMARY from the table_info pk positions when the backend
@@ -269,8 +275,7 @@ DbResultSet SqliteConnection::listIndexes(const QString &db, const QString &tabl
     if(!havePk) {
         QVector<QPair<int, QString>> pkCols;
         DbResultSet ti;
-        runBuffered(pragma(db, QStringLiteral("table_info"), quoteIdent(table)),
-                    &ti, nullptr);
+        runBuffered(pragma(db, QStringLiteral("table_info"), quoteIdent(table)), &ti, nullptr);
         for(const QStringList &row : ti.rows) {
             const int pos = row.value(5).toInt();
             if(pos > 0)
@@ -291,19 +296,17 @@ DbResultSet SqliteConnection::listIndexes(const QString &db, const QString &tabl
 DbResultSet SqliteConnection::listForeignKeys(const QString &db, const QString &table)
 {
     DbResultSet rs;
-    runBuffered(pragma(db, QStringLiteral("foreign_key_list"), quoteIdent(table)),
-                &rs, nullptr);
+    runBuffered(pragma(db, QStringLiteral("foreign_key_list"), quoteIdent(table)), &rs, nullptr);
 
     DbResultSet out;
     out.headers << QStringLiteral("CONSTRAINT_NAME") << QStringLiteral("COLUMN_NAME")
                 << QStringLiteral("REFERENCED_TABLE_NAME")
-                << QStringLiteral("REFERENCED_COLUMN_NAME")
-                << QStringLiteral("UPDATE_RULE") << QStringLiteral("DELETE_RULE");
+                << QStringLiteral("REFERENCED_COLUMN_NAME") << QStringLiteral("UPDATE_RULE")
+                << QStringLiteral("DELETE_RULE");
     for(const QStringList &row : rs.rows) {
         QStringList r;
-        r << QStringLiteral("FK_%1_%2").arg(row.value(2), row.value(0))
-          << row.value(3) << row.value(2)
-          << (row.value(4).isNull() ? QStringLiteral("NULL") : row.value(4))
+        r << QStringLiteral("FK_%1_%2").arg(row.value(2), row.value(0)) << row.value(3)
+          << row.value(2) << (row.value(4).isNull() ? QStringLiteral("NULL") : row.value(4))
           << row.value(5) << row.value(6);
         out.rows << r;
     }
@@ -314,8 +317,8 @@ QStringList SqliteConnection::listTriggers(const QString &db)
 {
     DbResultSet rs;
     QStringList out;
-    if(runBuffered(QStringLiteral("SELECT name FROM %1 WHERE type='trigger'")
-                       .arg(masterTable(db)), &rs, nullptr))
+    if(runBuffered(QStringLiteral("SELECT name FROM %1 WHERE type='trigger'").arg(masterTable(db)),
+                   &rs, nullptr))
         for(const QStringList &row : rs.rows)
             out << row.value(0);
     return out;
@@ -326,10 +329,9 @@ namespace {
 /* unquote a SQLite identifier: "x" / `x` / [x] / bare */
 QString unquoteIdent(QString s)
 {
-    if(s.size() >= 2
-       && ((s.startsWith(QLatin1Char('"')) && s.endsWith(QLatin1Char('"')))
-           || (s.startsWith(QLatin1Char('`')) && s.endsWith(QLatin1Char('`')))
-           || (s.startsWith(QLatin1Char('[')) && s.endsWith(QLatin1Char(']')))))
+    if(s.size() >= 2 && ((s.startsWith(QLatin1Char('"')) && s.endsWith(QLatin1Char('"'))) ||
+                         (s.startsWith(QLatin1Char('`')) && s.endsWith(QLatin1Char('`'))) ||
+                         (s.startsWith(QLatin1Char('[')) && s.endsWith(QLatin1Char(']')))))
         return s.mid(1, s.size() - 2);
     return s;
 }
@@ -343,8 +345,7 @@ QString unquoteIdent(QString s)
 DbResultSet SqliteConnection::listTableTriggers(const QString &db, const QString &table)
 {
     DbResultSet out;
-    out.headers << QStringLiteral("Trigger") << QStringLiteral("Timing")
-                << QStringLiteral("Event");
+    out.headers << QStringLiteral("Trigger") << QStringLiteral("Timing") << QStringLiteral("Event");
     static const QRegularExpression re(
         QStringLiteral("\\b(BEFORE|AFTER|INSTEAD\\s+OF)?\\s*"
                        "(DELETE|INSERT|UPDATE)\\s+ON\\s+"
@@ -352,8 +353,9 @@ DbResultSet SqliteConnection::listTableTriggers(const QString &db, const QString
                        "[A-Za-z_][\\w$]*)"),
         QRegularExpression::CaseInsensitiveOption);
     DbResultSet rs;
-    if(!runBuffered(QStringLiteral("SELECT name, sql FROM %1 WHERE type='trigger'")
-                        .arg(masterTable(db)), &rs, nullptr))
+    if(!runBuffered(
+           QStringLiteral("SELECT name, sql FROM %1 WHERE type='trigger'").arg(masterTable(db)),
+           &rs, nullptr))
         return out;
     for(const QStringList &row : rs.rows) {
         const auto m = re.match(row.value(1));
@@ -361,9 +363,8 @@ DbResultSet SqliteConnection::listTableTriggers(const QString &db, const QString
             continue;
         if(unquoteIdent(m.captured(3)).compare(table, Qt::CaseInsensitive) != 0)
             continue;
-        const QString timing = m.captured(1).isEmpty()
-            ? QStringLiteral("AFTER")
-            : m.captured(1).simplified().toUpper();
+        const QString timing = m.captured(1).isEmpty() ? QStringLiteral("AFTER")
+                                                       : m.captured(1).simplified().toUpper();
         QStringList r;
         r << row.value(0) << timing << m.captured(2).toUpper();
         out.rows << r;
@@ -373,26 +374,28 @@ DbResultSet SqliteConnection::listTableTriggers(const QString &db, const QString
 
 DbResultSet SqliteConnection::listRoutines(const QString &)
 {
-    return {};   /* SQLite has no stored procedures/functions */
+    return {}; /* SQLite has no stored procedures/functions */
 }
 
 QStringList SqliteConnection::listEvents(const QString &)
 {
-    return {};   /* SQLite has no scheduled events */
+    return {}; /* SQLite has no scheduled events */
 }
 
-QString SqliteConnection::showCreate(const QString &kind, const QString &db,
-                                     const QString &name, QString *error)
+QString SqliteConnection::showCreate(const QString &kind, const QString &db, const QString &name,
+                                     QString *error)
 {
     const QString k = kind.toUpper();
-    if(k != QStringLiteral("TABLE") && k != QStringLiteral("VIEW")
-       && k != QStringLiteral("TRIGGER")) {
-        if(error) *error = QStringLiteral("not supported on SQLite");
+    if(k != QStringLiteral("TABLE") && k != QStringLiteral("VIEW") &&
+       k != QStringLiteral("TRIGGER")) {
+        if(error)
+            *error = QStringLiteral("not supported on SQLite");
         return {};
     }
     DbResultSet rs;
-    const QString sql = QStringLiteral("SELECT sql FROM %1 WHERE type='%2' AND name='%3'")
-        .arg(masterTable(db), k.toLower(), QString(name).replace('\'', QStringLiteral("''")));
+    const QString sql =
+        QStringLiteral("SELECT sql FROM %1 WHERE type='%2' AND name='%3'")
+            .arg(masterTable(db), k.toLower(), QString(name).replace('\'', QStringLiteral("''")));
     if(!runBuffered(sql, &rs, error) || rs.rows.isEmpty())
         return {};
     return rs.rows.first().value(0);
@@ -400,13 +403,13 @@ QString SqliteConnection::showCreate(const QString &kind, const QString &db,
 
 QString SqliteConnection::sqlFkChecks(bool enable)
 {
-    return QStringLiteral("PRAGMA foreign_keys=%1").arg(enable ? QStringLiteral("ON")
-                                                               : QStringLiteral("OFF"));
+    return QStringLiteral("PRAGMA foreign_keys=%1")
+        .arg(enable ? QStringLiteral("ON") : QStringLiteral("OFF"));
 }
 
 QString SqliteConnection::sqlSetNames(const QString &)
 {
-    return {};   /* no connection character-set concept */
+    return {}; /* no connection character-set concept */
 }
 
 QString SqliteConnection::sqlInsertDefaults(const QString &db, const QString &table)

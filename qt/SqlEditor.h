@@ -25,30 +25,30 @@ public:
 
     /* QPlainTextEdit-compat shims */
     QString toPlainText() const;
-    void    setPlainText(const QString &text);
+    void setPlainText(const QString &text);
 
     /* caret offset in QString (UTF-16) units — the unit statementAt(),
      * SqlFormat and the ";" scanners all work in */
-    int  cursorPosition() const;
+    int cursorPosition() const;
     /* QString offset → (line, index-in-line) for setSelection() endpoints */
     void getLineIndex(int pos, int *line, int *index) const;
     void moveCursorToEnd();
 
     /* app-level editor ops wired to the Edit menu / FindBar */
     bool findText(const QString &needle, bool caseSensitive, bool backward);
-    void gotoLine(int line);                 /* 1-based */
-    void toggleLineComment(bool add);        /* prefix/strip "-- " on sel lines */
-    void copyWithNormalizedWhitespace();     /* selection → clipboard, ws runs → " " */
-    void insertFromFile();                   /* pick a file, insert at the cursor */
+    void gotoLine(int line);             /* 1-based */
+    void toggleLineComment(bool add);    /* prefix/strip "-- " on sel lines */
+    void copyWithNormalizedWhitespace(); /* selection → clipboard, ws runs → " " */
+    void insertFromFile();               /* pick a file, insert at the cursor */
 
     /* keyword + schema identifier list for autocomplete (Ctrl+Space / typing) */
-    void setCompletions(const QStringList &words);   /* generic bucket / fallback */
+    void setCompletions(const QStringList &words); /* generic bucket / fallback */
     /* clause-aware split: tables offered after FROM/JOIN/INTO/UPDATE,
      * columns after SELECT/WHERE/ON/SET/HAVING/GROUP BY/ORDER BY (and after
      * a "." qualifier). Empty buckets fall back to the generic list. */
     void setSchema(const QStringList &tables, const QStringList &columns);
-    void triggerCompletion();               /* force the popup now */
-    int  completionCountForTest() const;    /* selftest only */
+    void triggerCompletion();           /* force the popup now */
+    int completionCountForTest() const; /* selftest only */
 
 protected:
     void keyPressEvent(QKeyEvent *event) override;
@@ -64,9 +64,9 @@ private:
     void insertCompletion(const QString &word);
     void reskin();
 
-    QStringList m_generic;    /* setCompletions() — fallback bucket */
-    QStringList m_tables;     /* setSchema() tables */
-    QStringList m_columns;    /* setSchema() columns */
+    QStringList m_generic; /* setCompletions() — fallback bucket */
+    QStringList m_tables;  /* setSchema() tables */
+    QStringList m_columns; /* setSchema() columns */
     int m_lastCompletionCount = 0;
     /* popup context: the partial word being completed (line, index, length) */
     int m_ctxLine = 0, m_ctxIndex = 0, m_ctxPrefixLen = 0;

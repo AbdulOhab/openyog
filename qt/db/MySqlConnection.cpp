@@ -1,12 +1,9 @@
 #include "MySqlConnection.h"
 
-MySqlConnection::MySqlConnection(MYSQL *conn, const QString &host, int port,
-                                 const QString &user, const QString &password,
-                                 bool owns)
-    : m_conn(conn), m_owns(owns), m_host(host), m_user(user),
-      m_password(password), m_port(port)
-{
-}
+MySqlConnection::MySqlConnection(MYSQL *conn, const QString &host, int port, const QString &user,
+                                 const QString &password, bool owns)
+    : m_conn(conn), m_owns(owns), m_host(host), m_user(user), m_password(password), m_port(port)
+{}
 
 MySqlConnection::~MySqlConnection()
 {
@@ -18,7 +15,7 @@ void MySqlConnection::cancel()
 {
     if(!m_conn)
         return;
-    const unsigned long id = mysql_thread_id(m_conn);   /* safe to read concurrently */
+    const unsigned long id = mysql_thread_id(m_conn); /* safe to read concurrently */
     /* the busy connection can't process KILL QUERY itself — open a
      * throwaway one just to send it, matching mysql's own "mysqladmin
      * kill"/Ctrl+C behavior */
@@ -37,16 +34,18 @@ bool MySqlConnection::runBuffered(const QString &sql, DbResultSet *out, QString 
 {
     const QByteArray utf8 = sql.toUtf8();
     if(mysql_query(m_conn, utf8.constData()) != 0) {
-        if(error) *error = QString::fromUtf8(mysql_error(m_conn));
+        if(error)
+            *error = QString::fromUtf8(mysql_error(m_conn));
         return false;
     }
     MYSQL_RES *res = mysql_store_result(m_conn);
     if(!res) {
         if(mysql_field_count(m_conn) != 0) {
-            if(error) *error = QString::fromUtf8(mysql_error(m_conn));
+            if(error)
+                *error = QString::fromUtf8(mysql_error(m_conn));
             return false;
         }
-        return true;   /* statement had no result set (DDL/DML) */
+        return true; /* statement had no result set (DDL/DML) */
     }
     if(out) {
         const unsigned int n = mysql_num_fields(res);
@@ -72,26 +71,27 @@ bool MySqlConnection::query(const QString &sql, DbResultSet *result, QString *me
         return false;
     if(message) {
         *message = target->headers.isEmpty()
-            ? QStringLiteral("OK, %1 row(s) affected").arg(affectedRows())
-            : QStringLiteral("%1 row(s) in result set").arg(target->rows.size());
+                       ? QStringLiteral("OK, %1 row(s) affected").arg(affectedRows())
+                       : QStringLiteral("%1 row(s) in result set").arg(target->rows.size());
     }
     return true;
 }
 
-bool MySqlConnection::streamQuery(
-    const QString &sql, QString *error,
-    const std::function<void(const QStringList &headers)> &onHeaders,
-    const std::function<bool(const QVector<QByteArray> &fields,
-                              const QVector<bool> &isNull)> &onRow)
+bool MySqlConnection::streamQuery(const QString &sql, QString *error,
+                                  const std::function<void(const QStringList &headers)> &onHeaders,
+                                  const std::function<bool(const QVector<QByteArray> &fields,
+                                                           const QVector<bool> &isNull)> &onRow)
 {
     const QByteArray utf8 = sql.toUtf8();
     if(mysql_query(m_conn, utf8.constData()) != 0) {
-        if(error) *error = QString::fromUtf8(mysql_error(m_conn));
+        if(error)
+            *error = QString::fromUtf8(mysql_error(m_conn));
         return false;
     }
     MYSQL_RES *res = mysql_use_result(m_conn);
     if(!res) {
-        if(error) *error = QString::fromUtf8(mysql_error(m_conn));
+        if(error)
+            *error = QString::fromUtf8(mysql_error(m_conn));
         return false;
     }
     const unsigned int n = mysql_num_fields(res);
@@ -122,21 +122,30 @@ bool MySqlConnection::streamQuery(
 QByteArray MySqlConnection::escape(const QByteArray &raw)
 {
     QByteArray esc(raw.size() * 2 + 1, '\0');
-    const unsigned long n = mysql_real_escape_string(m_conn, esc.data(), raw.constData(),
-                                                      (unsigned long)raw.size());
+    const unsigned long n =
+        mysql_real_escape_string(m_conn, esc.data(), raw.constData(), (unsigned long)raw.size());
     esc.resize(int(n));
     return esc;
 }
 
 QString MySqlConnection::quoteIdent(const QString &ident)
 {
-    return QLatin1Char('`') + QString(ident).replace(QLatin1Char('`'), QStringLiteral("``"))
-         + QLatin1Char('`');
+    return QLatin1Char('`') + QString(ident).replace(QLatin1Char('`'), QStringLiteral("``")) +
+           QLatin1Char('`');
 }
 
-QString MySqlConnection::lastError() { return QString::fromUtf8(mysql_error(m_conn)); }
-qint64  MySqlConnection::affectedRows() { return (qint64)mysql_affected_rows(m_conn); }
-QString MySqlConnection::serverInfo() { return QString::fromUtf8(mysql_get_server_info(m_conn)); }
+QString MySqlConnection::lastError()
+{
+    return QString::fromUtf8(mysql_error(m_conn));
+}
+qint64 MySqlConnection::affectedRows()
+{
+    return (qint64)mysql_affected_rows(m_conn);
+}
+QString MySqlConnection::serverInfo()
+{
+    return QString::fromUtf8(mysql_get_server_info(m_conn));
+}
 QString MySqlConnection::info()
 {
     const char *i = mysql_info(m_conn);
@@ -173,17 +182,16 @@ DbResultSet MySqlConnection::listColumns(const QString &db, const QString &table
      * canonical Field/Type/Null/Key/Default/Extra/Comment order (drops
      * Collation/Privileges, moves Comment to the end at index 6). */
     DbResultSet full;
-    runBuffered(QStringLiteral("SHOW FULL COLUMNS FROM %1.%2")
-                    .arg(quoteIdent(db), quoteIdent(table)), &full, nullptr);
+    runBuffered(
+        QStringLiteral("SHOW FULL COLUMNS FROM %1.%2").arg(quoteIdent(db), quoteIdent(table)),
+        &full, nullptr);
     DbResultSet rs;
-    rs.headers << QStringLiteral("Field") << QStringLiteral("Type")
-               << QStringLiteral("Null") << QStringLiteral("Key")
-               << QStringLiteral("Default") << QStringLiteral("Extra")
+    rs.headers << QStringLiteral("Field") << QStringLiteral("Type") << QStringLiteral("Null")
+               << QStringLiteral("Key") << QStringLiteral("Default") << QStringLiteral("Extra")
                << QStringLiteral("Comment");
     for(const QStringList &row : full.rows)
-        rs.rows << (QStringList()
-            << row.value(0) << row.value(1) << row.value(3) << row.value(4)
-            << row.value(5) << row.value(6) << row.value(8));
+        rs.rows << (QStringList() << row.value(0) << row.value(1) << row.value(3) << row.value(4)
+                                  << row.value(5) << row.value(6) << row.value(8));
     return rs;
 }
 
@@ -193,10 +201,10 @@ QStringList MySqlConnection::listAllColumnNames(const QString &db)
 {
     DbResultSet rs;
     QStringList out;
-    if(runBuffered(QStringLiteral(
-           "SELECT DISTINCT column_name FROM information_schema.columns "
-           "WHERE table_schema='%1' ORDER BY column_name")
-               .arg(db), &rs, nullptr))
+    if(runBuffered(QStringLiteral("SELECT DISTINCT column_name FROM information_schema.columns "
+                                  "WHERE table_schema='%1' ORDER BY column_name")
+                       .arg(db),
+                   &rs, nullptr))
         for(const QStringList &row : rs.rows)
             out << row.value(0);
     return out;
@@ -205,26 +213,26 @@ QStringList MySqlConnection::listAllColumnNames(const QString &db)
 DbResultSet MySqlConnection::listIndexes(const QString &db, const QString &table)
 {
     DbResultSet rs;
-    runBuffered(QStringLiteral("SHOW INDEX FROM %1.%2")
-                    .arg(quoteIdent(db), quoteIdent(table)), &rs, nullptr);
+    runBuffered(QStringLiteral("SHOW INDEX FROM %1.%2").arg(quoteIdent(db), quoteIdent(table)), &rs,
+                nullptr);
     return rs;
 }
 
 DbResultSet MySqlConnection::listForeignKeys(const QString &db, const QString &table)
 {
     DbResultSet rs;
-    runBuffered(QStringLiteral(
-        "SELECT k.CONSTRAINT_NAME, k.COLUMN_NAME, k.REFERENCED_TABLE_NAME, "
-        "k.REFERENCED_COLUMN_NAME, r.UPDATE_RULE, r.DELETE_RULE "
-        "FROM information_schema.KEY_COLUMN_USAGE k "
-        "JOIN information_schema.REFERENTIAL_CONSTRAINTS r "
-        "  ON r.CONSTRAINT_SCHEMA=k.CONSTRAINT_SCHEMA "
-        " AND r.CONSTRAINT_NAME=k.CONSTRAINT_NAME "
-        "WHERE k.TABLE_SCHEMA='%1' AND k.TABLE_NAME='%2' "
-        "  AND k.REFERENCED_TABLE_NAME IS NOT NULL "
-        "ORDER BY k.CONSTRAINT_NAME, k.ORDINAL_POSITION")
-            .arg(QString(db).replace('\'', QStringLiteral("''")),
-                 QString(table).replace('\'', QStringLiteral("''"))), &rs, nullptr);
+    runBuffered(QStringLiteral("SELECT k.CONSTRAINT_NAME, k.COLUMN_NAME, k.REFERENCED_TABLE_NAME, "
+                               "k.REFERENCED_COLUMN_NAME, r.UPDATE_RULE, r.DELETE_RULE "
+                               "FROM information_schema.KEY_COLUMN_USAGE k "
+                               "JOIN information_schema.REFERENTIAL_CONSTRAINTS r "
+                               "  ON r.CONSTRAINT_SCHEMA=k.CONSTRAINT_SCHEMA "
+                               " AND r.CONSTRAINT_NAME=k.CONSTRAINT_NAME "
+                               "WHERE k.TABLE_SCHEMA='%1' AND k.TABLE_NAME='%2' "
+                               "  AND k.REFERENCED_TABLE_NAME IS NOT NULL "
+                               "ORDER BY k.CONSTRAINT_NAME, k.ORDINAL_POSITION")
+                    .arg(QString(db).replace('\'', QStringLiteral("''")),
+                         QString(table).replace('\'', QStringLiteral("''"))),
+                &rs, nullptr);
     return rs;
 }
 
@@ -244,24 +252,22 @@ DbResultSet MySqlConnection::listTableTriggers(const QString &db, const QString 
     /* canonical shape: Trigger(0) Timing(1) Event(2) — SHOW TRIGGERS keeps
      * Timing in col 4 and Event in col 1 */
     runBuffered(QStringLiteral("SHOW TRIGGERS FROM %1 WHERE `Table`='%2'")
-                    .arg(quoteIdent(db),
-                         QString(table).replace('\'', QStringLiteral("''"))),
+                    .arg(quoteIdent(db), QString(table).replace('\'', QStringLiteral("''"))),
                 &rs, nullptr);
     DbResultSet out;
-    out.headers << QStringLiteral("Trigger") << QStringLiteral("Timing")
-                << QStringLiteral("Event");
+    out.headers << QStringLiteral("Trigger") << QStringLiteral("Timing") << QStringLiteral("Event");
     for(const QStringList &row : rs.rows)
-        out.rows << QStringList{ row.value(0), row.value(4), row.value(1) };
+        out.rows << QStringList{row.value(0), row.value(4), row.value(1)};
     return out;
 }
 
 DbResultSet MySqlConnection::listRoutines(const QString &db)
 {
     DbResultSet rs;
-    runBuffered(QStringLiteral(
-        "SELECT ROUTINE_NAME, ROUTINE_TYPE FROM information_schema.ROUTINES "
-        "WHERE ROUTINE_SCHEMA='%1'")
-            .arg(QString(db).replace('\'', QStringLiteral("''"))), &rs, nullptr);
+    runBuffered(QStringLiteral("SELECT ROUTINE_NAME, ROUTINE_TYPE FROM information_schema.ROUTINES "
+                               "WHERE ROUTINE_SCHEMA='%1'")
+                    .arg(QString(db).replace('\'', QStringLiteral("''"))),
+                &rs, nullptr);
     return rs;
 }
 
@@ -271,22 +277,23 @@ QStringList MySqlConnection::listEvents(const QString &db)
     QStringList out;
     if(runBuffered(QStringLiteral("SHOW EVENTS FROM %1").arg(quoteIdent(db)), &rs, nullptr))
         for(const QStringList &row : rs.rows)
-            out << row.value(1);   /* col 1 = Name */
+            out << row.value(1); /* col 1 = Name */
     return out;
 }
 
-QString MySqlConnection::showCreate(const QString &kind, const QString &db,
-                                    const QString &name, QString *error)
+QString MySqlConnection::showCreate(const QString &kind, const QString &db, const QString &name,
+                                    QString *error)
 {
     DbResultSet rs;
-    if(!runBuffered(QStringLiteral("SHOW CREATE %1 %2.%3")
-                         .arg(kind, quoteIdent(db), quoteIdent(name)), &rs, error))
+    if(!runBuffered(
+           QStringLiteral("SHOW CREATE %1 %2.%3").arg(kind, quoteIdent(db), quoteIdent(name)), &rs,
+           error))
         return {};
     if(rs.rows.isEmpty())
         return {};
     /* column holding the DDL text varies by object kind (matches the
      * convention in qt/SchemaSql.h's showCreateColumn, plus TABLE here) */
-    int col = 2;   /* PROCEDURE / FUNCTION / TRIGGER */
+    int col = 2; /* PROCEDURE / FUNCTION / TRIGGER */
     if(kind == QStringLiteral("TABLE") || kind == QStringLiteral("VIEW"))
         col = 1;
     else if(kind == QStringLiteral("EVENT"))

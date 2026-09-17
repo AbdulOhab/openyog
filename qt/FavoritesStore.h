@@ -7,21 +7,20 @@
 #include <QString>
 #include <QStringList>
 
-namespace FavoritesStore
-{
-    /* Names of all saved favorites, in the order the file lists them. */
-    QStringList names();
+namespace FavoritesStore {
+/* Names of all saved favorites, in the order the file lists them. */
+QStringList names();
 
-    /* Returns the saved SQL text for `name`, or an empty string if absent. */
-    QString get(const QString &name);
+/* Returns the saved SQL text for `name`, or an empty string if absent. */
+QString get(const QString &name);
 
-    /* Writes (replaces) one favorite. */
-    void save(const QString &name, const QString &sql);
+/* Writes (replaces) one favorite. */
+void save(const QString &name, const QString &sql);
 
-    /* Deletes one favorite. No-op if it doesn't exist. */
-    void remove(const QString &name);
+/* Deletes one favorite. No-op if it doesn't exist. */
+void remove(const QString &name);
 
-    /* Renames a favorite (load → save under newName → remove old).
-     * Returns false if `oldName` doesn't exist or `newName` is empty. */
-    bool rename(const QString &oldName, const QString &newName);
-}
+/* Renames a favorite (load → save under newName → remove old).
+ * Returns false if `oldName` doesn't exist or `newName` is empty. */
+bool rename(const QString &oldName, const QString &newName);
+} // namespace FavoritesStore

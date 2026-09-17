@@ -1,7 +1,7 @@
 #include "ConnectionStore.h"
 
 #include "wyIni.h"
-#include "CommonHelper.h"   /* EncodeBase64/DecodeBase64 + wyString (port shim) */
+#include "CommonHelper.h" /* EncodeBase64/DecodeBase64 + wyString (port shim) */
 
 #include <QDir>
 #include <QFile>
@@ -15,7 +15,10 @@ static QString iniPath()
     return dir.filePath("connections.ini");
 }
 
-static QByteArray toUtf8(const QString &s) { return s.toUtf8(); }
+static QByteArray toUtf8(const QString &s)
+{
+    return s.toUtf8();
+}
 
 bool ConnectionStore::load(const QString &name, ConnectionParams *out)
 {
@@ -33,8 +36,8 @@ bool ConnectionStore::load(const QString &name, ConnectionParams *out)
         if(filePath.isEmpty())
             return false;
         out->driverType = DriverType::Sqlite;
-        out->filePath   = filePath;
-        out->name       = name;
+        out->filePath = filePath;
+        out->name = name;
         return true;
     }
 
@@ -42,12 +45,12 @@ bool ConnectionStore::load(const QString &name, ConnectionParams *out)
        value.GetLength() == 0)
         return false;
 
-    out->name       = name;
-    out->driverType = driver;   /* Mysql or Postgres — same field shape */
-    out->host  = value.GetString();
+    out->name = name;
+    out->driverType = driver; /* Mysql or Postgres — same field shape */
+    out->host = value.GetString();
 
     wyIni::IniGetString(n, "user", "", &value, iniPath().toUtf8());
-    out->user  = value.GetString();
+    out->user = value.GetString();
     wyIni::IniGetString(n, "database", "", &value, iniPath().toUtf8());
     out->database = value.GetString();
     out->port = wyIni::IniGetInt(n, "port", driver == DriverType::Postgres ? 5432 : 3306,
@@ -90,10 +93,10 @@ void ConnectionStore::save(const ConnectionParams &params)
         return;
     }
 
-    wyIni::IniWriteString(n, "host",     toUtf8(params.host),     p);
-    wyIni::IniWriteString(n, "user",     toUtf8(params.user),     p);
+    wyIni::IniWriteString(n, "host", toUtf8(params.host), p);
+    wyIni::IniWriteString(n, "user", toUtf8(params.user), p);
     wyIni::IniWriteString(n, "database", toUtf8(params.database), p);
-    wyIni::IniWriteInt   (n, "port",     params.port,             p);
+    wyIni::IniWriteInt(n, "port", params.port, p);
 
     wyChar *b64 = NULL;
     const QByteArray pw = toUtf8(params.password);
@@ -101,10 +104,10 @@ void ConnectionStore::save(const ConnectionParams &params)
     wyIni::IniWriteString(n, "password", b64 ? b64 : "", p);
     free(b64);
 
-    wyIni::IniWriteInt   (n, "use_ssl",  params.useSsl ? 1 : 0, p);
-    wyIni::IniWriteString(n, "ssl_ca",   toUtf8(params.sslCa),   p);
+    wyIni::IniWriteInt(n, "use_ssl", params.useSsl ? 1 : 0, p);
+    wyIni::IniWriteString(n, "ssl_ca", toUtf8(params.sslCa), p);
     wyIni::IniWriteString(n, "ssl_cert", toUtf8(params.sslCert), p);
-    wyIni::IniWriteString(n, "ssl_key",  toUtf8(params.sslKey),  p);
+    wyIni::IniWriteString(n, "ssl_key", toUtf8(params.sslKey), p);
 
     wyIni::IniWriteInt(n, "compress", params.compress ? 1 : 0, p);
     wyIni::IniWriteInt(n, "idle_timeout_secs", params.idleTimeoutSecs, p);

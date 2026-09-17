@@ -20,15 +20,14 @@ QStringList splitStatements(const QString &sql)
             static const QRegularExpression re(
                 QStringLiteral("[ \\t]*DELIMITER[ \\t]+(\\S+)[ \\t]*(\\r?\\n|$)"),
                 QRegularExpression::CaseInsensitiveOption);
-            const auto m = re.match(sql, i,
-                                    QRegularExpression::NormalMatch,
+            const auto m = re.match(sql, i, QRegularExpression::NormalMatch,
                                     QRegularExpression::AnchorAtOffsetMatchOption);
             if(m.hasMatch()) {
                 if(!cur.trimmed().isEmpty())
                     out << cur.trimmed();
                 cur.clear();
                 delim = m.captured(1);
-                i = m.capturedEnd(0) - 1;    /* skip the whole line */
+                i = m.capturedEnd(0) - 1; /* skip the whole line */
                 atLineStart = true;
                 continue;
             }

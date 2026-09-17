@@ -46,7 +46,7 @@ FindBar::FindBar(std::function<SqlEditor *()> editorAccessor, QWidget *parent)
 
     connect(m_field, &QLineEdit::textChanged, this, [this] {
         updateCount();
-        findNext(false);          /* incremental */
+        findNext(false); /* incremental */
     });
     connect(m_field, &QLineEdit::returnPressed, this, [this] { findNext(false); });
     connect(prev, &QToolButton::clicked, this, [this] { findNext(true); });
@@ -57,7 +57,8 @@ FindBar::FindBar(std::function<SqlEditor *()> editorAccessor, QWidget *parent)
     });
     connect(close, &QToolButton::clicked, this, [this] {
         hide();
-        if(auto *e = m_editor()) e->setFocus();
+        if(auto *e = m_editor())
+            e->setFocus();
     });
 
     hide();
@@ -83,8 +84,7 @@ void FindBar::findNext(bool backward)
     if(!e || needle.isEmpty())
         return;
     const bool found = e->findText(needle, m_case->isChecked(), backward);
-    m_field->setStyleSheet(found ? QString()
-                                 : QStringLiteral("background:#F8D7DA;"));
+    m_field->setStyleSheet(found ? QString() : QStringLiteral("background:#F8D7DA;"));
 }
 
 void FindBar::updateCount()
@@ -95,8 +95,8 @@ void FindBar::updateCount()
         m_count->clear();
         return;
     }
-    const int n = e->toPlainText().count(
-        needle, m_case->isChecked() ? Qt::CaseSensitive : Qt::CaseInsensitive);
+    const int n = e->toPlainText().count(needle, m_case->isChecked() ? Qt::CaseSensitive
+                                                                     : Qt::CaseInsensitive);
     m_count->setText(n ? QStringLiteral("%1 match%2").arg(n).arg(n == 1 ? "" : "es")
                        : QStringLiteral("no matches"));
 }
@@ -105,11 +105,12 @@ void FindBar::keyPressEvent(QKeyEvent *e)
 {
     if(e->key() == Qt::Key_Escape) {
         hide();
-        if(auto *ed = m_editor()) ed->setFocus();
+        if(auto *ed = m_editor())
+            ed->setFocus();
         return;
     }
-    if((e->key() == Qt::Key_Return || e->key() == Qt::Key_Enter)
-       && (e->modifiers() & Qt::ShiftModifier)) {
+    if((e->key() == Qt::Key_Return || e->key() == Qt::Key_Enter) &&
+       (e->modifiers() & Qt::ShiftModifier)) {
         findNext(true);
         return;
     }
