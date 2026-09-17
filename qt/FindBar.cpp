@@ -1,5 +1,5 @@
 #include "FindBar.h"
-#include "CodeEditor.h"
+#include "SqlEditor.h"
 
 #include <QHBoxLayout>
 #include <QKeyEvent>
@@ -7,7 +7,7 @@
 #include <QLineEdit>
 #include <QToolButton>
 
-FindBar::FindBar(std::function<CodeEditor *()> editorAccessor, QWidget *parent)
+FindBar::FindBar(std::function<SqlEditor *()> editorAccessor, QWidget *parent)
     : QWidget(parent), m_editor(std::move(editorAccessor))
 {
     m_field = new QLineEdit(this);
@@ -66,7 +66,7 @@ FindBar::FindBar(std::function<CodeEditor *()> editorAccessor, QWidget *parent)
 void FindBar::activate()
 {
     if(auto *e = m_editor()) {
-        const QString sel = e->textCursor().selectedText();
+        const QString sel = (e->hasSelectedText() ? e->selectedText() : QString());
         if(!sel.isEmpty() && !sel.contains(QChar::ParagraphSeparator))
             m_field->setText(sel);
     }

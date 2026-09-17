@@ -10,7 +10,7 @@
 #pragma once
 
 #include "ConnectionParams.h"
-#include "CodeEditor.h"
+#include "SqlEditor.h"
 #include "QueryModel.h"
 
 #include <QComboBox>
@@ -251,7 +251,7 @@ public slots:
     void wireResultGrid(QTableView *grid);   /* right-click menu on a result grid */
     /* new editor tab pre-filled with `sql` and titled `title` (schema-object
      * editors open here, like SQLyog, instead of a modal dialog) */
-    CodeEditor *openEditorWithSql(const QString &title, const QString &sql);
+    SqlEditor *openEditorWithSql(const QString &title, const QString &sql);
     void openTableData(const QString &db, const QString &table);
     void setDataViewMode(const QString &mode);   /* selftest: "text" | "grid" */
     void editTableCell(int row, int col, const QString &value, bool stageOnly = false);
@@ -313,7 +313,7 @@ private:
     TableDataView    * m_tableData  = nullptr;
     QComboBox        * m_limitCombo = nullptr;
     QTabWidget       * m_editorTabs = nullptr;
-    CodeEditor       * m_editor     = nullptr;
+    SqlEditor        * m_editor     = nullptr;
     QWidget          * m_historyPage = nullptr;
     class QTextBrowser * m_history  = nullptr;
     class QLineEdit  * m_historySearch = nullptr;
@@ -375,6 +375,6 @@ private:
 
     /* selected table in the browser: [db, table] or empty */
     QStringList currentTableInfo() const;
-    CodeEditor  *currentEditor() const;
-    void attachEditor(CodeEditor *ed, const QString &title);
+    SqlEditor  *currentEditor() const;
+    void attachEditor(SqlEditor *ed, const QString &title);
 };

@@ -1,13 +1,13 @@
 /* OpenYog — inline find bar for the query editor (Ctrl+F).
  * A slim strip under the editor: field + prev/next + case toggle + match
- * count + close. Operates on whatever CodeEditor the accessor returns, so it
+ * count + close. Operates on whatever SqlEditor the accessor returns, so it
  * follows the active Query tab. Esc (or the ✕) hides it and returns focus. */
 #pragma once
 
 #include <QWidget>
 #include <functional>
 
-class CodeEditor;
+class SqlEditor;
 class QLabel;
 class QLineEdit;
 class QToolButton;
@@ -16,7 +16,7 @@ class FindBar : public QWidget
 {
     Q_OBJECT
 public:
-    explicit FindBar(std::function<CodeEditor *()> editorAccessor,
+    explicit FindBar(std::function<SqlEditor *()> editorAccessor,
                      QWidget *parent = nullptr);
 
     void activate();          /* show, prefill from selection, focus the field */
@@ -28,7 +28,7 @@ protected:
 private:
     void updateCount();
 
-    std::function<CodeEditor *()> m_editor;
+    std::function<SqlEditor *()> m_editor;
     QLineEdit   *m_field = nullptr;
     QToolButton *m_case  = nullptr;
     QLabel      *m_count = nullptr;

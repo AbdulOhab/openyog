@@ -1,7 +1,7 @@
 #include "ConnectionTab.h"
 #include "ObjectBrowser.h"
 #include "TableDataView.h"
-#include "SqlHighlighter.h"
+
 #include "CreateTableDialog.h"
 #include "ExportDialog.h"
 #include "ResultExport.h"
@@ -353,7 +353,7 @@ ConnectionTab::ConnectionTab(const ConnectionParams &params, QWidget *parent)
             &ConnectionTab::switchDatabase);
 
     /* ---- right-top: editor tabs (Query 1 / History) --------------- */
-    m_editor = new CodeEditor(this);
+    m_editor = new SqlEditor(this);
     m_editor->setPlainText(
         m_params.driverType == DriverType::Sqlite
             ? QStringLiteral("SELECT sqlite_version();\nSELECT name FROM sqlite_master;")
@@ -656,24 +656,24 @@ ConnectionTab::~ConnectionTab()
     delete m_conn;
 }
 
-CodeEditor *ConnectionTab::currentEditor() const
+SqlEditor *ConnectionTab::currentEditor() const
 {
-    if(auto *ed = qobject_cast<CodeEditor *>(m_editorTabs->currentWidget()))
+    if(auto *ed = qobject_cast<SqlEditor *>(m_editorTabs->currentWidget()))
         return ed;
     /* current tab isn't an editor (e.g. History) — fall back to any editor */
     for(int i = 0; i < m_editorTabs->count(); ++i)
-        if(auto *ed = qobject_cast<CodeEditor *>(m_editorTabs->widget(i)))
+        if(auto *ed = qobject_cast<SqlEditor *>(m_editorTabs->widget(i)))
             return ed;
     return nullptr;
 }
 
-void ConnectionTab::attachEditor(CodeEditor *ed, const QString &title)
+void ConnectionTab::attachEditor(SqlEditor *ed, const QString &title)
 {
-    new SqlHighlighter(ed->document());
-    connect(ed, &QPlainTextEdit::cursorPositionChanged, this, [this, ed] {
-        const QTextCursor c = ed->textCursor();
+    connect(ed, &QsciScintilla::cursorPositionChanged, this, [this, ed] {
+        int line = 0, index = 0;
+        ed->getCursorPosition(&line, &index);
         emit cursorMoved(QStringLiteral("Ln %1, Col %2")
-                             .arg(c.blockNumber() + 1).arg(c.positionInBlock() + 1));
+                             .arg(line + 1).arg(index + 1));
     });
     ed->setCompletions(m_completions);
     ed->setSchema(m_tableNames, m_columnNames);
@@ -825,7 +825,7 @@ void ConnectionTab::updateCompletions()
         m_completions = QStringList(all.cbegin(), all.cend());
     }
     for(int i = 0; i < m_editorTabs->count(); ++i)
-        if(auto *ed = qobject_cast<CodeEditor *>(m_editorTabs->widget(i))) {
+        if(auto *ed = qobject_cast<SqlEditor *>(m_editorTabs->widget(i))) {
             ed->setCompletions(m_completions);
             ed->setSchema(m_tableNames, m_columnNames);
         }
@@ -863,7 +863,7 @@ void ConnectionTab::closeEditorTab(int index)
     /* keep at least one query editor open */
     bool haveEditor = false;
     for(int i = 0; i < m_editorTabs->count(); ++i)
-        if(qobject_cast<CodeEditor *>(m_editorTabs->widget(i)))
+        if(qobject_cast<SqlEditor *>(m_editorTabs->widget(i)))
             haveEditor = true;
     if(!haveEditor)
         addEditorTab();
@@ -889,13 +889,13 @@ void ConnectionTab::closeResultTab(int index)
 
 void ConnectionTab::editorCopyNormalizedWhitespace()
 {
-    if(CodeEditor *ed = currentEditor())
+    if(SqlEditor *ed = currentEditor())
         ed->copyWithNormalizedWhitespace();
 }
 
 void ConnectionTab::editorInsertFromFile()
 {
-    if(CodeEditor *ed = currentEditor())
+    if(SqlEditor *ed = currentEditor())
         ed->insertFromFile();
 }
 
@@ -938,10 +938,10 @@ void ConnectionTab::dumpTable(const QString &database, const QString &table)
     m_resultTabs->setCurrentWidget(m_messages);
 }
 
-CodeEditor *ConnectionTab::openEditorWithSql(const QString &title,
+SqlEditor *ConnectionTab::openEditorWithSql(const QString &title,
                                              const QString &sql)
 {
-    auto *ed = new CodeEditor(this);
+    auto *ed = new SqlEditor(this);
     attachEditor(ed, {});
     if(!sql.isEmpty())
         ed->setPlainText(sql);
@@ -977,9 +977,7 @@ void ConnectionTab::sendHistoryToEditor(const QString &sql)
                      + (sql.trimmed().endsWith(';') ? QString()
                                                     : QStringLiteral(";"))
                      + QLatin1Char('\n'));
-    QTextCursor c = ed->textCursor();
-    c.movePosition(QTextCursor::End);
-    ed->setTextCursor(c);
+    ed->moveCursorToEnd();
     m_editorTabs->setCurrentWidget(ed);
     ed->setFocus();
 }
@@ -1054,11 +1052,11 @@ void ConnectionTab::clearHistory()
 
 void ConnectionTab::addCurrentToFavorites()
 {
-    CodeEditor *ed = currentEditor();
+    SqlEditor *ed = currentEditor();
     if(!ed)
         return;
-    QString sql = ed->textCursor().hasSelection()
-        ? ed->textCursor().selectedText().replace(QChar(0x2029), QLatin1Char('\n'))
+    QString sql = ed->hasSelectedText()
+        ? ed->selectedText()
         : ed->toPlainText();
     sql = sql.trimmed();
     if(sql.isEmpty()) {
@@ -1146,20 +1144,19 @@ void ConnectionTab::organizeFavorites()
 /* F9 — run the selected text, or the statement under the cursor */
 void ConnectionTab::runQuery()
 {
-    CodeEditor *ed = currentEditor();
+    SqlEditor *ed = currentEditor();
     if(!ed)
         return;
-    const QTextCursor c = ed->textCursor();
-    const QString sql = c.hasSelection()
-        ? c.selectedText().replace(QChar(0x2029), QLatin1Char('\n'))
-        : statementAt(ed->toPlainText(), c.position());
+    const QString sql = ed->hasSelectedText()
+        ? ed->selectedText()
+        : statementAt(ed->toPlainText(), ed->cursorPosition());
     runStatements(splitStatements(sql), QStringLiteral("Execute Query"));
 }
 
 /* Ctrl+F9 — run the whole editor */
 void ConnectionTab::runAll()
 {
-    if(CodeEditor *ed = currentEditor())
+    if(SqlEditor *ed = currentEditor())
         runStatements(splitStatements(ed->toPlainText()), QStringLiteral("Execute Query"));
 }
 
@@ -1167,13 +1164,12 @@ void ConnectionTab::runAll()
  * table in the editable Table Data pane */
 void ConnectionTab::runAndEdit()
 {
-    CodeEditor *ed = currentEditor();
+    SqlEditor *ed = currentEditor();
     if(!ed)
         return;
-    const QTextCursor c = ed->textCursor();
-    const QString stmt = (c.hasSelection()
-        ? c.selectedText().replace(QChar(0x2029), QLatin1Char('\n'))
-        : statementAt(ed->toPlainText(), c.position())).trimmed();
+    const QString stmt = (ed->hasSelectedText()
+        ? ed->selectedText()
+        : statementAt(ed->toPlainText(), ed->cursorPosition())).trimmed();
 
     static const QRegularExpression re(
         QStringLiteral("^SELECT\\b.*\\bFROM\\s+`?([A-Za-z0-9_$]+)`?"
@@ -1211,13 +1207,12 @@ void ConnectionTab::runAndEdit()
  * all, so that combination is guarded instead of sent as broken SQL. */
 void ConnectionTab::explainCurrent(bool json)
 {
-    CodeEditor *ed = currentEditor();
+    SqlEditor *ed = currentEditor();
     if(!ed)
         return;
-    const QTextCursor c = ed->textCursor();
-    QString stmt = c.hasSelection()
-        ? c.selectedText().replace(QChar(0x2029), QLatin1Char('\n'))
-        : statementAt(ed->toPlainText(), c.position());
+    QString stmt = ed->hasSelectedText()
+        ? ed->selectedText()
+        : statementAt(ed->toPlainText(), ed->cursorPosition());
     stmt = stmt.trimmed();
     while(stmt.endsWith(QLatin1Char(';')))
         stmt.chop(1);
@@ -1246,11 +1241,11 @@ void ConnectionTab::explainCurrent(bool json)
  * --screenshot= pass to capture. Threaded, like every real run. */
 void ConnectionTab::selftestExplain(const QString &mode)
 {
-    CodeEditor *ed = currentEditor();
+    SqlEditor *ed = currentEditor();
     if(!ed)
         return;
     ed->setPlainText(QStringLiteral("SELECT 1"));
-    ed->moveCursor(QTextCursor::End);
+    ed->moveCursorToEnd();
     explainCurrent(mode == QLatin1String("json"));
 }
 
@@ -1648,9 +1643,8 @@ void ConnectionTab::promptReplace()
         return;
     }
     text.replace(from, to);
-    QTextCursor c = ed->textCursor();
-    c.select(QTextCursor::Document);
-    c.insertText(text);
+    ed->selectAll();
+    ed->replaceSelectedText(text);
     emit executed(QStringLiteral("Replaced %1 occurrence(s)").arg(n));
 }
 
@@ -1660,10 +1654,11 @@ void ConnectionTab::promptGoto()
     if(!ed)
         return;
     bool ok = false;
+    int curLine = 0, curIndex = 0;
+    ed->getCursorPosition(&curLine, &curIndex);
     const int line = QInputDialog::getInt(
         this, QStringLiteral("Go To Line"), QStringLiteral("Line number:"),
-        ed->textCursor().blockNumber() + 1, 1,
-        ed->document()->blockCount(), 1, &ok);
+        curLine + 1, 1, ed->lines(), 1, &ok);
     if(ok)
         ed->gotoLine(line);
 }
@@ -1687,31 +1682,29 @@ void ConnectionTab::formatQuery(int scope)
     auto *ed = currentEditor();
     if(!ed)
         return;
-    QTextCursor c = ed->textCursor();
-
     if(scope == 2) {                                   /* whole editor */
-        const QString f = SqlFormat::pretty(ed->toPlainText());
-        c.select(QTextCursor::Document);
-        c.insertText(f);
+        ed->selectAll();
+        ed->replaceSelectedText(SqlFormat::pretty(ed->toPlainText()));
         return;
     }
-    if(scope == 1 && c.hasSelection()) {              /* selection */
-        c.insertText(SqlFormat::pretty(c.selectedText()
-                                          .replace(QChar::ParagraphSeparator, '\n')));
+    if(scope == 1 && ed->hasSelectedText()) {         /* selection */
+        ed->replaceSelectedText(SqlFormat::pretty(ed->selectedText()));
         return;
     }
     /* current statement: expand to the surrounding ';' boundaries */
     const QString all = ed->toPlainText();
-    int pos = c.position();
+    const int pos = ed->cursorPosition();
     int start = all.lastIndexOf(';', qMax(0, pos - 1)) + 1;
     int end = all.indexOf(';', pos);
     if(end < 0)
         end = all.size();
     else
         ++end;                                        /* include the ';' */
-    c.setPosition(start);
-    c.setPosition(end, QTextCursor::KeepAnchor);
-    c.insertText(SqlFormat::pretty(all.mid(start, end - start)));
+    int l0 = 0, i0 = 0, l1 = 0, i1 = 0;
+    ed->getLineIndex(start, &l0, &i0);
+    ed->getLineIndex(end, &l1, &i1);
+    ed->setSelection(l0, i0, l1, i1);
+    ed->replaceSelectedText(SqlFormat::pretty(all.mid(start, end - start)));
 }
 
 void ConnectionTab::editTableCell(int row, int col, const QString &value, bool stageOnly)
