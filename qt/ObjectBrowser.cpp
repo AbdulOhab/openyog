@@ -160,7 +160,7 @@ ObjectBrowser::ObjectBrowser(QWidget *parent) : QWidget(parent)
                                     item->text(0), item->data(0, RolePhysDb).toString());
         }
 
-        if(kind != KDatabase || m_conn->driverType() == DriverType::Sqlite)
+        if(kind != KDatabase || m_conn->driverType() == SqlDriverType::Sqlite)
             return;
         const QString physDb = item->data(0, RolePhysDb).toString();
         if(!physDb.isEmpty() && physDb != m_primaryDatabase)
@@ -188,7 +188,7 @@ ObjectBrowser::ObjectBrowser(QWidget *parent) : QWidget(parent)
             emit switchDatabaseRequested(item->text(0));
         else if(insertOnDbl && (kind == KDatabase || kind == KTable || kind == KLeaf)) {
             QString name = item->text(0);
-            if(m_conn->driverType() == DriverType::Mysql)
+            if(m_conn->driverType() == SqlDriverType::Mysql)
                 name = QLatin1Char('`') + name + QLatin1Char('`');
             else
                 name = QLatin1Char('"') + name + QLatin1Char('"');
@@ -453,7 +453,7 @@ void ObjectBrowser::loadDatabases(IDbConnection *conn, const QString &currentDb,
         }
     };
 
-    if(m_conn->driverType() == DriverType::Postgres) {
+    if(m_conn->driverType() == SqlDriverType::Postgres) {
         /* one physical-database level, then schemas under the one that's
          * already connected (via m_conn) — others stay unpopulated until
          * the user actually expands them (onItemExpanded(KPgDatabase)) */

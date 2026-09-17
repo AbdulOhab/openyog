@@ -39,7 +39,7 @@ QString stripDefiner(const QString &ddl);
  * TRIGGER / EVENT (EVENT is MySQL-only — callers must not reach here with
  * it for another driver) */
 QString createTemplate(const QString &objType, const QString &db,
-                       DriverType driver = DriverType::Mysql);
+                       SqlDriverType driver = SqlDriverType::Mysql);
 
 /* index of the "Create …" column in MySQL's SHOW CREATE <obj> (VIEW 1,
  * EVENT 3, PROCEDURE/FUNCTION/TRIGGER 2) — MySQL-only, unused by the
@@ -55,5 +55,6 @@ int showCreateColumn(const QString &objType);
  * body (template for new, stripped SHOW CREATE / showCreate() text for
  * alter). */
 QString editorText(const QString &objType, const QString &db, const QString &name,
-                   const QString &createSql, bool create, DriverType driver = DriverType::Mysql);
+                   const QString &createSql, bool create,
+                   SqlDriverType driver = SqlDriverType::Mysql);
 } // namespace SchemaSql

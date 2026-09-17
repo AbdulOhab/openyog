@@ -31,7 +31,7 @@ public:
      * cheaper way to ask (e.g. the Object Browser's multi-database
      * Postgres support) — most dialect differences should still go through
      * the abstracted methods below, not a driverType() switch in caller code. */
-    virtual DriverType driverType() const = 0;
+    virtual SqlDriverType driverType() const = 0;
 
     /* Best-effort: ask a query currently running on this connection, from
      * ANOTHER thread, to stop. This is the one concurrent use this class

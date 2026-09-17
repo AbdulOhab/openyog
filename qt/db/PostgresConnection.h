@@ -35,9 +35,9 @@ public:
     explicit PostgresConnection(PGconn *conn);
     ~PostgresConnection() override;
 
-    DriverType driverType() const override
+    SqlDriverType driverType() const override
     {
-        return DriverType::Postgres;
+        return SqlDriverType::Postgres;
     }
 
     void cancel() override;

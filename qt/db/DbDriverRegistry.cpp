@@ -3,17 +3,17 @@
 #include "SqliteDriver.h"
 #include "PostgresDriver.h"
 
-IDbDriver *dbDriverFor(DriverType type)
+IDbDriver *dbDriverFor(SqlDriverType type)
 {
     static MySqlDriver mysql;
     static SqliteDriver sqlite;
     static PostgresDriver postgres;
     switch(type) {
-        case DriverType::Mysql:
+        case SqlDriverType::Mysql:
             return &mysql;
-        case DriverType::Sqlite:
+        case SqlDriverType::Sqlite:
             return &sqlite;
-        case DriverType::Postgres:
+        case SqlDriverType::Postgres:
             return &postgres;
     }
     return nullptr;

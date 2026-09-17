@@ -55,9 +55,9 @@ namespace {
  * bytes. decode('…','hex') is PostgreSQL's own portable binary literal —
  * unlike '\x…'::bytea it doesn't depend on the standard_conforming_strings
  * setting for escaping. */
-QString hexLiteral(DriverType driver, const QString &hex)
+QString hexLiteral(SqlDriverType driver, const QString &hex)
 {
-    if(driver == DriverType::Postgres)
+    if(driver == SqlDriverType::Postgres)
         return QStringLiteral("decode('%1','hex')").arg(hex);
     return QStringLiteral("x'%1'").arg(hex);
 }
@@ -1035,7 +1035,7 @@ void TableDataView::checkAllRows(bool on)
 void TableDataView::hexCellForTest(int row, int col, const QString &hex)
 {
     const QString h = hex.trimmed().toLower();
-    const QString expr = hexLiteral(m_conn ? m_conn->driverType() : DriverType::Mysql, h);
+    const QString expr = hexLiteral(m_conn ? m_conn->driverType() : SqlDriverType::Mysql, h);
     m_model->stageExpr(row, col, expr, expr);
     applyPendingEdits();
 }
@@ -1160,8 +1160,8 @@ void TableDataView::exportRows()
      * already tells us which dialect it is, without adding new API surface
      * just for this */
     opt.driver = m_conn && m_conn->quoteIdent(QStringLiteral("x")).startsWith(QLatin1Char('"'))
-                     ? DriverType::Postgres
-                     : DriverType::Mysql;
+                     ? SqlDriverType::Postgres
+                     : SqlDriverType::Mysql;
     QString err;
     if(ResultExport::write(dlg.path(), dlg.format(), cols, cell, rows.size(), cols.size(), opt,
                            &err))
@@ -1580,7 +1580,7 @@ void TableDataView::editCellInTextEditor()
                                  QStringLiteral("Enter an even number of hex digits (0-9, a-f)."));
             return;
         }
-        const DriverType drv = m_conn ? m_conn->driverType() : DriverType::Mysql;
+        const SqlDriverType drv = m_conn ? m_conn->driverType() : SqlDriverType::Mysql;
         const QString expr = hexLiteral(drv, h);
         const QString disp = h.size() > 32 ? hexLiteral(drv, h.left(32) + QStringLiteral("…")) +
                                                  QStringLiteral(" (%1 bytes)").arg(h.size() / 2)

@@ -45,11 +45,11 @@ public:
 
     /* create mode */
     explicit CreateTableDialog(QString database, QWidget *parent = nullptr,
-                               DriverType driver = DriverType::Mysql);
+                               SqlDriverType driver = SqlDriverType::Mysql);
     /* alter mode — seed from the live table's columns */
     CreateTableDialog(QString database, QString table, const QList<ColumnDef> &columns,
                       QString engine, QString charset, QWidget *parent = nullptr,
-                      DriverType driver = DriverType::Mysql);
+                      SqlDriverType driver = SqlDriverType::Mysql);
 
     /* CREATE TABLE … (create mode) or ALTER TABLE … [;COMMENT ON …;…]
      * (alter mode, PostgreSQL only ever needs the extra statements); empty
@@ -85,7 +85,7 @@ private:
     QString buildAlterSqlSqlite() const;
 
     Mode m_mode = Mode::Create;
-    DriverType m_driver = DriverType::Mysql;
+    SqlDriverType m_driver = SqlDriverType::Mysql;
     QString m_database;
     QString m_table;                          /* alter mode */
     QStringList m_originalCols;               /* names at open (alter mode) */

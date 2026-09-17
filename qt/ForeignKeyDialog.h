@@ -45,7 +45,7 @@ public:
 
     ForeignKeyDialog(QString database, QString table, const QList<FkDef> &fks,
                      QStringList tableColumns, QStringList dbTables, QWidget *parent = nullptr,
-                     DriverType driver = DriverType::Mysql);
+                     SqlDriverType driver = SqlDriverType::Mysql);
 
     QString buildSql() const; /* ALTER TABLE … or empty when unchanged */
     /* SQLite only: non-empty when buildSql() left a requested add/drop
@@ -64,7 +64,7 @@ private:
     void addRow(const FkDef &fk, bool isNew);
 
     mutable QString m_limitation;
-    DriverType m_driver = DriverType::Mysql;
+    SqlDriverType m_driver = SqlDriverType::Mysql;
     QString m_database, m_table;
     QStringList m_columns, m_dbTables;
     QStringList m_originalNames;

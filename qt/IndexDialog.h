@@ -42,7 +42,7 @@ public:
 
     IndexDialog(QString database, QString table, const QList<IndexDef> &indexes,
                 QStringList tableColumns, QWidget *parent = nullptr,
-                DriverType driver = DriverType::Mysql);
+                SqlDriverType driver = SqlDriverType::Mysql);
 
     QString buildSql() const; /* the statement(s) above, or empty when unchanged */
 
@@ -54,7 +54,7 @@ private slots:
 private:
     void addRow(const IndexDef &ix);
 
-    DriverType m_driver = DriverType::Mysql;
+    SqlDriverType m_driver = SqlDriverType::Mysql;
     QString m_database, m_table;
     QStringList m_columns;
     QStringList m_originalNames; /* index names present at open (non-PK) */

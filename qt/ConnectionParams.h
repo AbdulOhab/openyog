@@ -4,16 +4,16 @@
 
 #include <QString>
 
-enum class DriverType { Mysql = 0, Sqlite = 1, Postgres = 2 };
+enum class SqlDriverType { Mysql = 0, Sqlite = 1, Postgres = 2 };
 
-inline QString driverTypeToString(DriverType t)
+inline QString driverTypeToString(SqlDriverType t)
 {
     switch(t) {
-        case DriverType::Sqlite:
+        case SqlDriverType::Sqlite:
             return QStringLiteral("sqlite");
-        case DriverType::Postgres:
+        case SqlDriverType::Postgres:
             return QStringLiteral("postgres");
-        case DriverType::Mysql:
+        case SqlDriverType::Mysql:
             break;
     }
     return QStringLiteral("mysql");
@@ -21,14 +21,14 @@ inline QString driverTypeToString(DriverType t)
 
 /* human-readable driver name for the UI (status bar, dialogs) —
  * driverTypeToString() above is the lowercase persistence form */
-inline QString driverDisplayName(DriverType t)
+inline QString driverDisplayName(SqlDriverType t)
 {
     switch(t) {
-        case DriverType::Mysql:
+        case SqlDriverType::Mysql:
             return QStringLiteral("MySQL");
-        case DriverType::Sqlite:
+        case SqlDriverType::Sqlite:
             return QStringLiteral("SQLite");
-        case DriverType::Postgres:
+        case SqlDriverType::Postgres:
             return QStringLiteral("PostgreSQL");
     }
     return QStringLiteral("MySQL");
@@ -37,21 +37,22 @@ inline QString driverDisplayName(DriverType t)
 /* Unknown/missing strings fall back to `fallback` — keeps old saved
  * connections with no "driver" key (or a driver added by a newer build)
  * loading instead of failing outright. */
-inline DriverType driverTypeFromString(const QString &s, DriverType fallback = DriverType::Mysql)
+inline SqlDriverType driverTypeFromString(const QString &s,
+                                          SqlDriverType fallback = SqlDriverType::Mysql)
 {
     if(s == QStringLiteral("sqlite"))
-        return DriverType::Sqlite;
+        return SqlDriverType::Sqlite;
     if(s == QStringLiteral("postgres"))
-        return DriverType::Postgres;
+        return SqlDriverType::Postgres;
     if(s == QStringLiteral("mysql"))
-        return DriverType::Mysql;
+        return SqlDriverType::Mysql;
     return fallback;
 }
 
 struct ConnectionParams
 {
     QString name = "New connection";
-    DriverType driverType = DriverType::Mysql;
+    SqlDriverType driverType = SqlDriverType::Mysql;
     QString host = "127.0.0.1";
     int port = 3306;
     QString user;

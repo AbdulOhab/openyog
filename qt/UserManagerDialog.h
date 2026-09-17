@@ -30,7 +30,7 @@ class UserManagerDialog : public QDialog
     Q_OBJECT
 public:
     explicit UserManagerDialog(IDbConnection *conn, QWidget *parent = nullptr,
-                               DriverType driver = DriverType::Mysql);
+                               SqlDriverType driver = SqlDriverType::Mysql);
 
 private slots:
     void reloadUsers();
@@ -48,7 +48,7 @@ private:
      * selected */
     QStringList selectedUserHost() const;
 
-    DriverType m_driver = DriverType::Mysql;
+    SqlDriverType m_driver = SqlDriverType::Mysql;
     IDbConnection *m_conn = nullptr;
     QTableWidget *m_users = nullptr;
     QPlainTextEdit *m_grants = nullptr;

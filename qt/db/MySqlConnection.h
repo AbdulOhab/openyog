@@ -22,9 +22,9 @@ public:
                     const QString &password, bool owns = true);
     ~MySqlConnection() override;
 
-    DriverType driverType() const override
+    SqlDriverType driverType() const override
     {
-        return DriverType::Mysql;
+        return SqlDriverType::Mysql;
     }
 
     void cancel() override;

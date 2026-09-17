@@ -89,7 +89,7 @@ public:
      * reflecting a real choice. */
     bool hasExplicitSchema() const
     {
-        return m_params.driverType != DriverType::Postgres || !m_currentSchema.isEmpty();
+        return m_params.driverType != SqlDriverType::Postgres || !m_currentSchema.isEmpty();
     }
     /* PostgreSQL only: an already-open connection to `database` on this
      * same server, opening and caching one on first request (see
@@ -123,7 +123,7 @@ public:
     bool switchDatabase(const QString &database);
     QString hostLabel() const
     {
-        return m_params.driverType == DriverType::Sqlite
+        return m_params.driverType == SqlDriverType::Sqlite
                    ? m_params.filePath
                    : m_params.host + ':' + QString::number(m_params.port);
     }
@@ -146,7 +146,7 @@ public:
     }
     /* [db, table] of the browser's selected table, or empty */
     QStringList selectedTableInfo() const;
-    DriverType driverType() const
+    SqlDriverType driverType() const
     {
         return m_params.driverType;
     }

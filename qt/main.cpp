@@ -212,7 +212,7 @@ int main(int argc, char *argv[])
             qputenv("QT_QPA_PLATFORM", "offscreen");
             QApplication app2(argc, argv);
             ConnectionParams cp;
-            cp.driverType = DriverType::Sqlite;
+            cp.driverType = SqlDriverType::Sqlite;
             cp.filePath = a.mid(QStringLiteral("--sqlitetest=").size());
             /* refuse a missing file up front: sqlite's create-on-open
              * would silently connect to a fresh empty database and fail
@@ -376,7 +376,7 @@ int main(int argc, char *argv[])
             const QString path = a.mid(QStringLiteral("--sqlitecreatetabletest=").size());
             QFile::remove(path);
             ConnectionParams cp;
-            cp.driverType = DriverType::Sqlite;
+            cp.driverType = SqlDriverType::Sqlite;
             cp.filePath = path;
             QString connectError;
             IDbConnection *c = dbDriverFor(cp.driverType)->connect(cp, &connectError);
@@ -398,7 +398,7 @@ int main(int argc, char *argv[])
             };
 
             /* ---- CREATE mode: id (seeded PK+auto) + a NOT NULL name col */
-            auto *cdlg = new CreateTableDialog(QString(), nullptr, DriverType::Sqlite);
+            auto *cdlg = new CreateTableDialog(QString(), nullptr, SqlDriverType::Sqlite);
             auto *cname = cdlg->findChild<QLineEdit *>(QStringLiteral("tableName"));
             auto *cgrid = cdlg->findChild<QTableWidget *>(QStringLiteral("columnGrid"));
             auto *caddBtn = cdlg->findChild<QPushButton *>(QStringLiteral("addColumnBtn"));
@@ -447,7 +447,7 @@ int main(int argc, char *argv[])
                 cols << idc << namec;
             }
             auto *adlg = new CreateTableDialog(QString(), QStringLiteral("t1"), cols, QString(),
-                                               QString(), nullptr, DriverType::Sqlite);
+                                               QString(), nullptr, SqlDriverType::Sqlite);
             auto *agrid = adlg->findChild<QTableWidget *>(QStringLiteral("columnGrid"));
             auto *aaddBtn = adlg->findChild<QPushButton *>(QStringLiteral("addColumnBtn"));
             agrid->item(1, 0)->setText(QStringLiteral("full_name")); /* rename */
@@ -504,7 +504,7 @@ int main(int argc, char *argv[])
                 cols2 << idc << fnc << notec;
             }
             auto *bdlg = new CreateTableDialog(QString(), QStringLiteral("t1"), cols2, QString(),
-                                               QString(), nullptr, DriverType::Sqlite);
+                                               QString(), nullptr, SqlDriverType::Sqlite);
             auto *bgrid = bdlg->findChild<QTableWidget *>(QStringLiteral("columnGrid"));
             if(auto *tb = qobject_cast<QComboBox *>(bgrid->cellWidget(1, 1)))
                 tb->setCurrentText(QStringLiteral("INTEGER")); /* full_name TEXT -> INTEGER */
@@ -530,7 +530,7 @@ int main(int argc, char *argv[])
             const QString path = a.mid(QStringLiteral("--sqliteindextest=").size());
             QFile::remove(path);
             ConnectionParams cp;
-            cp.driverType = DriverType::Sqlite;
+            cp.driverType = SqlDriverType::Sqlite;
             cp.filePath = path;
             QString connectError;
             IDbConnection *c = dbDriverFor(cp.driverType)->connect(cp, &connectError);
@@ -560,7 +560,7 @@ int main(int argc, char *argv[])
             auto *dlg = new IndexDialog(
                 QString(), QStringLiteral("t1"), {pk, old},
                 {QStringLiteral("id"), QStringLiteral("city"), QStringLiteral("name")}, nullptr,
-                DriverType::Sqlite);
+                SqlDriverType::Sqlite);
             auto *grid = dlg->findChild<QTableWidget *>(QStringLiteral("indexGrid"));
             auto *removeBtn = dlg->findChild<QPushButton *>(QStringLiteral("removeSelectedBtn"));
             auto *newName = dlg->findChild<QLineEdit *>(QStringLiteral("newIndexName"));
@@ -628,7 +628,7 @@ int main(int argc, char *argv[])
             const QString path = a.mid(QStringLiteral("--sqlitemisctest=").size());
             QFile::remove(path);
             ConnectionParams cp;
-            cp.driverType = DriverType::Sqlite;
+            cp.driverType = SqlDriverType::Sqlite;
             cp.filePath = path;
             QString connectError;
             IDbConnection *c = dbDriverFor(cp.driverType)->connect(cp, &connectError);
@@ -701,7 +701,7 @@ int main(int argc, char *argv[])
              * be refused (via limitation()), not sent as broken SQL */
             ForeignKeyDialog fkdlg(QString(), QStringLiteral("staff"), {},
                                    {QStringLiteral("id"), QStringLiteral("name")},
-                                   {QStringLiteral("staff")}, nullptr, DriverType::Sqlite);
+                                   {QStringLiteral("staff")}, nullptr, SqlDriverType::Sqlite);
             fkdlg.findChild<QComboBox *>(QStringLiteral("localCol"))
                 ->setCurrentText(QStringLiteral("name"));
             fkdlg.findChild<QLineEdit *>(QStringLiteral("refCol"))->setText(QStringLiteral("name"));
@@ -727,7 +727,7 @@ int main(int argc, char *argv[])
                 return 2;
             }
             ConnectionParams cp;
-            cp.driverType = DriverType::Postgres;
+            cp.driverType = SqlDriverType::Postgres;
             cp.host = p[0];
             cp.port = p[1].toUInt();
             cp.user = p[2];
@@ -906,7 +906,7 @@ int main(int argc, char *argv[])
                 return 2;
             }
             ConnectionParams cp;
-            cp.driverType = DriverType::Postgres;
+            cp.driverType = SqlDriverType::Postgres;
             cp.host = p[0];
             cp.port = p[1].toUInt();
             cp.user = p[2];
@@ -973,7 +973,7 @@ int main(int argc, char *argv[])
                 } else {
                     run(QStringLiteral("DROP %1 IF EXISTS \"%2\".\"%3\"").arg(cs.kw, db, cs.name));
                 }
-                QString tmpl = SchemaSql::createTemplate(cs.kw, db, DriverType::Postgres);
+                QString tmpl = SchemaSql::createTemplate(cs.kw, db, SqlDriverType::Postgres);
                 tmpl.replace(QStringLiteral("new_view"), cs.name);
                 tmpl.replace(QStringLiteral("new_proc"), cs.name);
                 tmpl.replace(QStringLiteral("new_func"), cs.name);
@@ -981,7 +981,7 @@ int main(int argc, char *argv[])
                 tmpl.replace(QStringLiteral("some_table"), QStringLiteral("oy_schema_test_t"));
                 bool cOk = true;
                 for(const QString &s : splitStatements(SchemaSql::editorText(
-                        cs.kw, db, cs.name, tmpl, true, DriverType::Postgres)))
+                        cs.kw, db, cs.name, tmpl, true, SqlDriverType::Postgres)))
                     cOk = run(s) && cOk;
                 const bool present = exists(cs.iq) == 1;
 
@@ -989,7 +989,7 @@ int main(int argc, char *argv[])
                 bool aOk = !ddl.isEmpty();
                 for(const QString &s : splitStatements(
                         SchemaSql::editorText(cs.kw, db, cs.name, SchemaSql::stripDefiner(ddl),
-                                              false, DriverType::Postgres)))
+                                              false, SqlDriverType::Postgres)))
                     aOk = run(s) && aOk;
                 const bool stillThere = exists(cs.iq) == 1;
 
@@ -1180,7 +1180,7 @@ int main(int argc, char *argv[])
              * character in a Postgres/SQLite string literal by default */
             {
                 ResultExport::Options po;
-                po.driver = DriverType::Postgres;
+                po.driver = SqlDriverType::Postgres;
                 po.sqlStructure = true;
                 po.sqlTable = QStringLiteral("t1");
                 po.sqlCreate = QStringLiteral("CREATE TABLE \"t1\" (\"id\" integer)");
@@ -1395,7 +1395,7 @@ int main(int argc, char *argv[])
          * (--opentable=/--editcell=/--dataview=/--checkrows=/--screenshot=/
          * --dumpdb=/--copydb=) as --autoconnect=, but for the SQLite driver */
         if(a.startsWith(QStringLiteral("--autoconnectfile="))) {
-            autoConnect.driverType = DriverType::Sqlite;
+            autoConnect.driverType = SqlDriverType::Sqlite;
             autoConnect.filePath = a.mid(QStringLiteral("--autoconnectfile=").size());
             autoConnect.name = QFileInfo(autoConnect.filePath).fileName();
             doAutoConnect = true;
@@ -1405,7 +1405,7 @@ int main(int argc, char *argv[])
         if(a.startsWith(QStringLiteral("--autoconnectpg="))) {
             const QStringList parts = a.mid(QStringLiteral("--autoconnectpg=").size()).split(':');
             if(parts.size() == 5) {
-                autoConnect.driverType = DriverType::Postgres;
+                autoConnect.driverType = SqlDriverType::Postgres;
                 autoConnect.host = parts[0];
                 autoConnect.port = parts[1].toInt();
                 autoConnect.user = parts[2];
@@ -1453,7 +1453,7 @@ int main(int argc, char *argv[])
     if(!previewTheme.isEmpty())
         Theme::apply(app, previewTheme);
 
-    dbDriverFor(DriverType::Mysql)->libraryInit();
+    dbDriverFor(SqlDriverType::Mysql)->libraryInit();
     int rc = 0;
 
     /* --delconn=NAME selftest: delete a saved connection and exit */
@@ -1463,7 +1463,7 @@ int main(int argc, char *argv[])
         const bool gone = !ConnectionStore::storedNames().contains(delConn);
         qInfo("delconn '%s': existed=%d removed=%d", qPrintable(delConn), existed, gone);
         QThreadPool::globalInstance()->waitForDone();
-        dbDriverFor(DriverType::Mysql)->libraryShutdown();
+        dbDriverFor(SqlDriverType::Mysql)->libraryShutdown();
         return (existed && gone) ? 0 : 1;
     }
 
@@ -1472,7 +1472,7 @@ int main(int argc, char *argv[])
         MainWindow w;
         rc = (w.openAndRun(autoConnect) && w.selftestDump(dumpPath)) ? 0 : 1;
         QThreadPool::globalInstance()->waitForDone();
-        dbDriverFor(DriverType::Mysql)->libraryShutdown();
+        dbDriverFor(SqlDriverType::Mysql)->libraryShutdown();
         return rc;
     }
 
@@ -1482,7 +1482,7 @@ int main(int argc, char *argv[])
         MainWindow w;
         rc = (p.size() == 2 && w.openAndRun(autoConnect) && w.selftestCopyDb(p[0], p[1])) ? 0 : 1;
         QThreadPool::globalInstance()->waitForDone();
-        dbDriverFor(DriverType::Mysql)->libraryShutdown();
+        dbDriverFor(SqlDriverType::Mysql)->libraryShutdown();
         return rc;
     }
 
@@ -1495,7 +1495,7 @@ int main(int argc, char *argv[])
                  ? 0
                  : 1;
         QThreadPool::globalInstance()->waitForDone();
-        dbDriverFor(DriverType::Mysql)->libraryShutdown();
+        dbDriverFor(SqlDriverType::Mysql)->libraryShutdown();
         return rc;
     }
 
@@ -1506,7 +1506,7 @@ int main(int argc, char *argv[])
         MainWindow w;
         rc = (w.openAndRun(autoConnect) && w.selftestMultiDb(pgMultiDbArg)) ? 0 : 1;
         QThreadPool::globalInstance()->waitForDone();
-        dbDriverFor(DriverType::Mysql)->libraryShutdown();
+        dbDriverFor(SqlDriverType::Mysql)->libraryShutdown();
         return rc;
     }
 
@@ -1592,7 +1592,7 @@ int main(int argc, char *argv[])
         });
         QApplication::exec();
         QThreadPool::globalInstance()->waitForDone();
-        dbDriverFor(DriverType::Mysql)->libraryShutdown();
+        dbDriverFor(SqlDriverType::Mysql)->libraryShutdown();
         return ok ? 0 : 1;
     }
 
@@ -1604,7 +1604,7 @@ int main(int argc, char *argv[])
         MainWindow w;
         rc = (w.openAndRun(autoConnect) && w.selftestCopySqliteFile(target, !nodata)) ? 0 : 1;
         QThreadPool::globalInstance()->waitForDone();
-        dbDriverFor(DriverType::Mysql)->libraryShutdown();
+        dbDriverFor(SqlDriverType::Mysql)->libraryShutdown();
         return rc;
     }
 
@@ -1618,7 +1618,7 @@ int main(int argc, char *argv[])
                  ? 0
                  : 1;
         QThreadPool::globalInstance()->waitForDone();
-        dbDriverFor(DriverType::Mysql)->libraryShutdown();
+        dbDriverFor(SqlDriverType::Mysql)->libraryShutdown();
         return rc;
     }
 
@@ -1633,7 +1633,7 @@ int main(int argc, char *argv[])
                  ? 0
                  : 1;
         QThreadPool::globalInstance()->waitForDone();
-        dbDriverFor(DriverType::Mysql)->libraryShutdown();
+        dbDriverFor(SqlDriverType::Mysql)->libraryShutdown();
         return rc;
     }
 
@@ -1643,7 +1643,7 @@ int main(int argc, char *argv[])
         MainWindow w;
         rc = (w.openAndRun(autoConnect) && w.selftestSchemaHtml(schemaHtmlArg)) ? 0 : 1;
         QThreadPool::globalInstance()->waitForDone();
-        dbDriverFor(DriverType::Mysql)->libraryShutdown();
+        dbDriverFor(SqlDriverType::Mysql)->libraryShutdown();
         return rc;
     }
 
@@ -1689,7 +1689,7 @@ int main(int argc, char *argv[])
             });
             QApplication::exec();
             QThreadPool::globalInstance()->waitForDone();
-            dbDriverFor(DriverType::Mysql)->libraryShutdown();
+            dbDriverFor(SqlDriverType::Mysql)->libraryShutdown();
             return rc;
         }
         if(!shotMenuArg.isEmpty()) {
@@ -1731,7 +1731,7 @@ int main(int argc, char *argv[])
             });
             QApplication::exec();
             QThreadPool::globalInstance()->waitForDone();
-            dbDriverFor(DriverType::Mysql)->libraryShutdown();
+            dbDriverFor(SqlDriverType::Mysql)->libraryShutdown();
             return rc;
         }
         std::unique_ptr<MainWindow> w(new MainWindow);
@@ -1838,6 +1838,6 @@ int main(int argc, char *argv[])
     }
 
     QThreadPool::globalInstance()->waitForDone();
-    dbDriverFor(DriverType::Mysql)->libraryShutdown();
+    dbDriverFor(SqlDriverType::Mysql)->libraryShutdown();
     return rc;
 }
