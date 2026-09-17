@@ -84,9 +84,9 @@ private:
     QString whereFromOrigRow(int row) const;
     bool discardStagedEdits(const QString &action); /* prompt if pending */
 
-    /* apply a WHERE clause (empty clears it): updates m_where, the toolbar
-     * label, resets to the first page, and reloads — shared by the Custom
-     * Filter dialog's OK and the Reset Filter button */
+    /* apply a WHERE clause (empty clears it): updates m_where, the filter
+     * button's icon/tooltip, resets to the first page, and reloads —
+     * shared by the Custom Filter dialog's OK and the Reset Filter click */
     void applyFilterWhere(const QString &where);
     void reload();
     QByteArray fetchCellBytes(int row, int col) const; /* raw bytes for hex view */
@@ -132,8 +132,7 @@ private:
     QToolButton *m_tbGrid = nullptr;   /* view toggles — exclusive, checkable */
     QToolButton *m_tbForm = nullptr;
     QToolButton *m_tbText = nullptr;
-    int m_viewMode = 0;              /* 0 = grid, 2 = text */
-    QLabel *m_filterLabel = nullptr; /* shows the active WHERE, empty = none */
+    int m_viewMode = 0; /* 0 = grid, 2 = text */
     /* one toolbar slot, upstream-style: funnel + "Custom Filter…" when no
      * filter is active, funnel-with-X + "Reset Filter" once one is — see
      * applyFilterWhere() */
