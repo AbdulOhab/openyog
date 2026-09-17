@@ -621,15 +621,10 @@ TableDataView::TableDataView(QWidget *parent) : QWidget(parent)
                               QStringLiteral("Refresh data"));
     connect(btnRefresh, &QToolButton::clicked, this, &TableDataView::refresh);
 
-    /* the active WHERE, elided — empty when there's no filter. A plain
-     * WHERE-clause text box used to live here; the owner pointed out
-     * upstream's actual Table Data toolbar has no such box at all — the
-     * funnel button alone opens the Field/Condition/Value Custom Filter
-     * dialog (src/SortAndFilter.cpp), so that's the only entry point now. */
-    m_filterLabel = new QLabel(tools);
-    m_filterLabel->setMinimumWidth(120);
-    m_filterLabel->setMaximumWidth(340);
-    m_filterLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    /* no separate "WHERE …" status text next to the funnel — owner: the
+     * funnel button sits right beside Refresh, same as upstream, and the
+     * button's own icon (plain funnel ⇄ funnel-with-X) already says
+     * whether a filter is active; a text label alongside it was redundant */
 
     /* SQLyog right group: [x] Limit rows   First row [0] ▶   # of rows [1000] */
     m_limitChk = new QCheckBox(QStringLiteral("Limit rows"), tools);
@@ -709,7 +704,6 @@ TableDataView::TableDataView(QWidget *parent) : QWidget(parent)
     tl->addWidget(m_tbText);
     tl->addStretch(1);
     tl->addWidget(m_btnFilter);
-    tl->addWidget(m_filterLabel);
     tl->addWidget(btnRefresh);
     tl->addWidget(vsep());
     tl->addWidget(m_limitChk);
@@ -816,10 +810,6 @@ void TableDataView::load(IDbConnection *conn, const QString &db, const QString &
      * ("Limit rows" and "# of rows" stay as the user left them, like SQLyog) */
     m_where.clear();
     m_filterRows.clear();
-    if(m_filterLabel) {
-        m_filterLabel->clear();
-        m_filterLabel->setToolTip(QString());
-    }
     if(m_btnFilter) {
         m_btnFilter->setIcon(Icons::get(QStringLiteral("filter.ico")));
         m_btnFilter->setToolTip(QStringLiteral("Custom Filter…"));
@@ -903,18 +893,16 @@ void TableDataView::resetFilter()
 void TableDataView::applyFilterWhere(const QString &where)
 {
     m_where = where;
-    const QString full = m_where.isEmpty() ? QString() : QStringLiteral("WHERE %1").arg(m_where);
-    m_filterLabel->setText(m_filterLabel->fontMetrics().elidedText(full, Qt::ElideRight,
-                                                                   m_filterLabel->maximumWidth()));
-    m_filterLabel->setToolTip(full);
     /* upstream's UpdateFilterIcon(): the one filter button's icon/tooltip
-     * follow whether a filter is active, not two separate buttons */
+     * follow whether a filter is active, not two separate buttons. No
+     * persistent "WHERE …" text next to it (owner: not needed) — the
+     * active clause is still one hover away, on the button's own tooltip. */
     if(m_where.isEmpty()) {
         m_btnFilter->setIcon(Icons::get(QStringLiteral("filter.ico")));
         m_btnFilter->setToolTip(QStringLiteral("Custom Filter…"));
     } else {
         m_btnFilter->setIcon(Icons::get(QStringLiteral("resetfilter.ico")));
-        m_btnFilter->setToolTip(QStringLiteral("Reset Filter"));
+        m_btnFilter->setToolTip(QStringLiteral("Reset Filter — WHERE %1").arg(m_where));
     }
     if(m_firstRow) {
         m_firstRow->blockSignals(true);
