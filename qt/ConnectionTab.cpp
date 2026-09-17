@@ -782,7 +782,7 @@ QString ConnectionTab::buildObjectInfoHtml(IDbConnection *conn, const QString &d
         "th,td{border:1px solid palette(mid);padding:3px 8px;font-size:12px;text-align:left}"
         "th{background:palette(highlight);color:palette(highlighted-text);font-weight:bold}"
         "h3{border-bottom:2px solid palette(highlight);padding-bottom:4px;margin-bottom:10px}"
-        "h4{margin:14px 0 4px 0;color:palette(highlight)}"
+        "h4{margin:14px 0 4px 0}"
         "pre{background:palette(alternate-base);border:1px solid palette(mid);"
         "padding:6px;white-space:pre-wrap;font-size:12px}"
         "</style>");
