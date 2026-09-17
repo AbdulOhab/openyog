@@ -564,6 +564,13 @@ ConnectionTab::ConnectionTab(const ConnectionParams &params, QWidget *parent)
     }
 
     connect(m_browser, &ObjectBrowser::objectSelected, this, &ConnectionTab::updateInfoTab);
+    connect(m_browser, &ObjectBrowser::insertNameRequested, this, [this](const QString &text) {
+        SqlEditor *ed = currentEditor();
+        if(!ed)
+            return;
+        ed->insert(text); /* at the caret, like upstream's SCI_REPLACESEL */
+        ed->setFocus();
+    });
     connect(m_browser, &ObjectBrowser::databaseActivated, this, &ConnectionTab::useDatabase);
     connect(m_browser, &ObjectBrowser::tableActivated, this,
             [this](const QString &db, const QString &table, const QString &physDb) {
@@ -1720,6 +1727,14 @@ void ConnectionTab::expandBrowserItem(const QString &path)
 QStringList ConnectionTab::dumpBrowserSubtree(const QString &path)
 {
     return m_browser->dumpSubtree(path);
+}
+
+QStringList ConnectionTab::dumpEditorText()
+{
+    SqlEditor *ed = currentEditor();
+    if(!ed)
+        return {};
+    return ed->text().split(QLatin1Char('\n'));
 }
 
 QStringList ConnectionTab::browserContextMenuItems(const QString &path)

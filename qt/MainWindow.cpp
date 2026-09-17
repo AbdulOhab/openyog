@@ -1963,6 +1963,13 @@ QStringList MainWindow::selftestTreeMenu(const QString &path)
     return {};
 }
 
+QStringList MainWindow::selftestDumpEditor()
+{
+    if(auto *tab = currentTab())
+        return tab->dumpEditorText();
+    return {};
+}
+
 void MainWindow::selftestDoubleClickBrowserItem(const QString &path)
 {
     if(auto *tab = currentTab())

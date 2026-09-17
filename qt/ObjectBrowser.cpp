@@ -171,11 +171,29 @@ ObjectBrowser::ObjectBrowser(QWidget *parent) : QWidget(parent)
         const int kind = item->data(0, Qt::UserRole).toInt();
         const QString physDb = item->data(0, RolePhysDb).toString();
         const bool foreign = !physDb.isEmpty() && physDb != m_primaryDatabase;
+        /* upstream ObjectBrowser.cpp's WM_LBUTTONDBLCLK: with GetTextOnDBClick
+         * (default on) double-clicking a node's label drops its name —
+         * already quoted for the dialect, CQueryObject::InsertNodeText's
+         * job — at the active editor's caret and focuses the editor; the
+         * tree keeps every other gesture off that path (table → data grid,
+         * object leaf → ALTER, database → USE), reachable via F11 / the
+         * right-click menu / single click. Turning the key to 0 restores
+         * those gestures on double-click, which is upstream's own alternate
+         * branch (ShowTable). */
+        const bool insertOnDbl = wyIni::IniGetInt("UserInterface", "GetTextOnDBClick", 1,
+                                                  settingsIniPath().toUtf8()) != 0;
         /* the database node itself is the switch gesture (double-
          * click = make this tab's connection that database) */
         if(kind == KPgDatabase)
             emit switchDatabaseRequested(item->text(0));
-        else if(kind == KTable)
+        else if(insertOnDbl && (kind == KDatabase || kind == KTable || kind == KLeaf)) {
+            QString name = item->text(0);
+            if(m_conn->driverType() == DriverType::Mysql)
+                name = QLatin1Char('`') + name + QLatin1Char('`');
+            else
+                name = QLatin1Char('"') + name + QLatin1Char('"');
+            emit insertNameRequested(name);
+        } else if(kind == KTable)
             /* open the clicked table's data — on EITHER database.
              * The table under a non-primary database used to route
              * here too and switch the whole connection instead,
