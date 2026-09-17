@@ -39,9 +39,16 @@ public:
      * (or drivers) at all. `escapeValue` returns the escaped text with NO
      * surrounding quotes — this dialog adds those itself (needed to place
      * '%' correctly inside them for LIKE). */
+    /* `fullQueryFor`: given the WHERE clause the current rows build to
+     * (may be empty), returns the complete query that would actually run
+     * if OK were pressed right now — upstream's own SQL Preview shows the
+     * full SELECT (FROM/ORDER BY/LIMIT and all), not just the WHERE
+     * fragment (src/SortAndFilter.cpp's IQueryBuilder::GetQuery()). Optional:
+     * omitted (or left null), the preview falls back to just "WHERE …". */
     CustomFilterDialog(const QStringList &columns, const QVector<Row> &initial,
                        std::function<QString(const QString &)> quoteIdent,
                        std::function<QString(const QString &)> escapeValue,
+                       std::function<QString(const QString &)> fullQueryFor = {},
                        QWidget *parent = nullptr);
 
     /* every row as currently filled in (blank Field included) — round-trip
@@ -74,6 +81,7 @@ private:
 
     std::function<QString(const QString &)> m_quoteIdent;
     std::function<QString(const QString &)> m_escapeValue;
+    std::function<QString(const QString &)> m_fullQueryFor;
 
     void updatePreview();
 };

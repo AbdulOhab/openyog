@@ -862,7 +862,24 @@ void TableDataView::openCustomFilter()
     const auto esc = [this](const QString &v) {
         return m_conn ? QString::fromUtf8(m_conn->escape(v.toUtf8())) : v;
     };
-    CustomFilterDialog dlg(m_columns, m_filterRows, qi, esc, this);
+    /* the same query reload() would actually run with this WHERE applied —
+     * upstream's own preview shows the complete SELECT (IQueryBuilder::
+     * GetQuery()), not just the WHERE fragment, so this one should too */
+    const auto fullQuery = [this](const QString &where) {
+        const QString qualified = m_conn ? m_conn->qualify(m_db, m_table)
+                                         : QStringLiteral("`%1`.`%2`").arg(m_db, m_table);
+        QString sql = QStringLiteral("SELECT * FROM ") + qualified;
+        if(!where.isEmpty())
+            sql += QStringLiteral(" WHERE ") + where;
+        if(!m_orderBy.isEmpty())
+            sql += QStringLiteral(" ORDER BY ") + m_orderBy;
+        if(!m_limitChk || m_limitChk->isChecked())
+            sql += QStringLiteral(" LIMIT %1 OFFSET %2")
+                       .arg(m_rowCount ? m_rowCount->value() : 1000)
+                       .arg(m_firstRow ? m_firstRow->value() : 0);
+        return sql + QStringLiteral(";");
+    };
+    CustomFilterDialog dlg(m_columns, m_filterRows, qi, esc, fullQuery, this);
     if(dlg.exec() != QDialog::Accepted)
         return;
     if(!discardStagedEdits(QStringLiteral("Re-query")))
