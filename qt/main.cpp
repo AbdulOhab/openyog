@@ -74,6 +74,7 @@ int main(int argc, char *argv[])
     QString hexCell;            /* --hexcell=row:col:hexdigits selftest */
     QString mkObj;              /* --mkobj=VIEW|PROCEDURE|… selftest */
     QString explainMode;        /* --explain=json|plain selftest: Explain "SELECT 1" */
+    bool showInfoTab = false;   /* --showinfotab selftest: switch to the Info result tab */
     QString useDbArg;           /* --usedb=NAME selftest */
     QString expandPgDbArg;      /* --expandpgdb=NAME selftest */
     bool runAgain = false;      /* --runagain selftest: F9 a second time before the screenshot */
@@ -1345,6 +1346,8 @@ int main(int argc, char *argv[])
         /* --explain=json|plain : run Explain (Format=JSON) on "SELECT 1" */
         if(a.startsWith(QStringLiteral("--explain=")))
             explainMode = a.mid(QStringLiteral("--explain=").size());
+        if(a == QStringLiteral("--showinfotab"))
+            showInfoTab = true;
         if(a.startsWith(QStringLiteral("--usedb=")))
             useDbArg = a.mid(QStringLiteral("--usedb=").size());
         if(a.startsWith(QStringLiteral("--expandpgdb=")))
@@ -1762,6 +1765,8 @@ int main(int argc, char *argv[])
                         for(const QString &line : w->selftestTreeMenu(menuPath))
                             QTextStream(stdout) << line << '\n';
                     }
+                    if(showInfoTab)
+                        w->selftestShowInfoTab();
                     /* mkObj/runAgain/explain can pop a guard QMessageBox
                      * whose modal loop blocks this callback right where the
                      * call is made — schedule the screenshot BEFORE those

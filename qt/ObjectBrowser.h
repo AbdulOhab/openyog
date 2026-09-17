@@ -109,6 +109,14 @@ public:
     QStringList contextMenuItemsForTest(const QString &path);
 
 signals:
+    /* single-click on a real schema object (table/view/procedure/function/
+     * trigger/event) — the Info tab's cue to show that object's metadata.
+     * objType is the literal SQL keyword showCreate() expects: "TABLE" /
+     * "VIEW" / "PROCEDURE" / "FUNCTION" / "TRIGGER" / "EVENT". physDb: which
+     * side connection owns it (empty on MySQL/SQLite or the tab's own
+     * primary Postgres database). */
+    void objectSelected(const QString &db, const QString &objType, const QString &name,
+                        const QString &physDb = {});
     void databaseActivated(const QString &db); /* double click → USE */
     void tableActivated(const QString &db, const QString &table,
                         const QString &physDb = {}); /* → SELECT; physDb routes

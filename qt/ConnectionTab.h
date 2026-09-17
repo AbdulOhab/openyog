@@ -165,8 +165,9 @@ public slots:
     void runAll();                  /* Ctrl+F9 — the whole editor */
     void runAndEdit();              /* F8 — run, and open a single-table SELECT editable */
     void explainCurrent(bool json); /* EXPLAIN [FORMAT=JSON] the current stmt */
-    void selftestExplain(const QString &mode);               /* --explain=json|plain selftest */
-    void renameCurrentEditorTab();                           /* Alt+F2 */
+    void selftestExplain(const QString &mode); /* --explain=json|plain selftest */
+    void selftestShowInfoTab();    /* --showinfotab selftest: switch to the Info result tab */
+    void renameCurrentEditorTab(); /* Alt+F2 */
     void dumpTable(const QString &db, const QString &table); /* one-table SQL dump */
     void editorCopyNormalizedWhitespace();                   /* Alt+C */
     void editorInsertFromFile();
@@ -309,6 +310,14 @@ private:
     void applyResults(const QVector<QueryResult> &results, const QString &tabPrefix);
     void logHistory(const QString &sql);
     void addResultGrid(const QueryResult &r, const QString &title);
+    /* Object Browser single-click → the Info tab (upstream ObjectInfo.cpp):
+     * Column/Index/Foreign-Key info + DDL for a table/view, DDL alone for a
+     * procedure/function/trigger/event. physDb routes to the right side
+     * connection (Postgres multi-database tree), empty on MySQL/SQLite. */
+    void updateInfoTab(const QString &db, const QString &objType, const QString &name,
+                       const QString &physDb);
+    QString buildObjectInfoHtml(IDbConnection *conn, const QString &db, const QString &objType,
+                                const QString &name);
 
     ConnectionParams m_params;
     IDbConnection *m_conn = nullptr; /* browsing (GUI thread) */
@@ -324,7 +333,6 @@ private:
 
     ObjectBrowser *m_browser = nullptr;
     TableDataView *m_tableData = nullptr;
-    QComboBox *m_limitCombo = nullptr;
     QTabWidget *m_editorTabs = nullptr;
     SqlEditor *m_editor = nullptr;
     QWidget *m_historyPage = nullptr;
@@ -338,7 +346,11 @@ private:
 
     QTabWidget *m_resultTabs = nullptr;
     QPlainTextEdit *m_messages = nullptr;
-    QLabel *m_info = nullptr;
+    /* upstream ObjectInfo.cpp: Column/Index/Foreign-Key/DDL metadata for
+     * whatever schema object was last single-clicked in the tree — an
+     * HTML table + <pre> DDL block, not query output, hence QTextBrowser
+     * (same widget m_history already uses) rather than a plain QLabel */
+    class QTextBrowser *m_info = nullptr;
     QTableView *m_lastGrid = nullptr;
 
     QVector<QWidget *>
