@@ -144,8 +144,23 @@ ObjectBrowser::ObjectBrowser(QWidget *parent) : QWidget(parent)
      * is browsing only) and for SQLite, whose single "main" node has
      * nothing switchable and would just surface a USE syntax error. */
     connect(m_tree, &QTreeWidget::itemClicked, this, [this](QTreeWidgetItem *item, int) {
-        if(item->data(0, Qt::UserRole).toInt() != KDatabase ||
-           m_conn->driverType() == DriverType::Sqlite)
+        const int kind = item->data(0, Qt::UserRole).toInt();
+        /* Info tab: any real schema object, single click — a KTable (under
+         * "Tables") or a KLeaf under one of the other object folders
+         * (Views/Stored Procs/Functions/Triggers/Events), not a Columns/
+         * Indexes sub-leaf (folderObjType() is empty for those, so this
+         * naturally excludes them without a separate check). */
+        if(kind == KTable) {
+            emit objectSelected(item->data(0, Qt::UserRole + 1).toString(), QStringLiteral("TABLE"),
+                                item->text(0), item->data(0, RolePhysDb).toString());
+        } else if(kind == KLeaf && item->parent()) {
+            const QString objType = folderObjType(item->parent()->text(0));
+            if(!objType.isEmpty())
+                emit objectSelected(item->parent()->data(0, Qt::UserRole + 1).toString(), objType,
+                                    item->text(0), item->data(0, RolePhysDb).toString());
+        }
+
+        if(kind != KDatabase || m_conn->driverType() == DriverType::Sqlite)
             return;
         const QString physDb = item->data(0, RolePhysDb).toString();
         if(!physDb.isEmpty() && physDb != m_primaryDatabase)

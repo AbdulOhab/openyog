@@ -475,9 +475,11 @@ ConnectionTab::ConnectionTab(const ConnectionParams &params, QWidget *parent)
     m_messages = new QPlainTextEdit(this);
     m_messages->setReadOnly(true);
 
-    m_info = new QLabel(QStringLiteral("Run a query to see server info."), this);
-    m_info->setAlignment(Qt::AlignTop | Qt::AlignLeft);
-    m_info->setWordWrap(true);
+    m_info = new QTextBrowser(this);
+    m_info->setOpenLinks(false);
+    m_info->setHtml(
+        QStringLiteral("<p style='color:#8a8a8a'>Select a table, view, procedure, function, "
+                       "trigger, or event in the Object Browser to see its details here.</p>"));
 
     m_resultTabs = new QTabWidget(this);
     m_resultTabs->setObjectName(QStringLiteral("resultTabs"));
@@ -529,22 +531,10 @@ ConnectionTab::ConnectionTab(const ConnectionParams &params, QWidget *parent)
     mainSplit->setStretchFactor(1, 1);
     mainSplit->setSizes({215, 985}); /* spec: object browser ~1/5 width */
 
-    /* bottom LIMIT strip — solid blue, "All" combo hard left (Flat theme) */
-    m_limitCombo = new QComboBox(this);
-    m_limitCombo->addItems({QStringLiteral("All"), QStringLiteral("1000"), QStringLiteral("5000"),
-                            QStringLiteral("10000")});
-    auto *limitStrip = new QFrame(this);
-    limitStrip->setObjectName(QStringLiteral("limitStrip"));
-    auto *limitRow = new QHBoxLayout(limitStrip);
-    limitRow->setContentsMargins(4, 2, 4, 2);
-    limitRow->addWidget(m_limitCombo);
-    limitRow->addStretch(1);
-
     auto *layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
     layout->setSpacing(0);
     layout->addWidget(mainSplit, 1);
-    layout->addWidget(limitStrip);
 
     /* ---- open the connection ------------------------------------- */
     {
@@ -573,6 +563,7 @@ ConnectionTab::ConnectionTab(const ConnectionParams &params, QWidget *parent)
         m_keepAliveTimer->start();
     }
 
+    connect(m_browser, &ObjectBrowser::objectSelected, this, &ConnectionTab::updateInfoTab);
     connect(m_browser, &ObjectBrowser::databaseActivated, this, &ConnectionTab::useDatabase);
     connect(m_browser, &ObjectBrowser::tableActivated, this,
             [this](const QString &db, const QString &table, const QString &physDb) {
@@ -744,6 +735,97 @@ IDbConnection *ConnectionTab::connectionFor(const QString &database, QString *er
         updateActiveConnectionLabel();
     }
     return c;
+}
+
+/* upstream ObjectInfo.cpp: Column Information (SHOW FULL FIELDS) + Index
+ * Information (SHOW KEYS) + DDL Information (SHOW CREATE) for a table/view;
+ * DDL alone for a procedure/function/trigger/event — same three-section
+ * shape, built from the portable seam (listColumns/listIndexes/
+ * listForeignKeys/showCreate) instead of raw SQL, so it's identical across
+ * MySQL/PostgreSQL/SQLite. Foreign Keys is an addition upstream doesn't
+ * have as its own section (folded into DDL there); a portable
+ * listForeignKeys() already existed for the Foreign Keys dialog, so
+ * surfacing it here too costs nothing. */
+QString ConnectionTab::buildObjectInfoHtml(IDbConnection *conn, const QString &db,
+                                           const QString &objType, const QString &name)
+{
+    if(!conn)
+        return QStringLiteral("<p style='color:#c0392b'>Not connected.</p>");
+
+    const QString nice = objType.left(1) + objType.mid(1).toLower();
+    QString html = QStringLiteral(
+        "<style>"
+        "table{border-collapse:collapse;margin:4px 0 12px 0}"
+        "th,td{border:1px solid palette(mid);padding:2px 8px;font-size:12px;text-align:left}"
+        "th{background:palette(alternate-base)}"
+        "h4{margin:12px 0 2px 0}"
+        "pre{background:palette(alternate-base);border:1px solid palette(mid);"
+        "padding:6px;white-space:pre-wrap;font-size:12px}"
+        "</style>");
+    html += QStringLiteral("<h3>%1: %2</h3>").arg(nice, name.toHtmlEscaped());
+
+    if(objType == QStringLiteral("TABLE") || objType == QStringLiteral("VIEW")) {
+        html += QStringLiteral("<h4>Column Information</h4><table><tr><th>Field</th>"
+                               "<th>Type</th><th>Null</th><th>Key</th><th>Default</th>"
+                               "<th>Extra</th><th>Comment</th></tr>");
+        for(const QStringList &row : conn->listColumns(db, name).rows) {
+            html += QStringLiteral("<tr>");
+            for(int i = 0; i < 7; ++i)
+                html += QStringLiteral("<td>%1</td>").arg(row.value(i).toHtmlEscaped());
+            html += QStringLiteral("</tr>");
+        }
+        html += QStringLiteral("</table>");
+
+        if(objType == QStringLiteral("TABLE")) {
+            html += QStringLiteral("<h4>Index Information</h4>");
+            const DbResultSet idx = conn->listIndexes(db, name);
+            if(idx.rows.isEmpty()) {
+                html += QStringLiteral("<p style='color:palette(disabled-text)'>No indexes.</p>");
+            } else {
+                html += QStringLiteral("<table><tr><th>Key name</th><th>Column</th>"
+                                       "<th>Seq</th><th>Unique</th></tr>");
+                for(const QStringList &row : idx.rows)
+                    html += QStringLiteral("<tr><td>%1</td><td>%2</td><td>%3</td><td>%4</td></tr>")
+                                .arg(row.value(2).toHtmlEscaped(), row.value(4).toHtmlEscaped(),
+                                     row.value(3).toHtmlEscaped(),
+                                     row.value(1) == QStringLiteral("0") ? QStringLiteral("yes")
+                                                                         : QStringLiteral("no"));
+                html += QStringLiteral("</table>");
+            }
+
+            const DbResultSet fks = conn->listForeignKeys(db, name);
+            if(!fks.rows.isEmpty()) {
+                html += QStringLiteral("<h4>Foreign Keys</h4><table><tr><th>Name</th>"
+                                       "<th>Column</th><th>References</th><th>On Update</th>"
+                                       "<th>On Delete</th></tr>");
+                for(const QStringList &row : fks.rows)
+                    html += QStringLiteral("<tr><td>%1</td><td>%2</td><td>%3.%4</td>"
+                                           "<td>%5</td><td>%6</td></tr>")
+                                .arg(row.value(0).toHtmlEscaped(), row.value(1).toHtmlEscaped(),
+                                     row.value(2).toHtmlEscaped(), row.value(3).toHtmlEscaped(),
+                                     row.value(4).toHtmlEscaped(), row.value(5).toHtmlEscaped());
+                html += QStringLiteral("</table>");
+            }
+        }
+    }
+
+    html += QStringLiteral("<h4>DDL Information</h4>");
+    QString error;
+    const QString ddl = conn->showCreate(objType, db, name, &error);
+    html += (ddl.isEmpty() && !error.isEmpty())
+                ? QStringLiteral("<p style='color:#c0392b'>%1</p>").arg(error.toHtmlEscaped())
+                : QStringLiteral("<pre>%1</pre>").arg(ddl.toHtmlEscaped());
+    return html;
+}
+
+void ConnectionTab::updateInfoTab(const QString &db, const QString &objType, const QString &name,
+                                  const QString &physDb)
+{
+    QString error;
+    IDbConnection *conn = connectionFor(physDb, &error);
+    m_info->setHtml(
+        conn ? buildObjectInfoHtml(conn, db, objType, name)
+             : QStringLiteral("<p style='color:#c0392b'>%1</p>").arg(error.toHtmlEscaped()));
 }
 
 bool ConnectionTab::switchDatabase(const QString &database)
@@ -1239,6 +1321,11 @@ void ConnectionTab::selftestExplain(const QString &mode)
     ed->setPlainText(QStringLiteral("SELECT 1"));
     ed->moveCursorToEnd();
     explainCurrent(mode == QLatin1String("json"));
+}
+
+void ConnectionTab::selftestShowInfoTab()
+{
+    m_resultTabs->setCurrentWidget(m_info);
 }
 
 void ConnectionTab::runStatements(const QStringList &statements, const QString &tabPrefix)

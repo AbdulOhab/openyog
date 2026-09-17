@@ -1919,6 +1919,12 @@ void MainWindow::selftestExplain(const QString &mode)
         tab->selftestExplain(mode);
 }
 
+void MainWindow::selftestShowInfoTab()
+{
+    if(auto *tab = currentTab())
+        tab->selftestShowInfoTab();
+}
+
 void MainWindow::selftestSelectBrowserItem(const QString &path)
 {
     if(auto *tab = currentTab())
