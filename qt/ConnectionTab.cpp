@@ -3588,6 +3588,7 @@ void ConnectionTab::promptImportCsv(const QString &database, const QString &tabl
     skipLines->setRange(0, 100000000);
     skipLines->setToolTip(QStringLiteral("extra leading lines to skip, on top "
                                          "of the header"));
+    skipLines->setLocale(QLocale::c());
     auto *truncate = new QCheckBox(QStringLiteral("Empty the table first"), &dlg);
     auto *onDup = importDupCombo(&dlg);
 
@@ -3874,6 +3875,7 @@ void ConnectionTab::promptDumpDatabase(const QString &database)
     auto *rowsPer = new QSpinBox(&dlg);
     rowsPer->setRange(1, 100000);
     rowsPer->setValue(100);
+    rowsPer->setLocale(QLocale::c());
 
     auto *tableList = new QListWidget(&dlg);
     tableList->setMaximumHeight(180);

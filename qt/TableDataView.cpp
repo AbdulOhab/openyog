@@ -629,6 +629,11 @@ TableDataView::TableDataView(QWidget *parent)
     m_firstRow->setSingleStep(1000);
     m_firstRow->setMinimumWidth(78);
     m_firstRow->setAlignment(Qt::AlignRight);
+    /* the app has no other localization yet, so a Bengali/etc. system
+     * locale would otherwise render this in that locale's own digits
+     * (e.g. bn_BD's ০১২…) while every other number in the UI stays
+     * Latin — same fix as ConnectionDialog's/Copy Table's port fields */
+    m_firstRow->setLocale(QLocale::c());
     m_firstRow->setToolTip(
         QStringLiteral("First row — 0-based OFFSET; press Enter to apply"));
     connect(m_firstRow, &QSpinBox::editingFinished, this, [this] {
@@ -646,6 +651,7 @@ TableDataView::TableDataView(QWidget *parent)
     m_rowCount->setValue(1000);
     m_rowCount->setMinimumWidth(78);
     m_rowCount->setAlignment(Qt::AlignRight);
+    m_rowCount->setLocale(QLocale::c());
     m_rowCount->setToolTip(QStringLiteral("# of rows — LIMIT; press Enter"));
     connect(m_rowCount, &QSpinBox::editingFinished, this, [this] {
         m_firstRow->setSingleStep(qMax(1, m_rowCount->value()));
