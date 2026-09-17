@@ -24,7 +24,12 @@ class CustomFilterDialog : public QDialog
 {
     Q_OBJECT
 public:
-    struct Row { QString field; QString condition; QString value; };
+    struct Row
+    {
+        QString field;
+        QString condition;
+        QString value;
+    };
     static constexpr int kRows = 5;
 
     /* `quoteIdent`/`escapeValue` mirror IDbConnection::quoteIdent()/
@@ -56,10 +61,15 @@ public:
                               const std::function<QString(const QString &)> &escapeValue);
 
 private:
-    struct RowWidgets { QComboBox *field; QComboBox *cond; QLineEdit *value; };
+    struct RowWidgets
+    {
+        QComboBox *field;
+        QComboBox *cond;
+        QLineEdit *value;
+    };
     QVector<RowWidgets> m_rowWidgets;
     QLineEdit *m_previewEdit = nullptr;
-    QWidget   *m_previewRow  = nullptr;
+    QWidget *m_previewRow = nullptr;
     QCheckBox *m_previewToggle = nullptr;
 
     std::function<QString(const QString &)> m_quoteIdent;

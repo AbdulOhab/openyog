@@ -13,8 +13,7 @@
 #include <QPushButton>
 #include <QVBoxLayout>
 
-ExportDialog::ExportDialog(const QString &suggestedBaseName,
-                           const QString &sqlTable, int rowCount,
+ExportDialog::ExportDialog(const QString &suggestedBaseName, const QString &sqlTable, int rowCount,
                            bool haveSelection, QWidget *parent)
     : QDialog(parent), m_base(suggestedBaseName)
 {
@@ -39,19 +38,16 @@ ExportDialog::ExportDialog(const QString &suggestedBaseName,
     m_quote->setMaxLength(1);
     m_quote->setFixedWidth(48);
     m_null = new QLineEdit(QStringLiteral("NULL"), this);
-    m_sqlTable = new QLineEdit(sqlTable.isEmpty() ? QStringLiteral("exported")
-                                                  : sqlTable, this);
+    m_sqlTable = new QLineEdit(sqlTable.isEmpty() ? QStringLiteral("exported") : sqlTable, this);
     m_header = new QCheckBox(QStringLiteral("Write a header row"), this);
     m_header->setChecked(true);
     m_crlf = new QCheckBox(QStringLiteral("CRLF line endings"), this);
     m_crlf->setChecked(true);
     m_bom = new QCheckBox(QStringLiteral("UTF-8 BOM"), this);
-    m_selOnly = new QCheckBox(
-        QStringLiteral("Only the checked / selected rows"), this);
+    m_selOnly = new QCheckBox(QStringLiteral("Only the checked / selected rows"), this);
     m_selOnly->setChecked(haveSelection);
     m_selOnly->setEnabled(haveSelection);
-    m_structure = new QCheckBox(
-        QStringLiteral("Include CREATE TABLE (structure)"), this);
+    m_structure = new QCheckBox(QStringLiteral("Include CREATE TABLE (structure)"), this);
 
     auto *form = new QFormLayout;
     form->addRow(QStringLiteral("Format"), m_format);
@@ -69,8 +65,7 @@ ExportDialog::ExportDialog(const QString &suggestedBaseName,
     form->addRow(QString(), m_structure);
     form->addRow(QString(), m_selOnly);
 
-    auto *bb = new QDialogButtonBox(
-        QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
+    auto *bb = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
     bb->button(QDialogButtonBox::Ok)->setText(QStringLiteral("&Export"));
     connect(bb, &QDialogButtonBox::accepted, this, &QDialog::accept);
     connect(bb, &QDialogButtonBox::rejected, this, &QDialog::reject);
@@ -79,8 +74,7 @@ ExportDialog::ExportDialog(const QString &suggestedBaseName,
     lay->addLayout(form);
     lay->addWidget(bb);
 
-    connect(m_format, &QComboBox::currentTextChanged,
-            this, &ExportDialog::syncForFormat);
+    connect(m_format, &QComboBox::currentTextChanged, this, &ExportDialog::syncForFormat);
     syncForFormat();
 }
 
@@ -99,9 +93,8 @@ void ExportDialog::syncForFormat()
     m_structure->setVisible(sql);
     m_bom->setVisible(csvish || tsvish);
     m_crlf->setVisible(csvish || tsvish);
-    m_header->setVisible(f != ResultExport::Format::Json
-                         && f != ResultExport::Format::Sql
-                         && f != ResultExport::Format::Xml);
+    m_header->setVisible(f != ResultExport::Format::Json && f != ResultExport::Format::Sql &&
+                         f != ResultExport::Format::Xml);
 
     /* keep the path's suffix in step with the format */
     const QString suf = ResultExport::suffixFor(f);
@@ -120,15 +113,17 @@ void ExportDialog::pickFile()
     const QString suf = ResultExport::suffixFor(format());
     const QString p = QFileDialog::getSaveFileName(
         this, QStringLiteral("Export to…"),
-        m_path->text().isEmpty()
-            ? QDir(QDir::homePath()).filePath(m_base + QLatin1Char('.') + suf)
-            : m_path->text(),
+        m_path->text().isEmpty() ? QDir(QDir::homePath()).filePath(m_base + QLatin1Char('.') + suf)
+                                 : m_path->text(),
         QStringLiteral("*.%1;;All files (*)").arg(suf));
     if(!p.isEmpty())
         m_path->setText(p);
 }
 
-QString ExportDialog::path() const { return m_path->text().trimmed(); }
+QString ExportDialog::path() const
+{
+    return m_path->text().trimmed();
+}
 
 ResultExport::Format ExportDialog::format() const
 {
@@ -148,16 +143,13 @@ bool ExportDialog::includeStructure() const
 ResultExport::Options ExportDialog::options() const
 {
     ResultExport::Options o;
-    o.delimiter = m_delim->text().isEmpty() ? QLatin1Char(',')
-                                            : m_delim->text().at(0);
+    o.delimiter = m_delim->text().isEmpty() ? QLatin1Char(',') : m_delim->text().at(0);
     o.quote = m_quote->text().isEmpty() ? QChar() : m_quote->text().at(0);
     o.nullText = m_null->text();
     o.header = m_header->isChecked();
     o.bom = m_bom->isChecked();
-    o.lineEnd = m_crlf->isChecked() ? QStringLiteral("\r\n")
-                                    : QStringLiteral("\n");
-    o.sqlTable = m_sqlTable->text().trimmed().isEmpty()
-                     ? QStringLiteral("exported")
-                     : m_sqlTable->text().trimmed();
+    o.lineEnd = m_crlf->isChecked() ? QStringLiteral("\r\n") : QStringLiteral("\n");
+    o.sqlTable = m_sqlTable->text().trimmed().isEmpty() ? QStringLiteral("exported")
+                                                        : m_sqlTable->text().trimmed();
     return o;
 }

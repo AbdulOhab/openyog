@@ -15,7 +15,7 @@ public:
     virtual ~IDbDriver() = default;
 
     virtual QString driverName() const = 0;
-    virtual int     defaultPort() const = 0;
+    virtual int defaultPort() const = 0;
 
     /* Opens one connection. Caller owns the returned pointer (delete it to
      * disconnect). Returns nullptr and fills *error on failure. `localInfile`

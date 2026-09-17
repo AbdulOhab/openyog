@@ -16,10 +16,9 @@ class FindBar : public QWidget
 {
     Q_OBJECT
 public:
-    explicit FindBar(std::function<SqlEditor *()> editorAccessor,
-                     QWidget *parent = nullptr);
+    explicit FindBar(std::function<SqlEditor *()> editorAccessor, QWidget *parent = nullptr);
 
-    void activate();          /* show, prefill from selection, focus the field */
+    void activate(); /* show, prefill from selection, focus the field */
     void findNext(bool backward = false);
 
 protected:
@@ -29,7 +28,7 @@ private:
     void updateCount();
 
     std::function<SqlEditor *()> m_editor;
-    QLineEdit   *m_field = nullptr;
-    QToolButton *m_case  = nullptr;
-    QLabel      *m_count = nullptr;
+    QLineEdit *m_field = nullptr;
+    QToolButton *m_case = nullptr;
+    QLabel *m_count = nullptr;
 };

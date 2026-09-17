@@ -14,46 +14,38 @@
 
 namespace {
 const QStringList kMysqlTypes = {
-    QStringLiteral("INT"),        QStringLiteral("BIGINT"),
-    QStringLiteral("TINYINT"),    QStringLiteral("SMALLINT"),
-    QStringLiteral("DECIMAL"),    QStringLiteral("FLOAT"),
-    QStringLiteral("DOUBLE"),     QStringLiteral("VARCHAR"),
-    QStringLiteral("CHAR"),       QStringLiteral("TEXT"),
-    QStringLiteral("LONGTEXT"),   QStringLiteral("DATE"),
-    QStringLiteral("DATETIME"),   QStringLiteral("TIMESTAMP"),
-    QStringLiteral("TIME"),       QStringLiteral("JSON"),
-    QStringLiteral("BLOB"),       QStringLiteral("ENUM"),
+    QStringLiteral("INT"),      QStringLiteral("BIGINT"),    QStringLiteral("TINYINT"),
+    QStringLiteral("SMALLINT"), QStringLiteral("DECIMAL"),   QStringLiteral("FLOAT"),
+    QStringLiteral("DOUBLE"),   QStringLiteral("VARCHAR"),   QStringLiteral("CHAR"),
+    QStringLiteral("TEXT"),     QStringLiteral("LONGTEXT"),  QStringLiteral("DATE"),
+    QStringLiteral("DATETIME"), QStringLiteral("TIMESTAMP"), QStringLiteral("TIME"),
+    QStringLiteral("JSON"),     QStringLiteral("BLOB"),      QStringLiteral("ENUM"),
 };
 
 /* no TINYINT/MEDIUMINT (use SMALLINT), no ENUM (needs its own CREATE TYPE
  * first), no unsigned-anything, no LONGTEXT (TEXT has no length cap here) —
  * left out rather than mapped to something misleading */
 const QStringList kPostgresTypes = {
-    QStringLiteral("INTEGER"),    QStringLiteral("BIGINT"),
-    QStringLiteral("SMALLINT"),   QStringLiteral("NUMERIC"),
-    QStringLiteral("REAL"),       QStringLiteral("DOUBLE PRECISION"),
-    QStringLiteral("VARCHAR"),    QStringLiteral("CHAR"),
-    QStringLiteral("TEXT"),       QStringLiteral("DATE"),
-    QStringLiteral("TIMESTAMP"),  QStringLiteral("TIME"),
-    QStringLiteral("BOOLEAN"),    QStringLiteral("JSONB"),
-    QStringLiteral("BYTEA"),      QStringLiteral("UUID"),
+    QStringLiteral("INTEGER"), QStringLiteral("BIGINT"),    QStringLiteral("SMALLINT"),
+    QStringLiteral("NUMERIC"), QStringLiteral("REAL"),      QStringLiteral("DOUBLE PRECISION"),
+    QStringLiteral("VARCHAR"), QStringLiteral("CHAR"),      QStringLiteral("TEXT"),
+    QStringLiteral("DATE"),    QStringLiteral("TIMESTAMP"), QStringLiteral("TIME"),
+    QStringLiteral("BOOLEAN"), QStringLiteral("JSONB"),     QStringLiteral("BYTEA"),
+    QStringLiteral("UUID"),
 };
 
 QString qi(DriverType driver, const QString &ident)
 {
     if(driver == DriverType::Postgres)
-        return QLatin1Char('"') + QString(ident).replace(QLatin1Char('"'),
-                                                          QStringLiteral("\"\""))
-             + QLatin1Char('"');
-    return QLatin1Char('`') + QString(ident).replace(QLatin1Char('`'),
-                                                      QStringLiteral("``"))
-         + QLatin1Char('`');
+        return QLatin1Char('"') + QString(ident).replace(QLatin1Char('"'), QStringLiteral("\"\"")) +
+               QLatin1Char('"');
+    return QLatin1Char('`') + QString(ident).replace(QLatin1Char('`'), QStringLiteral("``")) +
+           QLatin1Char('`');
 }
 
 QString qualifyName(DriverType driver, const QString &db, const QString &name)
 {
-    return db.isEmpty() ? qi(driver, name)
-                        : qi(driver, db) + QLatin1Char('.') + qi(driver, name);
+    return db.isEmpty() ? qi(driver, name) : qi(driver, db) + QLatin1Char('.') + qi(driver, name);
 }
 
 QWidget *checkCell(bool checked = false, bool enabled = true)
@@ -78,20 +70,18 @@ QCheckBox *cellBox(QWidget *cellWidget)
  * otherwise single-quote */
 QString formatDefault(const QString &def)
 {
-    if(def.compare(QStringLiteral("NULL"), Qt::CaseInsensitive) == 0
-       || def.startsWith('\'') || def.contains('('))
+    if(def.compare(QStringLiteral("NULL"), Qt::CaseInsensitive) == 0 || def.startsWith('\'') ||
+       def.contains('('))
         return def;
     return QStringLiteral("'%1'").arg(def);
 }
 } // namespace
 
 CreateTableDialog::CreateTableDialog(QString database, QWidget *parent, DriverType driver)
-    : QDialog(parent), m_mode(Mode::Create), m_driver(driver),
-      m_database(std::move(database))
+    : QDialog(parent), m_mode(Mode::Create), m_driver(driver), m_database(std::move(database))
 {
-    setWindowTitle(m_database.isEmpty()
-                       ? QStringLiteral("Create Table")
-                       : QStringLiteral("Create Table in `%1`").arg(m_database));
+    setWindowTitle(m_database.isEmpty() ? QStringLiteral("Create Table")
+                                        : QStringLiteral("Create Table in `%1`").arg(m_database));
     buildCommon();
 
     /* seed with an id INT PK AUTO_INCREMENT, like SQLyog's first row.
@@ -100,26 +90,27 @@ CreateTableDialog::CreateTableDialog(QString database, QWidget *parent, DriverTy
      * that exact type name — see buildCreateSql()'s PK/AUTOINCREMENT
      * handling below. */
     addColumnRow(QStringLiteral("id"),
-                 m_driver == DriverType::Mysql ? QStringLiteral("INT")
-                                               : QStringLiteral("INTEGER"));
-    if(auto *pk = cellBox(m_grid->cellWidget(0, CPk)))       pk->setChecked(true);
-    if(auto *nn = cellBox(m_grid->cellWidget(0, CNotNull)))  nn->setChecked(true);
-    if(auto *ai = cellBox(m_grid->cellWidget(0, CAuto)))     ai->setChecked(true);
+                 m_driver == DriverType::Mysql ? QStringLiteral("INT") : QStringLiteral("INTEGER"));
+    if(auto *pk = cellBox(m_grid->cellWidget(0, CPk)))
+        pk->setChecked(true);
+    if(auto *nn = cellBox(m_grid->cellWidget(0, CNotNull)))
+        nn->setChecked(true);
+    if(auto *ai = cellBox(m_grid->cellWidget(0, CAuto)))
+        ai->setChecked(true);
     updatePreview();
 }
 
 CreateTableDialog::CreateTableDialog(QString database, QString table,
-                                     const QList<ColumnDef> &columns,
-                                     QString engine, QString charset,
-                                     QWidget *parent, DriverType driver)
-    : QDialog(parent), m_mode(Mode::Alter), m_driver(driver),
-      m_database(std::move(database)), m_table(std::move(table))
+                                     const QList<ColumnDef> &columns, QString engine,
+                                     QString charset, QWidget *parent, DriverType driver)
+    : QDialog(parent), m_mode(Mode::Alter), m_driver(driver), m_database(std::move(database)),
+      m_table(std::move(table))
 {
     setWindowTitle(QStringLiteral("Alter Table `%1`").arg(m_table));
     buildCommon();
 
     m_name->setText(m_table);
-    m_name->setReadOnly(true);   /* rename via More Table Operations, not here */
+    m_name->setReadOnly(true); /* rename via More Table Operations, not here */
     if(m_engine) {
         if(int i = m_engine->findText(engine, Qt::MatchFixedString); i >= 0)
             m_engine->setCurrentIndex(i);
@@ -147,7 +138,7 @@ void CreateTableDialog::buildCommon()
     const bool mysql = m_driver == DriverType::Mysql;
 
     m_name = new QLineEdit(this);
-    m_name->setObjectName(QStringLiteral("tableName"));   /* test discoverability */
+    m_name->setObjectName(QStringLiteral("tableName")); /* test discoverability */
     m_name->setPlaceholderText(QStringLiteral("table name"));
 
     auto *top = new QFormLayout;
@@ -158,17 +149,15 @@ void CreateTableDialog::buildCommon()
      * tab's other gaps are, so hidden rather than shown-disabled */
     if(mysql) {
         m_engine = new QComboBox(this);
-        m_engine->addItems({ QStringLiteral("InnoDB"), QStringLiteral("MyISAM"),
-                             QStringLiteral("MEMORY"), QStringLiteral("ARCHIVE"),
-                             QStringLiteral("CSV") });
+        m_engine->addItems({QStringLiteral("InnoDB"), QStringLiteral("MyISAM"),
+                            QStringLiteral("MEMORY"), QStringLiteral("ARCHIVE"),
+                            QStringLiteral("CSV")});
         m_charset = new QComboBox(this);
-        m_charset->addItems({ QStringLiteral("utf8mb4"), QStringLiteral("utf8"),
-                              QStringLiteral("latin1"), QStringLiteral("ascii"),
-                              QStringLiteral("binary") });
-        connect(m_engine, &QComboBox::currentTextChanged, this,
-                &CreateTableDialog::updatePreview);
-        connect(m_charset, &QComboBox::currentTextChanged, this,
-                &CreateTableDialog::updatePreview);
+        m_charset->addItems({QStringLiteral("utf8mb4"), QStringLiteral("utf8"),
+                             QStringLiteral("latin1"), QStringLiteral("ascii"),
+                             QStringLiteral("binary")});
+        connect(m_engine, &QComboBox::currentTextChanged, this, &CreateTableDialog::updatePreview);
+        connect(m_charset, &QComboBox::currentTextChanged, this, &CreateTableDialog::updatePreview);
 
         auto *engineLbl = new QLabel(QStringLiteral("&Engine"), this);
         engineLbl->setBuddy(m_engine);
@@ -185,13 +174,11 @@ void CreateTableDialog::buildCommon()
     }
 
     m_grid = new QTableWidget(0, ColCount, this);
-    m_grid->setObjectName(QStringLiteral("columnGrid"));   /* test discoverability */
+    m_grid->setObjectName(QStringLiteral("columnGrid")); /* test discoverability */
     QStringList headers = {
-        QStringLiteral("Column Name"), QStringLiteral("Data Type"),
-        QStringLiteral("Length"), QStringLiteral("Default"),
-        QStringLiteral("PK?"), QStringLiteral("Not Null?"),
-        QStringLiteral("Unsigned?"), QStringLiteral("Auto Incr?"),
-        QStringLiteral("Comment") };
+        QStringLiteral("Column Name"), QStringLiteral("Data Type"),  QStringLiteral("Length"),
+        QStringLiteral("Default"),     QStringLiteral("PK?"),        QStringLiteral("Not Null?"),
+        QStringLiteral("Unsigned?"),   QStringLiteral("Auto Incr?"), QStringLiteral("Comment")};
     m_grid->setHorizontalHeaderLabels(headers);
     if(pg)
         m_grid->horizontalHeaderItem(CUnsigned)->setToolTip(
@@ -202,15 +189,14 @@ void CreateTableDialog::buildCommon()
     m_grid->horizontalHeader()->resizeSection(CType, 110);
     m_grid->horizontalHeader()->resizeSection(CLen, 60);
     m_grid->horizontalHeader()->resizeSection(CDefault, 90);
-    for(int c : { CPk, CNotNull, CUnsigned, CAuto })
+    for(int c : {CPk, CNotNull, CUnsigned, CAuto})
         m_grid->horizontalHeader()->resizeSection(c, 66);
 
     auto *addBtn = new QPushButton(QStringLiteral("&Add Column"), this);
-    addBtn->setObjectName(QStringLiteral("addColumnBtn"));   /* test discoverability */
+    addBtn->setObjectName(QStringLiteral("addColumnBtn")); /* test discoverability */
     auto *delBtn = new QPushButton(QStringLiteral("&Remove Column"), this);
     connect(addBtn, &QPushButton::clicked, this, [this] { addColumnRow(); });
-    connect(delBtn, &QPushButton::clicked, this,
-            &CreateTableDialog::removeSelectedRow);
+    connect(delBtn, &QPushButton::clicked, this, &CreateTableDialog::removeSelectedRow);
     auto *rowBtns = new QHBoxLayout;
     rowBtns->addWidget(addBtn);
     rowBtns->addWidget(delBtn);
@@ -220,10 +206,9 @@ void CreateTableDialog::buildCommon()
     m_preview->setReadOnly(true);
     m_preview->setStyleSheet(QStringLiteral("color:#3B7DBB;"));
 
-    auto *buttons = new QDialogButtonBox(
-        QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
-    buttons->button(QDialogButtonBox::Ok)->setText(
-        m_mode == Mode::Alter ? QStringLiteral("&Alter") : QStringLiteral("&Create"));
+    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
+    buttons->button(QDialogButtonBox::Ok)
+        ->setText(m_mode == Mode::Alter ? QStringLiteral("&Alter") : QStringLiteral("&Create"));
     connect(buttons, &QDialogButtonBox::accepted, this, &QDialog::accept);
     connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
 
@@ -234,10 +219,8 @@ void CreateTableDialog::buildCommon()
     layout->addWidget(m_preview);
     layout->addWidget(buttons);
 
-    connect(m_name, &QLineEdit::textChanged, this,
-            &CreateTableDialog::updatePreview);
-    connect(m_grid, &QTableWidget::cellChanged, this,
-            &CreateTableDialog::updatePreview);
+    connect(m_name, &QLineEdit::textChanged, this, &CreateTableDialog::updatePreview);
+    connect(m_grid, &QTableWidget::cellChanged, this, &CreateTableDialog::updatePreview);
 }
 
 void CreateTableDialog::addColumnRow(const QString &name, const QString &type)
@@ -246,26 +229,24 @@ void CreateTableDialog::addColumnRow(const QString &name, const QString &type)
     const int row = m_grid->rowCount();
     m_grid->insertRow(row);
     auto *nameItem = new QTableWidgetItem(name);
-    nameItem->setData(Qt::UserRole, QString());   /* no original -> new column */
+    nameItem->setData(Qt::UserRole, QString()); /* no original -> new column */
     m_grid->setItem(row, CName, nameItem);
 
     auto *typeBox = new QComboBox;
     typeBox->setEditable(true);
     typeBox->addItems(pg ? kPostgresTypes : kMysqlTypes);
-    typeBox->setCurrentText(type.isEmpty()
-        ? (pg ? QStringLiteral("INTEGER") : QStringLiteral("INT")) : type);
+    typeBox->setCurrentText(
+        type.isEmpty() ? (pg ? QStringLiteral("INTEGER") : QStringLiteral("INT")) : type);
     m_grid->setCellWidget(row, CType, typeBox);
-    connect(typeBox, &QComboBox::currentTextChanged, this,
-            &CreateTableDialog::updatePreview);
+    connect(typeBox, &QComboBox::currentTextChanged, this, &CreateTableDialog::updatePreview);
 
     m_grid->setItem(row, CLen, new QTableWidgetItem);
     m_grid->setItem(row, CDefault, new QTableWidgetItem);
     m_grid->setItem(row, CComment, new QTableWidgetItem);
-    for(int c : { CPk, CNotNull, CUnsigned, CAuto }) {
+    for(int c : {CPk, CNotNull, CUnsigned, CAuto}) {
         m_grid->setCellWidget(row, c, checkCell(false, !(pg && c == CUnsigned)));
         if(auto *cb = cellBox(m_grid->cellWidget(row, c)))
-            connect(cb, &QCheckBox::toggled, this,
-                    &CreateTableDialog::updatePreview);
+            connect(cb, &QCheckBox::toggled, this, &CreateTableDialog::updatePreview);
     }
     updatePreview();
 }
@@ -274,13 +255,15 @@ void CreateTableDialog::seedRow(const ColumnDef &c)
 {
     addColumnRow(c.name, c.type);
     const int row = m_grid->rowCount() - 1;
-    m_grid->item(row, CName)->setData(Qt::UserRole, c.name);   /* original */
+    m_grid->item(row, CName)->setData(Qt::UserRole, c.name); /* original */
     m_grid->item(row, CLen)->setText(c.length);
     m_grid->item(row, CDefault)->setText(c.def);
     m_grid->item(row, CComment)->setText(c.comment);
-    const struct { Col col; bool on; } flags[] = {
-        { CPk, c.pk }, { CNotNull, c.notNull },
-        { CUnsigned, c.isUnsigned }, { CAuto, c.autoInc } };
+    const struct
+    {
+        Col col;
+        bool on;
+    } flags[] = {{CPk, c.pk}, {CNotNull, c.notNull}, {CUnsigned, c.isUnsigned}, {CAuto, c.autoInc}};
     for(const auto &f : flags)
         if(auto *cb = cellBox(m_grid->cellWidget(row, f.col)))
             cb->setChecked(f.on);
@@ -297,22 +280,21 @@ void CreateTableDialog::removeSelectedRow()
 CreateTableDialog::ColumnDef CreateTableDialog::rowColumnDef(int row) const
 {
     ColumnDef c;
-    c.name = m_grid->item(row, CName) ? m_grid->item(row, CName)->text().trimmed()
-                                      : QString();
+    c.name = m_grid->item(row, CName) ? m_grid->item(row, CName)->text().trimmed() : QString();
     const auto *typeBox = qobject_cast<QComboBox *>(m_grid->cellWidget(row, CType));
     c.type = typeBox ? typeBox->currentText().trimmed().toUpper() : QStringLiteral("INT");
     c.length = m_grid->item(row, CLen) ? m_grid->item(row, CLen)->text().trimmed() : QString();
-    c.def = m_grid->item(row, CDefault) ? m_grid->item(row, CDefault)->text().trimmed()
-                                        : QString();
-    c.comment = m_grid->item(row, CComment) ? m_grid->item(row, CComment)->text().trimmed()
-                                            : QString();
-    c.pk = cellBox(m_grid->cellWidget(row, CPk)) && cellBox(m_grid->cellWidget(row, CPk))->isChecked();
-    c.notNull = cellBox(m_grid->cellWidget(row, CNotNull))
-                && cellBox(m_grid->cellWidget(row, CNotNull))->isChecked();
-    c.isUnsigned = cellBox(m_grid->cellWidget(row, CUnsigned))
-                   && cellBox(m_grid->cellWidget(row, CUnsigned))->isChecked();
-    c.autoInc = cellBox(m_grid->cellWidget(row, CAuto))
-                && cellBox(m_grid->cellWidget(row, CAuto))->isChecked();
+    c.def = m_grid->item(row, CDefault) ? m_grid->item(row, CDefault)->text().trimmed() : QString();
+    c.comment =
+        m_grid->item(row, CComment) ? m_grid->item(row, CComment)->text().trimmed() : QString();
+    c.pk =
+        cellBox(m_grid->cellWidget(row, CPk)) && cellBox(m_grid->cellWidget(row, CPk))->isChecked();
+    c.notNull = cellBox(m_grid->cellWidget(row, CNotNull)) &&
+                cellBox(m_grid->cellWidget(row, CNotNull))->isChecked();
+    c.isUnsigned = cellBox(m_grid->cellWidget(row, CUnsigned)) &&
+                   cellBox(m_grid->cellWidget(row, CUnsigned))->isChecked();
+    c.autoInc = cellBox(m_grid->cellWidget(row, CAuto)) &&
+                cellBox(m_grid->cellWidget(row, CAuto))->isChecked();
     return c;
 }
 
@@ -331,7 +313,8 @@ QString CreateTableDialog::defBody(const ColumnDef &c) const
 
     QString b = type;
     if(m_driver == DriverType::Postgres) {
-        if(c.notNull || c.pk) b += QStringLiteral(" NOT NULL");
+        if(c.notNull || c.pk)
+            b += QStringLiteral(" NOT NULL");
         if(!c.def.isEmpty())
             b += QStringLiteral(" DEFAULT %1").arg(formatDefault(c.def));
         if(c.autoInc)
@@ -342,8 +325,10 @@ QString CreateTableDialog::defBody(const ColumnDef &c) const
         return b;
     }
 
-    if(c.isUnsigned) b += QStringLiteral(" UNSIGNED");
-    if(c.notNull || c.pk) b += QStringLiteral(" NOT NULL");
+    if(c.isUnsigned)
+        b += QStringLiteral(" UNSIGNED");
+    if(c.notNull || c.pk)
+        b += QStringLiteral(" NOT NULL");
     /* SQLite has no AUTO_INCREMENT column modifier — auto-increment there is
      * a property of the PRIMARY KEY declaration itself (INTEGER PRIMARY KEY
      * [AUTOINCREMENT]), composed by buildCreateSql()/buildAlterSqlSqlite(),
@@ -385,7 +370,11 @@ QString CreateTableDialog::buildCreateSql() const
         int pkCount = 0;
         for(int r = 0; r < m_grid->rowCount(); ++r) {
             const ColumnDef c = rowColumnDef(r);
-            if(c.pk) { ++pkCount; if(c.autoInc) sqlitePkAutoIncCol = c.name; }
+            if(c.pk) {
+                ++pkCount;
+                if(c.autoInc)
+                    sqlitePkAutoIncCol = c.name;
+            }
         }
         if(pkCount != 1)
             sqlitePkAutoIncCol.clear();
@@ -411,14 +400,13 @@ QString CreateTableDialog::buildCreateSql() const
     if(defs.isEmpty())
         return {};
     if(!pkCols.isEmpty())
-        defs << QStringLiteral("  PRIMARY KEY (%1)")
-                    .arg(pkCols.join(QStringLiteral(", ")));
+        defs << QStringLiteral("  PRIMARY KEY (%1)").arg(pkCols.join(QStringLiteral(", ")));
 
-    QString sql = QStringLiteral("CREATE TABLE %1 (\n%2\n)")
-        .arg(qualified, defs.join(QStringLiteral(",\n")));
+    QString sql =
+        QStringLiteral("CREATE TABLE %1 (\n%2\n)").arg(qualified, defs.join(QStringLiteral(",\n")));
     if(m_driver == DriverType::Mysql)
         sql += QStringLiteral(" ENGINE=%1 DEFAULT CHARSET=%2")
-                    .arg(m_engine->currentText(), m_charset->currentText());
+                   .arg(m_engine->currentText(), m_charset->currentText());
     for(const QString &c : comments)
         sql += QStringLiteral(";\n") + c;
     return sql;
@@ -444,8 +432,7 @@ QString CreateTableDialog::buildAlterSql() const
         const QString orig = nameItem->data(Qt::UserRole).toString();
         const QString body = rowBody(r);
 
-        if(cellBox(m_grid->cellWidget(r, CPk))
-           && cellBox(m_grid->cellWidget(r, CPk))->isChecked())
+        if(cellBox(m_grid->cellWidget(r, CPk)) && cellBox(m_grid->cellWidget(r, CPk))->isChecked())
             newPk << name;
 
         if(orig.isEmpty()) {
@@ -453,9 +440,8 @@ QString CreateTableDialog::buildAlterSql() const
         } else {
             seenOrig << orig;
             if(name == orig && body == m_originalBody.value(orig))
-                continue;   /* unchanged column — no CHANGE clause */
-            clauses << QStringLiteral("CHANGE COLUMN `%1` `%2` %3")
-                           .arg(orig, name, body);
+                continue; /* unchanged column — no CHANGE clause */
+            clauses << QStringLiteral("CHANGE COLUMN `%1` `%2` %3").arg(orig, name, body);
         }
     }
 
@@ -473,8 +459,7 @@ QString CreateTableDialog::buildAlterSql() const
             QStringList q;
             for(const QString &c : newPk)
                 q << QStringLiteral("`%1`").arg(c);
-            clauses << QStringLiteral("ADD PRIMARY KEY (%1)")
-                           .arg(q.join(QStringLiteral(", ")));
+            clauses << QStringLiteral("ADD PRIMARY KEY (%1)").arg(q.join(QStringLiteral(", ")));
         }
     }
 
@@ -482,8 +467,8 @@ QString CreateTableDialog::buildAlterSql() const
         return {};
 
     const QString qualified = m_database.isEmpty()
-        ? QStringLiteral("`%1`").arg(m_table)
-        : QStringLiteral("`%1`.`%2`").arg(m_database, m_table);
+                                  ? QStringLiteral("`%1`").arg(m_table)
+                                  : QStringLiteral("`%1`.`%2`").arg(m_database, m_table);
     return QStringLiteral("ALTER TABLE %1\n  %2")
         .arg(qualified, clauses.join(QStringLiteral(",\n  ")));
 }
@@ -527,7 +512,7 @@ QString CreateTableDialog::buildAlterSqlSqlite() const
                 limited << QStringLiteral("%1 (NOT NULL column needs a DEFAULT to add)").arg(name);
             else
                 stmts << QStringLiteral("ALTER TABLE %1 ADD COLUMN %2 %3")
-                            .arg(qualified, qi(m_driver, name), rowBody(r));
+                             .arg(qualified, qi(m_driver, name), rowBody(r));
             continue;
         }
 
@@ -535,15 +520,15 @@ QString CreateTableDialog::buildAlterSqlSqlite() const
         const ColumnDef &was = m_originalDefs.value(orig);
         if(name != orig)
             stmts << QStringLiteral("ALTER TABLE %1 RENAME COLUMN %2 TO %3")
-                        .arg(qualified, qi(m_driver, orig), qi(m_driver, name));
+                         .arg(qualified, qi(m_driver, orig), qi(m_driver, name));
         if(rowBody(r) != m_originalBody.value(orig) || c.autoInc != was.autoInc)
             limited << QStringLiteral("%1 (column type/constraint change)").arg(name);
     }
 
     for(const QString &oc : m_originalCols)
         if(!seenOrig.contains(oc))
-            stmts << QStringLiteral("ALTER TABLE %1 DROP COLUMN %2")
-                        .arg(qualified, qi(m_driver, oc));
+            stmts
+                << QStringLiteral("ALTER TABLE %1 DROP COLUMN %2").arg(qualified, qi(m_driver, oc));
 
     QStringList a = newPk, b = m_originalPk;
     a.sort();
@@ -552,9 +537,9 @@ QString CreateTableDialog::buildAlterSqlSqlite() const
         limited << QStringLiteral("primary key change");
 
     if(!limited.isEmpty())
-        m_alterLimitation = QStringLiteral(
-            "SQLite can't change these without rebuilding the table "
-            "(not attempted here): %1.").arg(limited.join(QStringLiteral("; ")));
+        m_alterLimitation = QStringLiteral("SQLite can't change these without rebuilding the table "
+                                           "(not attempted here): %1.")
+                                .arg(limited.join(QStringLiteral("; ")));
 
     return stmts.join(QStringLiteral(";\n"));
 }
@@ -584,8 +569,8 @@ QString CreateTableDialog::buildAlterSqlPostgres() const
             clauses << QStringLiteral("ADD COLUMN %1 %2").arg(qi(m_driver, c.name), defBody(c));
             if(!c.comment.isEmpty())
                 extraStatements << QStringLiteral("COMMENT ON COLUMN %1.%2 IS '%3'")
-                    .arg(qualified, qi(m_driver, c.name),
-                         QString(c.comment).replace('\'', QStringLiteral("''")));
+                                       .arg(qualified, qi(m_driver, c.name),
+                                            QString(c.comment).replace('\'', QStringLiteral("''")));
             continue;
         }
 
@@ -595,12 +580,14 @@ QString CreateTableDialog::buildAlterSqlPostgres() const
 
         if(c.name != orig)
             extraStatements << QStringLiteral("ALTER TABLE %1 RENAME COLUMN %2 TO %3")
-                .arg(qualified, qOrig, qi(m_driver, c.name));
+                                   .arg(qualified, qOrig, qi(m_driver, c.name));
 
         const QString wasType = was.length.isEmpty()
-            ? was.type.toUpper() : QStringLiteral("%1(%2)").arg(was.type.toUpper(), was.length);
+                                    ? was.type.toUpper()
+                                    : QStringLiteral("%1(%2)").arg(was.type.toUpper(), was.length);
         const QString nowType = c.length.isEmpty()
-            ? c.type.toUpper() : QStringLiteral("%1(%2)").arg(c.type.toUpper(), c.length);
+                                    ? c.type.toUpper()
+                                    : QStringLiteral("%1(%2)").arg(c.type.toUpper(), c.length);
         if(wasType != nowType)
             /* no USING clause: Postgres can fail this if the old and new
              * types aren't automatically castable (e.g. varchar -> integer
@@ -614,25 +601,26 @@ QString CreateTableDialog::buildAlterSqlPostgres() const
 
         if(c.notNull != was.notNull)
             clauses << QStringLiteral("ALTER COLUMN %1 %2 NOT NULL")
-                .arg(qOrig, c.notNull ? QStringLiteral("SET") : QStringLiteral("DROP"));
+                           .arg(qOrig, c.notNull ? QStringLiteral("SET") : QStringLiteral("DROP"));
 
         if(c.def != was.def)
-            clauses << (c.def.isEmpty()
-                ? QStringLiteral("ALTER COLUMN %1 DROP DEFAULT").arg(qOrig)
-                : QStringLiteral("ALTER COLUMN %1 SET DEFAULT %2")
-                      .arg(qOrig, formatDefault(c.def)));
+            clauses << (c.def.isEmpty() ? QStringLiteral("ALTER COLUMN %1 DROP DEFAULT").arg(qOrig)
+                                        : QStringLiteral("ALTER COLUMN %1 SET DEFAULT %2")
+                                              .arg(qOrig, formatDefault(c.def)));
 
         if(c.autoInc != was.autoInc)
             clauses << (c.autoInc
-                ? QStringLiteral("ALTER COLUMN %1 ADD GENERATED BY DEFAULT AS IDENTITY").arg(qOrig)
-                : QStringLiteral("ALTER COLUMN %1 DROP IDENTITY IF EXISTS").arg(qOrig));
+                            ? QStringLiteral("ALTER COLUMN %1 ADD GENERATED BY DEFAULT AS IDENTITY")
+                                  .arg(qOrig)
+                            : QStringLiteral("ALTER COLUMN %1 DROP IDENTITY IF EXISTS").arg(qOrig));
 
         if(c.comment != was.comment)
             extraStatements << QStringLiteral("COMMENT ON COLUMN %1.%2 IS %3")
-                .arg(qualified, c.name != orig ? qi(m_driver, c.name) : qOrig,
-                     c.comment.isEmpty() ? QStringLiteral("NULL")
-                         : QStringLiteral("'%1'").arg(QString(c.comment)
-                               .replace('\'', QStringLiteral("''"))));
+                                   .arg(qualified, c.name != orig ? qi(m_driver, c.name) : qOrig,
+                                        c.comment.isEmpty()
+                                            ? QStringLiteral("NULL")
+                                            : QStringLiteral("'%1'").arg(QString(c.comment).replace(
+                                                  '\'', QStringLiteral("''"))));
     }
 
     for(const QString &oc : m_originalCols)
@@ -654,7 +642,7 @@ QString CreateTableDialog::buildAlterSqlPostgres() const
              * text); a wrong guess fails loudly (DROP CONSTRAINT errors if
              * the name doesn't exist) rather than dropping something else. */
             clauses << QStringLiteral("DROP CONSTRAINT %1")
-                .arg(qi(m_driver, m_table + QStringLiteral("_pkey")));
+                           .arg(qi(m_driver, m_table + QStringLiteral("_pkey")));
         if(!newPk.isEmpty()) {
             QStringList q;
             for(const QString &c : newPk)
@@ -682,7 +670,6 @@ void CreateTableDialog::updatePreview()
     } else if(m_mode == Mode::Alter) {
         m_preview->setText(QStringLiteral("— no changes —"));
     } else {
-        m_preview->setText(
-            QStringLiteral("— fill in a table name and at least one column —"));
+        m_preview->setText(QStringLiteral("— fill in a table name and at least one column —"));
     }
 }

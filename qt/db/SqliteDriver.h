@@ -6,8 +6,14 @@
 class SqliteDriver : public IDbDriver
 {
 public:
-    QString driverName() const override { return QStringLiteral("SQLite"); }
-    int     defaultPort() const override { return 0; }   /* unused: file-based */
+    QString driverName() const override
+    {
+        return QStringLiteral("SQLite");
+    }
+    int defaultPort() const override
+    {
+        return 0;
+    } /* unused: file-based */
 
     IDbConnection *connect(const ConnectionParams &params, QString *error,
                            bool localInfile = false) override;

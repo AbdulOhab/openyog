@@ -24,8 +24,9 @@ IDbConnection *PostgresDriver::connect(const ConnectionParams &params, QString *
     parts << QStringLiteral("host=%1").arg(conninfoQuote(params.host))
           << QStringLiteral("port=%1").arg(params.port)
           << QStringLiteral("user=%1").arg(conninfoQuote(params.user))
-          << QStringLiteral("dbname=%1").arg(conninfoQuote(
-                 params.database.isEmpty() ? QStringLiteral("postgres") : params.database))
+          << QStringLiteral("dbname=%1")
+                 .arg(conninfoQuote(params.database.isEmpty() ? QStringLiteral("postgres")
+                                                              : params.database))
           << QStringLiteral("connect_timeout=10");
     if(!params.password.isEmpty())
         parts << QStringLiteral("password=%1").arg(conninfoQuote(params.password));
@@ -60,7 +61,8 @@ IDbConnection *PostgresDriver::connect(const ConnectionParams &params, QString *
     const QByteArray conninfo = parts.join(QLatin1Char(' ')).toUtf8();
     PGconn *conn = PQconnectdb(conninfo.constData());
     if(PQstatus(conn) != CONNECTION_OK) {
-        if(error) *error = QString::fromUtf8(PQerrorMessage(conn));
+        if(error)
+            *error = QString::fromUtf8(PQerrorMessage(conn));
         PQfinish(conn);
         return nullptr;
     }
@@ -70,8 +72,8 @@ IDbConnection *PostgresDriver::connect(const ConnectionParams &params, QString *
      * wait_timeout: an older server that doesn't recognize the GUC just
      * keeps its own default rather than failing the connection. */
     if(params.idleTimeoutSecs > 0) {
-        const QByteArray sql = QStringLiteral("SET idle_session_timeout = '%1s'")
-                                    .arg(params.idleTimeoutSecs).toUtf8();
+        const QByteArray sql =
+            QStringLiteral("SET idle_session_timeout = '%1s'").arg(params.idleTimeoutSecs).toUtf8();
         PGresult *res = PQexec(conn, sql.constData());
         PQclear(res);
     }

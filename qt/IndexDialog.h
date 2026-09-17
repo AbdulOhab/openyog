@@ -34,17 +34,17 @@ class IndexDialog : public QDialog
 public:
     struct IndexDef
     {
-        QString     name;
+        QString name;
         QStringList columns;
-        bool        unique = false;
-        bool        primary = false;
+        bool unique = false;
+        bool primary = false;
     };
 
-    IndexDialog(QString database, QString table,
-                const QList<IndexDef> &indexes, QStringList tableColumns,
-                QWidget *parent = nullptr, DriverType driver = DriverType::Mysql);
+    IndexDialog(QString database, QString table, const QList<IndexDef> &indexes,
+                QStringList tableColumns, QWidget *parent = nullptr,
+                DriverType driver = DriverType::Mysql);
 
-    QString buildSql() const;   /* the statement(s) above, or empty when unchanged */
+    QString buildSql() const; /* the statement(s) above, or empty when unchanged */
 
 private slots:
     void addPending();
@@ -54,14 +54,14 @@ private slots:
 private:
     void addRow(const IndexDef &ix);
 
-    DriverType   m_driver = DriverType::Mysql;
-    QString      m_database, m_table;
-    QStringList  m_columns;
-    QStringList  m_originalNames;   /* index names present at open (non-PK) */
+    DriverType m_driver = DriverType::Mysql;
+    QString m_database, m_table;
+    QStringList m_columns;
+    QStringList m_originalNames; /* index names present at open (non-PK) */
 
-    QTableWidget *m_grid    = nullptr;
-    QLineEdit    *m_newName  = nullptr;
-    QListWidget  *m_newCols  = nullptr;
-    QCheckBox    *m_newUnique = nullptr;
-    QLineEdit    *m_preview  = nullptr;
+    QTableWidget *m_grid = nullptr;
+    QLineEdit *m_newName = nullptr;
+    QListWidget *m_newCols = nullptr;
+    QCheckBox *m_newUnique = nullptr;
+    QLineEdit *m_preview = nullptr;
 };

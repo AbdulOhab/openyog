@@ -1,0 +1,50 @@
+# OpenYog / qt/ coding style, reverse-engineered from the existing source.
+# Applied across qt/ (session 89, clang-format 22). Run `clang-format -i
+# qt/<file>` after editing a qt/ file to keep it consistent with the rest
+# of the tree.
+#
+# Known gap: member-declaration blocks in the headers (e.g. ConnectionTab.h)
+# used to be hand-aligned into a column table with extra spaces before the
+# '*'. clang-format can't reproduce that look, so those blocks are now
+# ordinary single-space declarations instead — a one-time, cosmetic-only
+# change (verified: --sqlitetest=/--comptest=/--stmtattest=/--filtertest
+# all still pass byte-identical to before the reformat).
+
+BasedOnStyle: LLVM
+
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+ColumnLimit: 100
+AccessModifierOffset: -4
+
+BreakBeforeBraces: Custom
+BraceWrapping:
+  AfterFunction: true
+  AfterClass: true
+  AfterStruct: true
+  AfterNamespace: false
+  AfterEnum: false
+  AfterControlStatement: false
+  AfterUnion: true
+  BeforeElse: false
+  BeforeCatch: false
+  SplitEmptyFunction: false
+  SplitEmptyRecord: false
+
+SpaceBeforeParens: Never
+SpaceAfterTemplateKeyword: false
+SpacesInParentheses: false
+
+PointerAlignment: Right
+ReferenceAlignment: Right
+DerivePointerAlignment: false
+
+AllowShortFunctionsOnASingleLine: Empty
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+IndentCaseLabels: true
+NamespaceIndentation: None
+
+SortIncludes: false
+IncludeBlocks: Preserve

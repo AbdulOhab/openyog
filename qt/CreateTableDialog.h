@@ -45,11 +45,10 @@ public:
 
     /* create mode */
     explicit CreateTableDialog(QString database, QWidget *parent = nullptr,
-                              DriverType driver = DriverType::Mysql);
+                               DriverType driver = DriverType::Mysql);
     /* alter mode — seed from the live table's columns */
-    CreateTableDialog(QString database, QString table,
-                      const QList<ColumnDef> &columns, QString engine,
-                      QString charset, QWidget *parent = nullptr,
+    CreateTableDialog(QString database, QString table, const QList<ColumnDef> &columns,
+                      QString engine, QString charset, QWidget *parent = nullptr,
                       DriverType driver = DriverType::Mysql);
 
     /* CREATE TABLE … (create mode) or ALTER TABLE … [;COMMENT ON …;…]
@@ -61,7 +60,10 @@ public:
      * without a full table rebuild (see buildAlterSqlSqlite()) — the
      * caller should show this to the user rather than assume "no changes
      * to apply" the way an empty buildSql() with an empty limitation means */
-    QString alterLimitation() const { return m_alterLimitation; }
+    QString alterLimitation() const
+    {
+        return m_alterLimitation;
+    }
 
 private slots:
     void addColumnRow(const QString &name = {}, const QString &type = {});
@@ -69,37 +71,36 @@ private slots:
     void updatePreview();
 
 private:
-    enum Col { CName, CType, CLen, CDefault, CPk, CNotNull, CUnsigned, CAuto,
-               CComment, ColCount };
+    enum Col { CName, CType, CLen, CDefault, CPk, CNotNull, CUnsigned, CAuto, CComment, ColCount };
     enum class Mode { Create, Alter };
 
-    void buildCommon();                 /* shared widget construction */
-    void seedRow(const ColumnDef &c);   /* alter mode: row + original name tag */
-    ColumnDef rowColumnDef(int row) const;   /* current grid state of one row */
-    QString rowBody(int row) const;     /* "TYPE(..) UNSIGNED NOT NULL … " */
+    void buildCommon();                    /* shared widget construction */
+    void seedRow(const ColumnDef &c);      /* alter mode: row + original name tag */
+    ColumnDef rowColumnDef(int row) const; /* current grid state of one row */
+    QString rowBody(int row) const;        /* "TYPE(..) UNSIGNED NOT NULL … " */
     QString defBody(const ColumnDef &c) const;
     QString buildCreateSql() const;
     QString buildAlterSql() const;
     QString buildAlterSqlPostgres() const;
     QString buildAlterSqlSqlite() const;
 
-    Mode         m_mode = Mode::Create;
-    DriverType   m_driver = DriverType::Mysql;
-    QString      m_database;
-    QString      m_table;               /* alter mode */
-    QStringList  m_originalCols;        /* names at open (alter mode) */
-    QStringList  m_originalPk;          /* pk col names at open (alter mode) */
-    QHash<QString, QString> m_originalBody;  /* name -> defBody() at open */
-    QHash<QString, ColumnDef> m_originalDefs;  /* name -> full def at open
-                                                 * (PostgreSQL's per-clause
-                                                 * ALTER needs each field,
-                                                 * not just the combined
-                                                 * body text) */
-    mutable QString m_alterLimitation;   /* see alterLimitation() above */
+    Mode m_mode = Mode::Create;
+    DriverType m_driver = DriverType::Mysql;
+    QString m_database;
+    QString m_table;                          /* alter mode */
+    QStringList m_originalCols;               /* names at open (alter mode) */
+    QStringList m_originalPk;                 /* pk col names at open (alter mode) */
+    QHash<QString, QString> m_originalBody;   /* name -> defBody() at open */
+    QHash<QString, ColumnDef> m_originalDefs; /* name -> full def at open
+                                               * (PostgreSQL's per-clause
+                                               * ALTER needs each field,
+                                               * not just the combined
+                                               * body text) */
+    mutable QString m_alterLimitation;        /* see alterLimitation() above */
 
-    QLineEdit   *m_name    = nullptr;
-    QTableWidget*m_grid    = nullptr;
-    QComboBox   *m_engine  = nullptr;
-    QComboBox   *m_charset = nullptr;
-    QLineEdit   *m_preview = nullptr;
+    QLineEdit *m_name = nullptr;
+    QTableWidget *m_grid = nullptr;
+    QComboBox *m_engine = nullptr;
+    QComboBox *m_charset = nullptr;
+    QLineEdit *m_preview = nullptr;
 };

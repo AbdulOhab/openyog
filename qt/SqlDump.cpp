@@ -19,14 +19,12 @@ QStringList baseTables(IDbConnection *c, const QString &db, QString *error)
      * would otherwise misfire "does not exist" on every empty-but-valid
      * SQLite file. */
     if(out.isEmpty() && !db.isEmpty() && !c->listDatabases().contains(db) && error)
-        *error = QStringLiteral("database '%1' does not exist on this connection")
-                     .arg(db);
+        *error = QStringLiteral("database '%1' does not exist on this connection").arg(db);
     return out;
 }
 
 /* one INSERT tuple: NULL stays NULL, everything else single-quoted + escaped */
-QString tuple(IDbConnection *c, const QVector<QByteArray> &fields,
-             const QVector<bool> &isNull)
+QString tuple(IDbConnection *c, const QVector<QByteArray> &fields, const QVector<bool> &isNull)
 {
     QString s = QStringLiteral("(");
     for(int i = 0; i < fields.size(); ++i) {
@@ -69,8 +67,7 @@ bool SqlDump::write(IDbConnection *conn, const QString &db, const QStringList &t
 
     put(QStringLiteral("-- OpenYog SQL dump"));
     put(QStringLiteral("-- Database: %1").arg(db));
-    put(QStringLiteral("-- Generated: %1")
-            .arg(QDateTime::currentDateTime().toString(Qt::ISODate)));
+    put(QStringLiteral("-- Generated: %1").arg(QDateTime::currentDateTime().toString(Qt::ISODate)));
     const QString fkOff = conn->sqlFkChecks(false);
     if(!fkOff.isEmpty())
         put(fkOff + QLatin1Char(';'));
@@ -86,8 +83,7 @@ bool SqlDump::write(IDbConnection *conn, const QString &db, const QStringList &t
 
         if(opt.structure) {
             if(opt.addDropTable)
-                put(QStringLiteral("DROP TABLE IF EXISTS %1;")
-                        .arg(conn->quoteIdent(t)));
+                put(QStringLiteral("DROP TABLE IF EXISTS %1;").arg(conn->quoteIdent(t)));
             const QString ddl = conn->showCreate(QStringLiteral("TABLE"), db, t, error);
             if(ddl.isEmpty())
                 return false;
@@ -98,25 +94,24 @@ bool SqlDump::write(IDbConnection *conn, const QString &db, const QStringList &t
         if(!opt.data)
             continue;
 
-        const QString select = QStringLiteral("SELECT * FROM %1")
-                                   .arg(conn->qualify(db, t));
+        const QString select = QStringLiteral("SELECT * FROM %1").arg(conn->qualify(db, t));
         int inBatch = 0;
-        bool streamOk = conn->streamQuery(
-            select,
-            error, nullptr,
-            [&](const QVector<QByteArray> &fields, const QVector<bool> &isNull) {
-                if(inBatch == 0)
-                    out->write(QStringLiteral("INSERT INTO %1 VALUES\n")
-                                   .arg(conn->quoteIdent(t)).toUtf8());
-                else
-                    out->write(",\n");
-                out->write(tuple(conn, fields, isNull).toUtf8());
-                if(++inBatch >= qMax(1, opt.rowsPerInsert)) {
-                    out->write(";\n");
-                    inBatch = 0;
-                }
-                return true;
-            });
+        bool streamOk =
+            conn->streamQuery(select, error, nullptr,
+                              [&](const QVector<QByteArray> &fields, const QVector<bool> &isNull) {
+                                  if(inBatch == 0)
+                                      out->write(QStringLiteral("INSERT INTO %1 VALUES\n")
+                                                     .arg(conn->quoteIdent(t))
+                                                     .toUtf8());
+                                  else
+                                      out->write(",\n");
+                                  out->write(tuple(conn, fields, isNull).toUtf8());
+                                  if(++inBatch >= qMax(1, opt.rowsPerInsert)) {
+                                      out->write(";\n");
+                                      inBatch = 0;
+                                  }
+                                  return true;
+                              });
         if(!streamOk)
             return false;
         if(inBatch > 0)
@@ -130,13 +125,13 @@ bool SqlDump::write(IDbConnection *conn, const QString &db, const QStringList &t
     return true;
 }
 
-bool SqlDump::forEachStatement(
-    IDbConnection *conn, const QString &db, const QStringList &tables,
-    const Options &opt, const std::function<bool(const QString &)> &exec,
-    QString *error)
+bool SqlDump::forEachStatement(IDbConnection *conn, const QString &db, const QStringList &tables,
+                               const Options &opt, const std::function<bool(const QString &)> &exec,
+                               QString *error)
 {
     if(!conn) {
-        if(error) *error = QStringLiteral("no connection");
+        if(error)
+            *error = QStringLiteral("no connection");
         return false;
     }
     QStringList list = tables;
@@ -151,9 +146,8 @@ bool SqlDump::forEachStatement(
 
     for(const QString &t : std::as_const(list)) {
         if(opt.structure) {
-            if(opt.addDropTable
-               && !exec(QStringLiteral("DROP TABLE IF EXISTS %1")
-                            .arg(conn->quoteIdent(t))))
+            if(opt.addDropTable &&
+               !exec(QStringLiteral("DROP TABLE IF EXISTS %1").arg(conn->quoteIdent(t))))
                 return false;
             const QString ddl = conn->showCreate(QStringLiteral("TABLE"), db, t, error);
             if(ddl.isEmpty() || !exec(ddl))
@@ -173,15 +167,12 @@ bool SqlDump::forEachStatement(
             inBatch = 0;
             return ok;
         };
-        const QString select = QStringLiteral("SELECT * FROM %1")
-                                   .arg(conn->qualify(db, t));
+        const QString select = QStringLiteral("SELECT * FROM %1").arg(conn->qualify(db, t));
         bool streamOk = conn->streamQuery(
-            select,
-            error, nullptr,
+            select, error, nullptr,
             [&](const QVector<QByteArray> &fields, const QVector<bool> &isNull) {
                 if(inBatch == 0)
-                    batch = QStringLiteral("INSERT INTO %1 VALUES\n")
-                                .arg(conn->quoteIdent(t));
+                    batch = QStringLiteral("INSERT INTO %1 VALUES\n").arg(conn->quoteIdent(t));
                 else
                     batch += QStringLiteral(",\n");
                 batch += tuple(conn, fields, isNull);
@@ -200,11 +191,9 @@ bool SqlDump::forEachStatement(
     if(opt.routines) {
         /* strip DEFINER=`u`@`h` (MySQL) and the source-db qualifier — the
          * caller has USEd the target db, so unqualified names land there */
-        static const QRegularExpression kDefiner(
-            QStringLiteral("DEFINER=`[^`]*`@`[^`]*` "));
+        static const QRegularExpression kDefiner(QStringLiteral("DEFINER=`[^`]*`@`[^`]*` "));
         const auto clean = [&](QString s) {
-            return s.remove(kDefiner)
-                    .replace(QStringLiteral("`%1`.").arg(db), QString());
+            return s.remove(kDefiner).replace(QStringLiteral("`%1`.").arg(db), QString());
         };
         /* showCreate failure on an unsupported kind yields an empty DDL —
          * skipped (e.g. SQLite: routines/events don't exist, and its
@@ -221,7 +210,8 @@ bool SqlDump::forEachStatement(
         }
         for(const QStringList &row : conn->listRoutines(db).rows) {
             const QString kw = row.value(1) == QStringLiteral("PROCEDURE")
-                ? QStringLiteral("PROCEDURE") : QStringLiteral("FUNCTION");
+                                   ? QStringLiteral("PROCEDURE")
+                                   : QStringLiteral("FUNCTION");
             const QString ddl = ddlFor(kw, row.value(0));
             if(!ddl.isEmpty() && !exec(ddl))
                 return false;

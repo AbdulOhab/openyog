@@ -2,10 +2,7 @@
 
 #include <QColor>
 
-QueryModel::QueryModel(QObject *parent)
-    : QAbstractTableModel(parent)
-{
-}
+QueryModel::QueryModel(QObject *parent) : QAbstractTableModel(parent) {}
 
 bool QueryModel::execute(IDbConnection *conn, const QString &query, QString *message)
 {
@@ -33,8 +30,14 @@ void QueryModel::setResultSet(const QStringList &headers, const QVector<QStringL
     endResetModel();
 }
 
-int QueryModel::rowCount(const QModelIndex &) const { return (int)m_rows.size(); }
-int QueryModel::columnCount(const QModelIndex &) const { return (int)m_cols.size(); }
+int QueryModel::rowCount(const QModelIndex &) const
+{
+    return (int)m_rows.size();
+}
+int QueryModel::columnCount(const QModelIndex &) const
+{
+    return (int)m_cols.size();
+}
 
 QVariant QueryModel::data(const QModelIndex &idx, int role) const
 {

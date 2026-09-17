@@ -1,7 +1,7 @@
 #include "FavoritesStore.h"
 
 #include "wyIni.h"
-#include "CommonHelper.h"   /* EncodeBase64/DecodeBase64 + wyString (port shim) */
+#include "CommonHelper.h" /* EncodeBase64/DecodeBase64 + wyString (port shim) */
 
 #include <QDir>
 #include <QFile>
@@ -33,8 +33,8 @@ QStringList FavoritesStore::names()
 QString FavoritesStore::get(const QString &name)
 {
     wyString value;
-    if(wyIni::IniGetString(name.toUtf8(), "sql", "", &value, iniPath().toUtf8()) == 0
-       || value.GetLength() == 0)
+    if(wyIni::IniGetString(name.toUtf8(), "sql", "", &value, iniPath().toUtf8()) == 0 ||
+       value.GetLength() == 0)
         return {};
     const QByteArray b64(value.GetString());
     QByteArray decoded(b64.size() * 3 / 4 + 1, '\0');

@@ -15,12 +15,10 @@ namespace {
 QString qi(DriverType driver, const QString &ident)
 {
     if(driver == DriverType::Postgres)
-        return QLatin1Char('"') + QString(ident).replace(QLatin1Char('"'),
-                                                          QStringLiteral("\"\""))
-             + QLatin1Char('"');
-    return QLatin1Char('`') + QString(ident).replace(QLatin1Char('`'),
-                                                      QStringLiteral("``"))
-         + QLatin1Char('`');
+        return QLatin1Char('"') + QString(ident).replace(QLatin1Char('"'), QStringLiteral("\"\"")) +
+               QLatin1Char('"');
+    return QLatin1Char('`') + QString(ident).replace(QLatin1Char('`'), QStringLiteral("``")) +
+           QLatin1Char('`');
 }
 
 /* DROP INDEX's index-name argument is schema-qualified with a dot on both
@@ -29,26 +27,23 @@ QString qi(DriverType driver, const QString &ident)
  * pattern), and an empty-then-dot prefix would be invalid syntax there */
 QString qualifyIndexName(DriverType driver, const QString &db, const QString &name)
 {
-    return db.isEmpty() ? qi(driver, name)
-                        : qi(driver, db) + QLatin1Char('.') + qi(driver, name);
+    return db.isEmpty() ? qi(driver, name) : qi(driver, db) + QLatin1Char('.') + qi(driver, name);
 }
 } // namespace
 
-IndexDialog::IndexDialog(QString database, QString table,
-                         const QList<IndexDef> &indexes, QStringList tableColumns,
-                         QWidget *parent, DriverType driver)
-    : QDialog(parent), m_driver(driver), m_database(std::move(database)),
-      m_table(std::move(table)), m_columns(std::move(tableColumns))
+IndexDialog::IndexDialog(QString database, QString table, const QList<IndexDef> &indexes,
+                         QStringList tableColumns, QWidget *parent, DriverType driver)
+    : QDialog(parent), m_driver(driver), m_database(std::move(database)), m_table(std::move(table)),
+      m_columns(std::move(tableColumns))
 {
     setWindowTitle(QStringLiteral("Manage Indexes — `%1`").arg(m_table));
     resize(580, 460);
 
     m_grid = new QTableWidget(0, 3, this);
-    m_grid->setObjectName(QStringLiteral("indexGrid"));   /* test discoverability */
+    m_grid->setObjectName(QStringLiteral("indexGrid")); /* test discoverability */
     m_grid->setMinimumHeight(150);
     m_grid->setHorizontalHeaderLabels(
-        { QStringLiteral("Name"), QStringLiteral("Columns"),
-          QStringLiteral("Unique") });
+        {QStringLiteral("Name"), QStringLiteral("Columns"), QStringLiteral("Unique")});
     m_grid->horizontalHeader()->setStretchLastSection(true);
     m_grid->horizontalHeader()->resizeSection(0, 160);
     m_grid->horizontalHeader()->resizeSection(1, 260);
@@ -62,16 +57,16 @@ IndexDialog::IndexDialog(QString database, QString table,
     }
 
     auto *removeBtn = new QPushButton(QStringLiteral("&Remove Selected"), this);
-    removeBtn->setObjectName(QStringLiteral("removeSelectedBtn"));   /* test discoverability */
+    removeBtn->setObjectName(QStringLiteral("removeSelectedBtn")); /* test discoverability */
     connect(removeBtn, &QPushButton::clicked, this, &IndexDialog::removeSelected);
 
     /* --- add-new area --- */
     m_newName = new QLineEdit(this);
-    m_newName->setObjectName(QStringLiteral("newIndexName"));   /* test discoverability */
+    m_newName->setObjectName(QStringLiteral("newIndexName")); /* test discoverability */
     m_newName->setPlaceholderText(QStringLiteral("new index name"));
     m_newUnique = new QCheckBox(QStringLiteral("Unique"), this);
     m_newCols = new QListWidget(this);
-    m_newCols->setObjectName(QStringLiteral("newIndexCols"));   /* test discoverability */
+    m_newCols->setObjectName(QStringLiteral("newIndexCols")); /* test discoverability */
     m_newCols->setSelectionMode(QAbstractItemView::NoSelection);
     m_newCols->setMaximumHeight(110);
     for(const QString &c : m_columns) {
@@ -80,7 +75,7 @@ IndexDialog::IndexDialog(QString database, QString table,
         it->setCheckState(Qt::Unchecked);
     }
     auto *addBtn = new QPushButton(QStringLiteral("&Add Index"), this);
-    addBtn->setObjectName(QStringLiteral("addIndexBtn"));   /* test discoverability */
+    addBtn->setObjectName(QStringLiteral("addIndexBtn")); /* test discoverability */
     connect(addBtn, &QPushButton::clicked, this, &IndexDialog::addPending);
 
     auto *addRowL = new QHBoxLayout;
@@ -93,15 +88,14 @@ IndexDialog::IndexDialog(QString database, QString table,
     m_preview->setReadOnly(true);
     m_preview->setStyleSheet(QStringLiteral("color:#3B7DBB;"));
 
-    auto *buttons = new QDialogButtonBox(
-        QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
+    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
     buttons->button(QDialogButtonBox::Ok)->setText(QStringLiteral("Apply"));
     connect(buttons, &QDialogButtonBox::accepted, this, &QDialog::accept);
     connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
 
     auto *lay = new QVBoxLayout(this);
-    lay->addWidget(new QLabel(QStringLiteral("Indexes on `%1`.`%2`")
-                                  .arg(m_database, m_table), this));
+    lay->addWidget(
+        new QLabel(QStringLiteral("Indexes on `%1`.`%2`").arg(m_database, m_table), this));
     lay->addWidget(m_grid, 1);
     lay->addWidget(removeBtn, 0, Qt::AlignLeft);
     lay->addWidget(new QLabel(QStringLiteral("Columns for the new index:"), this));
@@ -117,13 +111,12 @@ void IndexDialog::addRow(const IndexDef &ix)
 {
     const int r = m_grid->rowCount();
     m_grid->insertRow(r);
-    auto *nameItem = new QTableWidgetItem(
-        ix.primary ? QStringLiteral("PRIMARY") : ix.name);
-    nameItem->setData(Qt::UserRole, ix.primary);   /* true => not droppable here */
+    auto *nameItem = new QTableWidgetItem(ix.primary ? QStringLiteral("PRIMARY") : ix.name);
+    nameItem->setData(Qt::UserRole, ix.primary); /* true => not droppable here */
     m_grid->setItem(r, 0, nameItem);
     m_grid->setItem(r, 1, new QTableWidgetItem(ix.columns.join(QStringLiteral(", "))));
-    m_grid->setItem(r, 2, new QTableWidgetItem(
-        ix.primary || ix.unique ? QStringLiteral("yes") : QString()));
+    m_grid->setItem(
+        r, 2, new QTableWidgetItem(ix.primary || ix.unique ? QStringLiteral("yes") : QString()));
 }
 
 void IndexDialog::addPending()
@@ -144,7 +137,7 @@ void IndexDialog::addPending()
     ix.unique = m_newUnique->isChecked();
     addRow(ix);
     m_grid->item(m_grid->rowCount() - 1, 0)
-        ->setData(Qt::UserRole + 1, true);   /* mark: newly added */
+        ->setData(Qt::UserRole + 1, true); /* mark: newly added */
 
     m_newName->clear();
     m_newUnique->setChecked(false);
@@ -159,7 +152,7 @@ void IndexDialog::removeSelected()
     if(r < 0)
         return;
     if(m_grid->item(r, 0)->data(Qt::UserRole).toBool())
-        return;                     /* PRIMARY — not here */
+        return; /* PRIMARY — not here */
     m_grid->removeRow(r);
     updatePreview();
 }
@@ -174,10 +167,10 @@ QString IndexDialog::buildSql() const
     for(int r = 0; r < m_grid->rowCount(); ++r) {
         QTableWidgetItem *n = m_grid->item(r, 0);
         if(n->data(Qt::UserRole).toBool())
-            continue;                               /* PRIMARY */
+            continue; /* PRIMARY */
         const QString name = n->text();
         current << name;
-        if(n->data(Qt::UserRole + 1).toBool()) {    /* newly added row */
+        if(n->data(Qt::UserRole + 1).toBool()) { /* newly added row */
             const QString cols = m_grid->item(r, 1)->text();
             const bool uniq = m_grid->item(r, 2)->text() == QStringLiteral("yes");
             QStringList q;
@@ -185,13 +178,12 @@ QString IndexDialog::buildSql() const
                 q << qi(m_driver, c.trimmed());
             if(standalone)
                 adds << QStringLiteral("CREATE %1INDEX %2 ON %3 (%4)")
-                            .arg(uniq ? QStringLiteral("UNIQUE ") : QString(),
-                                 qi(m_driver, name), qi(m_driver, m_table),
-                                 q.join(QStringLiteral(", ")));
+                            .arg(uniq ? QStringLiteral("UNIQUE ") : QString(), qi(m_driver, name),
+                                 qi(m_driver, m_table), q.join(QStringLiteral(", ")));
             else
                 adds << QStringLiteral("ADD %1INDEX `%2` (%3)")
-                            .arg(uniq ? QStringLiteral("UNIQUE ") : QString(),
-                                 name, q.join(QStringLiteral(", ")));
+                            .arg(uniq ? QStringLiteral("UNIQUE ") : QString(), name,
+                                 q.join(QStringLiteral(", ")));
         }
     }
 

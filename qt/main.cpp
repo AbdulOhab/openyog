@@ -64,26 +64,28 @@ int main(int argc, char *argv[])
 {
     QString screenshot;
     bool shotDialog = false;
-    QString dialogDriver;   /* --dialogdriver=sqlite : preselect a driver, --dialog selftest */
+    QString dialogDriver; /* --dialogdriver=sqlite : preselect a driver, --dialog selftest */
     bool shotCreateTable = false;
     bool shotIndexDlg = false;
     bool shotExportDlg = false;
     QPair<QString, QString> openTableParts;
-    QString dataViewMode;   /* --dataview=text|grid selftest */
-    QString checkRows;      /* --checkrows=0,2,4 selftest */
-    QString hexCell;        /* --hexcell=row:col:hexdigits selftest */
-    QString mkObj;          /* --mkobj=VIEW|PROCEDURE|… selftest */
-    QString explainMode;    /* --explain=json|plain selftest: Explain "SELECT 1" */
-    QString useDbArg;       /* --usedb=NAME selftest */
-    QString expandPgDbArg;  /* --expandpgdb=NAME selftest */
-    bool runAgain = false;  /* --runagain selftest: F9 a second time before the screenshot */
-    bool copyTableHost = false; /* --copytablehost selftest: Table ▸ Copy Table(s) To Different Host… (non-MySQL-source guard) */
-    QString selectTreePath;  /* --selecttreepath=a/b/c selftest */
-    QString clickTreePath;   /* --clicktreepath=a/b/c selftest (synthesized mouse click) */
-    QString dblClickTreePath; /* --dblclicktreepath=a/b/c selftest (synthesized double-click) */
-    QString collapseTreePath; /* --collapsetreepath=a/b/c selftest */
-    QString expandTreePath;   /* --expandtreepath=a/b/c selftest (setExpanded(true), not a click) */
-    QStringList dumpTreePaths; /* --dumptree=a/b/c selftest: print that node's subtree (repeatable) */
+    QString dataViewMode;       /* --dataview=text|grid selftest */
+    QString checkRows;          /* --checkrows=0,2,4 selftest */
+    QString hexCell;            /* --hexcell=row:col:hexdigits selftest */
+    QString mkObj;              /* --mkobj=VIEW|PROCEDURE|… selftest */
+    QString explainMode;        /* --explain=json|plain selftest: Explain "SELECT 1" */
+    QString useDbArg;           /* --usedb=NAME selftest */
+    QString expandPgDbArg;      /* --expandpgdb=NAME selftest */
+    bool runAgain = false;      /* --runagain selftest: F9 a second time before the screenshot */
+    bool copyTableHost = false; /* --copytablehost selftest: Table ▸ Copy Table(s) To Different
+                                   Host… (non-MySQL-source guard) */
+    QString selectTreePath;     /* --selecttreepath=a/b/c selftest */
+    QString clickTreePath;      /* --clicktreepath=a/b/c selftest (synthesized mouse click) */
+    QString dblClickTreePath;   /* --dblclicktreepath=a/b/c selftest (synthesized double-click) */
+    QString collapseTreePath;   /* --collapsetreepath=a/b/c selftest */
+    QString expandTreePath; /* --expandtreepath=a/b/c selftest (setExpanded(true), not a click) */
+    QStringList
+        dumpTreePaths; /* --dumptree=a/b/c selftest: print that node's subtree (repeatable) */
     QStringList treeMenuPaths; /* --treemenu=a/b/c selftest: print that node's right-click
                                 * context menu item texts (repeatable) — compares what
                                 * MySQL/SQLite/PostgreSQL offer for the same node kind
@@ -102,17 +104,17 @@ int main(int argc, char *argv[])
     QString copyDbArg;
     QString pgCopyDbArg;
     QString pgMultiDbArg;
-    bool dumpCombo = false;   /* --dumpcombo selftest */
-    QString switchDbArg;      /* --switchdb=NAME selftest: switch database like the tree does */
-    QString pickSchemaArg;    /* --pickschema=NAME selftest: pick a schema like a real combo click */
+    bool dumpCombo = false; /* --dumpcombo selftest */
+    QString switchDbArg;    /* --switchdb=NAME selftest: switch database like the tree does */
+    QString pickSchemaArg;  /* --pickschema=NAME selftest: pick a schema like a real combo click */
     QString sqliteCopyDbArg;
     QString sqliteCsvImportArg;
     QString pgCsvImportArg;
     QString schemaHtmlArg;
     QString delConn;
-    QString shotMenuArg;     /* --shotmenu=Title selftest: screenshot one open top-level menu */
-    QString previewTheme;    /* --previewtheme=dark|twilight|light selftest: apply live,
-                              * without touching the persisted OpenYog.ini choice */
+    QString shotMenuArg;  /* --shotmenu=Title selftest: screenshot one open top-level menu */
+    QString previewTheme; /* --previewtheme=dark|twilight|light selftest: apply live,
+                           * without touching the persisted OpenYog.ini choice */
     for(int i = 1; i < argc; ++i) {
         const QString a = QString::fromLocal8Bit(argv[i]);
         if(a.startsWith(QStringLiteral("--screenshot=")))
@@ -133,19 +135,19 @@ int main(int argc, char *argv[])
             selectTreePath = a.mid(QStringLiteral("--selecttreepath=").size());
         if(a.startsWith(QStringLiteral("--clicktreepath="))) {
             clickTreePath = a.mid(QStringLiteral("--clicktreepath=").size());
-            treeActions.append({ QStringLiteral("click"), clickTreePath });
+            treeActions.append({QStringLiteral("click"), clickTreePath});
         }
         if(a.startsWith(QStringLiteral("--dblclicktreepath="))) {
             dblClickTreePath = a.mid(QStringLiteral("--dblclicktreepath=").size());
-            treeActions.append({ QStringLiteral("dblclick"), dblClickTreePath });
+            treeActions.append({QStringLiteral("dblclick"), dblClickTreePath});
         }
         if(a.startsWith(QStringLiteral("--collapsetreepath="))) {
             collapseTreePath = a.mid(QStringLiteral("--collapsetreepath=").size());
-            treeActions.append({ QStringLiteral("collapse"), collapseTreePath });
+            treeActions.append({QStringLiteral("collapse"), collapseTreePath});
         }
         if(a.startsWith(QStringLiteral("--expandtreepath="))) {
             expandTreePath = a.mid(QStringLiteral("--expandtreepath=").size());
-            treeActions.append({ QStringLiteral("expand"), expandTreePath });
+            treeActions.append({QStringLiteral("expand"), expandTreePath});
         }
         if(a.startsWith(QStringLiteral("--dumptree=")))
             dumpTreePaths.append(a.mid(QStringLiteral("--dumptree=").size()));
@@ -156,8 +158,8 @@ int main(int argc, char *argv[])
         /* --opentable=db:table (selftest: opens the editable data grid) */
         /* --editcell=row:col:value  stage the edit AND apply it (UPDATE path) */
         /* --stagecell=row:col:value stage only (shows the amber cell + Apply bar) */
-        if(a.startsWith(QStringLiteral("--editcell="))
-           || a.startsWith(QStringLiteral("--stagecell="))) {
+        if(a.startsWith(QStringLiteral("--editcell=")) ||
+           a.startsWith(QStringLiteral("--stagecell="))) {
             stageOnly = a.startsWith(QStringLiteral("--stagecell="));
             const QStringList parts = a.section('=', 1).split(':');
             if(parts.size() == 3) {
@@ -212,85 +214,75 @@ int main(int argc, char *argv[])
              * every shape check below (seen when a /tmp fixture was
              * wiped between sessions) */
             if(!QFileInfo::exists(cp.filePath)) {
-                QTextStream(stdout) << "sqlitetest: " << cp.filePath
-                                    << " does not exist\n";
+                QTextStream(stdout) << "sqlitetest: " << cp.filePath << " does not exist\n";
                 return 1;
             }
             QString connectError;
             IDbConnection *c = dbDriverFor(cp.driverType)->connect(cp, &connectError);
             if(!c) {
-                QTextStream(stdout) << "sqlitetest: connect failed: "
-                                    << connectError << '\n';
+                QTextStream(stdout) << "sqlitetest: connect failed: " << connectError << '\n';
                 return 1;
             }
             int fails = 0;
             const auto check = [&](bool ok, const QString &what) {
-                if(!ok) ++fails;
-                QTextStream(stdout) << "sqlitetest " << what
-                                    << (ok ? "  PASS\n" : "  FAIL\n");
+                if(!ok)
+                    ++fails;
+                QTextStream(stdout) << "sqlitetest " << what << (ok ? "  PASS\n" : "  FAIL\n");
             };
-            const auto findRow = [](const DbResultSet &rs, int col,
-                                    const QString &val) {
+            const auto findRow = [](const DbResultSet &rs, int col, const QString &val) {
                 for(const QStringList &row : rs.rows)
                     if(row.value(col) == val)
                         return row;
                 return QStringList{};
             };
 
-            check(c->listDatabases().contains(QStringLiteral("main")),
-                  "databases contain main");
+            check(c->listDatabases().contains(QStringLiteral("main")), "databases contain main");
 
             const QStringList tbls = c->listTables(QStringLiteral("main"));
-            check(tbls.contains(QStringLiteral("employees"))
-                  && tbls.contains(QStringLiteral("emp_dept"))
-                  && !tbls.contains(QStringLiteral("v_employee_dept")),
+            check(tbls.contains(QStringLiteral("employees")) &&
+                      tbls.contains(QStringLiteral("emp_dept")) &&
+                      !tbls.contains(QStringLiteral("v_employee_dept")),
                   "listTables base tables");
-            const QStringList views = c->listTables(QStringLiteral("main"),
-                                                    QStringLiteral("VIEW"));
-            check(views.contains(QStringLiteral("v_employee_dept"))
-                  && views.size() == 1, "listTables views");
+            const QStringList views = c->listTables(QStringLiteral("main"), QStringLiteral("VIEW"));
+            check(views.contains(QStringLiteral("v_employee_dept")) && views.size() == 1,
+                  "listTables views");
 
-            const DbResultSet cols = c->listColumns(QStringLiteral("main"),
-                                                    QStringLiteral("employees"));
+            const DbResultSet cols =
+                c->listColumns(QStringLiteral("main"), QStringLiteral("employees"));
             const QStringList idCol = findRow(cols, 0, QStringLiteral("id"));
-            check(idCol.value(1) == QStringLiteral("INTEGER")
-                  && idCol.value(2) == QStringLiteral("NO")
-                  && idCol.value(3) == QStringLiteral("PRI")
-                  && idCol.value(5).contains(QStringLiteral("auto_increment")),
+            check(idCol.value(1) == QStringLiteral("INTEGER") &&
+                      idCol.value(2) == QStringLiteral("NO") &&
+                      idCol.value(3) == QStringLiteral("PRI") &&
+                      idCol.value(5).contains(QStringLiteral("auto_increment")),
                   "listColumns id shape");
-            check(findRow(cols, 0, QStringLiteral("name")).value(2)
-                      == QStringLiteral("NO")
-                  && findRow(cols, 0, QStringLiteral("salary")).value(2)
-                         == QStringLiteral("YES"),
+            check(findRow(cols, 0, QStringLiteral("name")).value(2) == QStringLiteral("NO") &&
+                      findRow(cols, 0, QStringLiteral("salary")).value(2) == QStringLiteral("YES"),
                   "listColumns nullability");
 
-            const DbResultSet ixs = c->listIndexes(QStringLiteral("main"),
-                                                   QStringLiteral("employees"));
+            const DbResultSet ixs =
+                c->listIndexes(QStringLiteral("main"), QStringLiteral("employees"));
             const QStringList pk = findRow(ixs, 2, QStringLiteral("PRIMARY"));
-            check(pk.value(1) == QStringLiteral("0")
-                  && pk.value(4) == QStringLiteral("id"),
+            check(pk.value(1) == QStringLiteral("0") && pk.value(4) == QStringLiteral("id"),
                   "listIndexes PRIMARY (rowid alias)");
-            const QStringList cityIx = findRow(ixs, 2,
-                                               QStringLiteral("idx_employees_city"));
-            check(cityIx.value(1) == QStringLiteral("1")
-                  && cityIx.value(4) == QStringLiteral("city"),
+            const QStringList cityIx = findRow(ixs, 2, QStringLiteral("idx_employees_city"));
+            check(cityIx.value(1) == QStringLiteral("1") &&
+                      cityIx.value(4) == QStringLiteral("city"),
                   "listIndexes secondary index");
 
-            const DbResultSet fks = c->listForeignKeys(QStringLiteral("main"),
-                                                       QStringLiteral("employees"));
-            check(!fks.rows.isEmpty()
-                  && fks.rows.first().value(1) == QStringLiteral("dept_id")
-                  && fks.rows.first().value(2) == QStringLiteral("emp_dept")
-                  && fks.rows.first().value(3) == QStringLiteral("id"),
+            const DbResultSet fks =
+                c->listForeignKeys(QStringLiteral("main"), QStringLiteral("employees"));
+            check(!fks.rows.isEmpty() && fks.rows.first().value(1) == QStringLiteral("dept_id") &&
+                      fks.rows.first().value(2) == QStringLiteral("emp_dept") &&
+                      fks.rows.first().value(3) == QStringLiteral("id"),
                   "listForeignKeys shape");
 
-            const DbResultSet trgs = c->listTableTriggers(
-                QStringLiteral("main"), QStringLiteral("employees"));
-            check(trgs.rows.size() == 1
-                  && trgs.rows.first().value(0)
-                         == QStringLiteral("trg_employees_no_negative_salary")
-                  && trgs.rows.first().value(1) == QStringLiteral("BEFORE")
-                  && trgs.rows.first().value(2) == QStringLiteral("INSERT"),
+            const DbResultSet trgs =
+                c->listTableTriggers(QStringLiteral("main"), QStringLiteral("employees"));
+            check(trgs.rows.size() == 1 &&
+                      trgs.rows.first().value(0) ==
+                          QStringLiteral("trg_employees_no_negative_salary") &&
+                      trgs.rows.first().value(1) == QStringLiteral("BEFORE") &&
+                      trgs.rows.first().value(2) == QStringLiteral("INSERT"),
                   "listTableTriggers shape");
             check(c->listTriggers(QStringLiteral("main"))
                       .contains(QStringLiteral("trg_employees_no_negative_salary")),
@@ -298,8 +290,7 @@ int main(int argc, char *argv[])
 
             check(c->listRoutines(QStringLiteral("main")).rows.isEmpty(),
                   "listRoutines empty on SQLite");
-            check(c->listEvents(QStringLiteral("main")).isEmpty(),
-                  "listEvents empty on SQLite");
+            check(c->listEvents(QStringLiteral("main")).isEmpty(), "listEvents empty on SQLite");
 
             QString ddlErr;
             check(c->showCreate(QStringLiteral("TABLE"), QStringLiteral("main"),
@@ -307,22 +298,19 @@ int main(int argc, char *argv[])
                       .startsWith(QStringLiteral("CREATE TABLE")),
                   "showCreate TABLE");
             check(!c->showCreate(QStringLiteral("VIEW"), QStringLiteral("main"),
-                                 QStringLiteral("v_employee_dept"), &ddlErr).isEmpty(),
+                                 QStringLiteral("v_employee_dept"), &ddlErr)
+                       .isEmpty(),
                   "showCreate VIEW");
-            const QString procDdl = c->showCreate(
-                QStringLiteral("PROCEDURE"), QStringLiteral("main"),
-                QStringLiteral("nope"), &ddlErr);
-            check(procDdl.isEmpty() && !ddlErr.isEmpty(),
-                  "showCreate PROCEDURE rejected");
+            const QString procDdl =
+                c->showCreate(QStringLiteral("PROCEDURE"), QStringLiteral("main"),
+                              QStringLiteral("nope"), &ddlErr);
+            check(procDdl.isEmpty() && !ddlErr.isEmpty(), "showCreate PROCEDURE rejected");
 
-            check(c->sqlInsertDefaults(QStringLiteral("main"),
-                                       QStringLiteral("t"))
+            check(c->sqlInsertDefaults(QStringLiteral("main"), QStringLiteral("t"))
                       .contains(QStringLiteral("DEFAULT VALUES")),
                   "sqlInsertDefaults shape");
-            check(c->sqlFkChecks(false).startsWith(QStringLiteral("PRAGMA")),
-                  "sqlFkChecks shape");
-            check(!c->supportsLimitOnUpdateDelete(),
-                  "supportsLimitOnUpdateDelete false");
+            check(c->sqlFkChecks(false).startsWith(QStringLiteral("PRAGMA")), "sqlFkChecks shape");
+            check(!c->supportsLimitOnUpdateDelete(), "supportsLimitOnUpdateDelete false");
 
             /* DML round-trip on a throwaway copy, using exactly the statement
              * shapes the table-data pane builds (quoteIdent'd, no LIMIT on
@@ -337,22 +325,25 @@ int main(int argc, char *argv[])
                 check(c2 != nullptr, "dml: reopen copy");
                 if(c2) {
                     QString e;
-                    bool ok = c2->query(QStringLiteral(
-                        "CREATE TABLE \"main\".\"dml_t\" "
-                        "(id INTEGER PRIMARY KEY, name TEXT)"), nullptr, &e);
-                    ok = c2->query(c2->sqlInsertDefaults(QStringLiteral("main"),
-                                                         QStringLiteral("dml_t")),
-                                   nullptr, &e) && ok;
-                    ok = c2->query(QStringLiteral(
-                        "UPDATE \"main\".\"dml_t\" SET \"name\" = 'x' "
-                        "WHERE \"id\" = 1"), nullptr, &e) && ok;
-                    ok = c2->query(QStringLiteral(
-                        "DELETE FROM \"main\".\"dml_t\" WHERE \"name\" = 'x'"),
-                        nullptr, &e) && ok;
+                    bool ok = c2->query(QStringLiteral("CREATE TABLE \"main\".\"dml_t\" "
+                                                       "(id INTEGER PRIMARY KEY, name TEXT)"),
+                                        nullptr, &e);
+                    ok = c2->query(
+                             c2->sqlInsertDefaults(QStringLiteral("main"), QStringLiteral("dml_t")),
+                             nullptr, &e) &&
+                         ok;
+                    ok = c2->query(QStringLiteral("UPDATE \"main\".\"dml_t\" SET \"name\" = 'x' "
+                                                  "WHERE \"id\" = 1"),
+                                   nullptr, &e) &&
+                         ok;
+                    ok = c2->query(
+                             QStringLiteral("DELETE FROM \"main\".\"dml_t\" WHERE \"name\" = 'x'"),
+                             nullptr, &e) &&
+                         ok;
                     DbResultSet rs;
-                    ok = c2->query(QStringLiteral("SELECT COUNT(*) FROM \"main\".\"dml_t\""),
-                                   &rs, &e) && ok
-                         && rs.rows.first().value(0) == QStringLiteral("0");
+                    ok = c2->query(QStringLiteral("SELECT COUNT(*) FROM \"main\".\"dml_t\""), &rs,
+                                   &e) &&
+                         ok && rs.rows.first().value(0) == QStringLiteral("0");
                     check(ok, "dml: defaults/UPDATE/DELETE round-trip");
                     if(!ok)
                         QTextStream(stdout) << "  last error: " << e << '\n';
@@ -377,8 +368,7 @@ int main(int argc, char *argv[])
         if(a.startsWith(QStringLiteral("--sqlitecreatetabletest="))) {
             qputenv("QT_QPA_PLATFORM", "offscreen");
             QApplication app2(argc, argv);
-            const QString path =
-                a.mid(QStringLiteral("--sqlitecreatetabletest=").size());
+            const QString path = a.mid(QStringLiteral("--sqlitecreatetabletest=").size());
             QFile::remove(path);
             ConnectionParams cp;
             cp.driverType = DriverType::Sqlite;
@@ -386,15 +376,16 @@ int main(int argc, char *argv[])
             QString connectError;
             IDbConnection *c = dbDriverFor(cp.driverType)->connect(cp, &connectError);
             if(!c) {
-                QTextStream(stdout) << "sqlitecreatetabletest: connect failed: "
-                                    << connectError << '\n';
+                QTextStream(stdout)
+                    << "sqlitecreatetabletest: connect failed: " << connectError << '\n';
                 return 1;
             }
             int fails = 0;
             const auto check = [&](bool ok, const QString &what) {
-                if(!ok) ++fails;
-                QTextStream(stdout) << "sqlitecreatetabletest " << what
-                                    << (ok ? "  PASS\n" : "  FAIL\n");
+                if(!ok)
+                    ++fails;
+                QTextStream(stdout)
+                    << "sqlitecreatetabletest " << what << (ok ? "  PASS\n" : "  FAIL\n");
             };
             const auto checkBoxAt = [](QTableWidget *g, int r, int col) {
                 return g->cellWidget(r, col) ? g->cellWidget(r, col)->findChild<QCheckBox *>()
@@ -412,27 +403,26 @@ int main(int argc, char *argv[])
             if(auto *tb = qobject_cast<QComboBox *>(cgrid->cellWidget(1, 1)))
                 tb->setCurrentText(QStringLiteral("TEXT"));
             if(auto *cb = checkBoxAt(cgrid, 1, 5))
-                cb->setChecked(true);   /* NOT NULL */
+                cb->setChecked(true); /* NOT NULL */
 
             const QString createSql = cdlg->buildSql();
             check(createSql.contains(QStringLiteral("INTEGER PRIMARY KEY AUTOINCREMENT")),
                   "create: id column is INTEGER PRIMARY KEY AUTOINCREMENT");
-            check(!createSql.contains(QStringLiteral("ENGINE"))
-                  && !createSql.contains(QStringLiteral("CHARSET")),
+            check(!createSql.contains(QStringLiteral("ENGINE")) &&
+                      !createSql.contains(QStringLiteral("CHARSET")),
                   "create: no ENGINE/CHARSET clause");
             QString stmtErr;
             check(c->query(createSql, nullptr, &stmtErr), "create: statement executes");
             if(!stmtErr.isEmpty())
                 QTextStream(stdout) << "  error: " << stmtErr << " sql=" << createSql << '\n';
-            check(c->query(QStringLiteral(
-                      "INSERT INTO \"t1\" (\"name\") VALUES ('a'), ('b')"),
-                      nullptr, &stmtErr),
+            check(c->query(QStringLiteral("INSERT INTO \"t1\" (\"name\") VALUES ('a'), ('b')"),
+                           nullptr, &stmtErr),
                   "create: insert into new table (autoincrement works)");
             DbResultSet crs;
-            c->query(QStringLiteral("SELECT \"id\", \"name\" FROM \"t1\" ORDER BY \"id\""),
-                     &crs, nullptr);
-            check(crs.rows.size() == 2 && crs.rows.at(0).value(0) == QStringLiteral("1")
-                      && crs.rows.at(1).value(0) == QStringLiteral("2"),
+            c->query(QStringLiteral("SELECT \"id\", \"name\" FROM \"t1\" ORDER BY \"id\""), &crs,
+                     nullptr);
+            check(crs.rows.size() == 2 && crs.rows.at(0).value(0) == QStringLiteral("1") &&
+                      crs.rows.at(1).value(0) == QStringLiteral("2"),
                   "create: autoincrement produced 1, 2");
             delete cdlg;
 
@@ -442,27 +432,28 @@ int main(int argc, char *argv[])
                 CreateTableDialog::ColumnDef idc;
                 idc.name = QStringLiteral("id");
                 idc.type = QStringLiteral("INTEGER");
-                idc.pk = true; idc.notNull = true; idc.autoInc = true;
+                idc.pk = true;
+                idc.notNull = true;
+                idc.autoInc = true;
                 CreateTableDialog::ColumnDef namec;
                 namec.name = QStringLiteral("name");
                 namec.type = QStringLiteral("TEXT");
                 namec.notNull = true;
                 cols << idc << namec;
             }
-            auto *adlg = new CreateTableDialog(QString(), QStringLiteral("t1"), cols,
-                                               QString(), QString(), nullptr,
-                                               DriverType::Sqlite);
+            auto *adlg = new CreateTableDialog(QString(), QStringLiteral("t1"), cols, QString(),
+                                               QString(), nullptr, DriverType::Sqlite);
             auto *agrid = adlg->findChild<QTableWidget *>(QStringLiteral("columnGrid"));
             auto *aaddBtn = adlg->findChild<QPushButton *>(QStringLiteral("addColumnBtn"));
-            agrid->item(1, 0)->setText(QStringLiteral("full_name"));   /* rename */
+            agrid->item(1, 0)->setText(QStringLiteral("full_name")); /* rename */
             aaddBtn->click();
             agrid->item(2, 0)->setText(QStringLiteral("note"));
             if(auto *tb = qobject_cast<QComboBox *>(agrid->cellWidget(2, 1)))
                 tb->setCurrentText(QStringLiteral("TEXT"));
 
             const QString alterSql1 = adlg->buildSql();
-            check(alterSql1.contains(QStringLiteral("RENAME COLUMN"))
-                  && alterSql1.contains(QStringLiteral("ADD COLUMN")),
+            check(alterSql1.contains(QStringLiteral("RENAME COLUMN")) &&
+                      alterSql1.contains(QStringLiteral("ADD COLUMN")),
                   "alter: rename + add column both emitted");
             check(adlg->alterLimitation().isEmpty(),
                   "alter: no limitation reported for rename+add");
@@ -475,7 +466,10 @@ int main(int argc, char *argv[])
             for(const QString &s : splitStatements(alterSql1)) {
                 if(s.trimmed().isEmpty())
                     continue;
-                if(!c->query(s, nullptr, &stmtErr)) { alterOk = false; break; }
+                if(!c->query(s, nullptr, &stmtErr)) {
+                    alterOk = false;
+                    break;
+                }
             }
             check(alterOk, "alter: statement(s) execute");
             if(!stmtErr.isEmpty())
@@ -492,7 +486,9 @@ int main(int argc, char *argv[])
                 CreateTableDialog::ColumnDef idc;
                 idc.name = QStringLiteral("id");
                 idc.type = QStringLiteral("INTEGER");
-                idc.pk = true; idc.notNull = true; idc.autoInc = true;
+                idc.pk = true;
+                idc.notNull = true;
+                idc.autoInc = true;
                 CreateTableDialog::ColumnDef fnc;
                 fnc.name = QStringLiteral("full_name");
                 fnc.type = QStringLiteral("TEXT");
@@ -502,12 +498,11 @@ int main(int argc, char *argv[])
                 notec.type = QStringLiteral("TEXT");
                 cols2 << idc << fnc << notec;
             }
-            auto *bdlg = new CreateTableDialog(QString(), QStringLiteral("t1"), cols2,
-                                               QString(), QString(), nullptr,
-                                               DriverType::Sqlite);
+            auto *bdlg = new CreateTableDialog(QString(), QStringLiteral("t1"), cols2, QString(),
+                                               QString(), nullptr, DriverType::Sqlite);
             auto *bgrid = bdlg->findChild<QTableWidget *>(QStringLiteral("columnGrid"));
             if(auto *tb = qobject_cast<QComboBox *>(bgrid->cellWidget(1, 1)))
-                tb->setCurrentText(QStringLiteral("INTEGER"));   /* full_name TEXT -> INTEGER */
+                tb->setCurrentText(QStringLiteral("INTEGER")); /* full_name TEXT -> INTEGER */
             const QString alterSql2 = bdlg->buildSql();
             check(alterSql2.isEmpty(), "alter: retype-only change produces no SQL");
             check(!bdlg->alterLimitation().isEmpty(),
@@ -535,35 +530,32 @@ int main(int argc, char *argv[])
             QString connectError;
             IDbConnection *c = dbDriverFor(cp.driverType)->connect(cp, &connectError);
             if(!c) {
-                QTextStream(stdout) << "sqliteindextest: connect failed: "
-                                    << connectError << '\n';
+                QTextStream(stdout) << "sqliteindextest: connect failed: " << connectError << '\n';
                 return 1;
             }
             int fails = 0;
             const auto check = [&](bool ok, const QString &what) {
-                if(!ok) ++fails;
-                QTextStream(stdout) << "sqliteindextest " << what
-                                    << (ok ? "  PASS\n" : "  FAIL\n");
+                if(!ok)
+                    ++fails;
+                QTextStream(stdout) << "sqliteindextest " << what << (ok ? "  PASS\n" : "  FAIL\n");
             };
 
             QString stmtErr;
-            check(c->query(QStringLiteral(
-                      "CREATE TABLE \"t1\" (\"id\" INTEGER PRIMARY KEY, "
-                      "\"city\" TEXT, \"name\" TEXT)"), nullptr, &stmtErr),
+            check(c->query(QStringLiteral("CREATE TABLE \"t1\" (\"id\" INTEGER PRIMARY KEY, "
+                                          "\"city\" TEXT, \"name\" TEXT)"),
+                           nullptr, &stmtErr),
                   "setup: create table");
-            check(c->query(QStringLiteral(
-                      "CREATE INDEX \"idx_old\" ON \"t1\" (\"name\")"),
-                      nullptr, &stmtErr),
+            check(c->query(QStringLiteral("CREATE INDEX \"idx_old\" ON \"t1\" (\"name\")"), nullptr,
+                           &stmtErr),
                   "setup: create pre-existing index");
 
-            IndexDialog::IndexDef pk{ QStringLiteral("PRIMARY"), { QStringLiteral("id") },
-                                      true, true };
-            IndexDialog::IndexDef old{ QStringLiteral("idx_old"), { QStringLiteral("name") },
-                                       false, false };
-            auto *dlg = new IndexDialog(QString(), QStringLiteral("t1"), { pk, old },
-                                        { QStringLiteral("id"), QStringLiteral("city"),
-                                          QStringLiteral("name") },
-                                        nullptr, DriverType::Sqlite);
+            IndexDialog::IndexDef pk{QStringLiteral("PRIMARY"), {QStringLiteral("id")}, true, true};
+            IndexDialog::IndexDef old{
+                QStringLiteral("idx_old"), {QStringLiteral("name")}, false, false};
+            auto *dlg = new IndexDialog(
+                QString(), QStringLiteral("t1"), {pk, old},
+                {QStringLiteral("id"), QStringLiteral("city"), QStringLiteral("name")}, nullptr,
+                DriverType::Sqlite);
             auto *grid = dlg->findChild<QTableWidget *>(QStringLiteral("indexGrid"));
             auto *removeBtn = dlg->findChild<QPushButton *>(QStringLiteral("removeSelectedBtn"));
             auto *newName = dlg->findChild<QLineEdit *>(QStringLiteral("newIndexName"));
@@ -575,14 +567,15 @@ int main(int argc, char *argv[])
             removeBtn->click();
             /* add a new index on city */
             newName->setText(QStringLiteral("idx_city"));
-            newCols->item(1)->setCheckState(Qt::Checked);   /* "city" */
+            newCols->item(1)->setCheckState(Qt::Checked); /* "city" */
             addBtn->click();
 
             const QString sql = dlg->buildSql();
-            check(sql.contains(QStringLiteral("DROP INDEX")) && sql.contains(QStringLiteral("idx_old")),
+            check(sql.contains(QStringLiteral("DROP INDEX")) &&
+                      sql.contains(QStringLiteral("idx_old")),
                   "drop: idx_old emitted as standalone DROP INDEX");
-            check(sql.contains(QStringLiteral("CREATE")) && sql.contains(QStringLiteral("INDEX"))
-                  && sql.contains(QStringLiteral("idx_city")),
+            check(sql.contains(QStringLiteral("CREATE")) && sql.contains(QStringLiteral("INDEX")) &&
+                      sql.contains(QStringLiteral("idx_city")),
                   "add: idx_city emitted as standalone CREATE INDEX");
             check(!sql.contains(QStringLiteral("ALTER TABLE")),
                   "no ALTER TABLE clause used (SQLite has none for indexes)");
@@ -594,7 +587,10 @@ int main(int argc, char *argv[])
             for(const QString &s : splitStatements(sql)) {
                 if(s.trimmed().isEmpty())
                     continue;
-                if(!c->query(s, nullptr, &stmtErr)) { applyOk = false; break; }
+                if(!c->query(s, nullptr, &stmtErr)) {
+                    applyOk = false;
+                    break;
+                }
             }
             check(applyOk, "both statements execute");
             if(!applyOk)
@@ -602,12 +598,13 @@ int main(int argc, char *argv[])
 
             DbResultSet ixs;
             c->query(QStringLiteral(
-                "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='t1'"),
-                &ixs, nullptr);
+                         "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='t1'"),
+                     &ixs, nullptr);
             QStringList names;
             for(const QStringList &row : ixs.rows)
                 names << row.value(0);
-            check(names.contains(QStringLiteral("idx_city")) && !names.contains(QStringLiteral("idx_old")),
+            check(names.contains(QStringLiteral("idx_city")) &&
+                      !names.contains(QStringLiteral("idx_old")),
                   "final state: idx_city present, idx_old gone");
 
             delete c;
@@ -631,62 +628,62 @@ int main(int argc, char *argv[])
             QString connectError;
             IDbConnection *c = dbDriverFor(cp.driverType)->connect(cp, &connectError);
             if(!c) {
-                QTextStream(stdout) << "sqlitemisctest: connect failed: "
-                                    << connectError << '\n';
+                QTextStream(stdout) << "sqlitemisctest: connect failed: " << connectError << '\n';
                 return 1;
             }
             int fails = 0;
             const auto check = [&](bool ok, const QString &what) {
-                if(!ok) ++fails;
-                QTextStream(stdout) << "sqlitemisctest " << what
-                                    << (ok ? "  PASS\n" : "  FAIL\n");
+                if(!ok)
+                    ++fails;
+                QTextStream(stdout) << "sqlitemisctest " << what << (ok ? "  PASS\n" : "  FAIL\n");
             };
 
             QString stmtErr;
-            check(c->query(QStringLiteral(
-                      "CREATE TABLE \"employees\" (\"id\" INTEGER PRIMARY KEY "
-                      "AUTOINCREMENT, \"name\" TEXT NOT NULL, "
-                      "\"salary\" REAL DEFAULT 0)"), nullptr, &stmtErr),
+            check(c->query(QStringLiteral("CREATE TABLE \"employees\" (\"id\" INTEGER PRIMARY KEY "
+                                          "AUTOINCREMENT, \"name\" TEXT NOT NULL, "
+                                          "\"salary\" REAL DEFAULT 0)"),
+                           nullptr, &stmtErr),
                   "setup: create table");
-            check(c->query(QStringLiteral(
-                      "INSERT INTO \"employees\" (\"name\") VALUES ('a')"),
-                      nullptr, &stmtErr),
+            check(c->query(QStringLiteral("INSERT INTO \"employees\" (\"name\") VALUES ('a')"),
+                           nullptr, &stmtErr),
                   "setup: insert a row");
 
             /* --- Rename Table: ALTER TABLE ... RENAME TO ... --- */
             check(c->query(QStringLiteral("ALTER TABLE %1 RENAME TO %2")
-                                .arg(c->qualify(QString(), QStringLiteral("employees")),
-                                     c->quoteIdent(QStringLiteral("staff"))),
-                            nullptr, &stmtErr),
+                               .arg(c->qualify(QString(), QStringLiteral("employees")),
+                                    c->quoteIdent(QStringLiteral("staff"))),
+                           nullptr, &stmtErr),
                   "rename: ALTER TABLE ... RENAME TO applies");
             DbResultSet trs;
-            c->query(QStringLiteral("SELECT name FROM sqlite_master WHERE type='table'"),
-                     &trs, nullptr);
+            c->query(QStringLiteral("SELECT name FROM sqlite_master WHERE type='table'"), &trs,
+                     nullptr);
             QStringList tnames;
-            for(const QStringList &row : trs.rows) tnames << row.value(0);
-            check(tnames.contains(QStringLiteral("staff"))
-                  && !tnames.contains(QStringLiteral("employees")),
+            for(const QStringList &row : trs.rows)
+                tnames << row.value(0);
+            check(tnames.contains(QStringLiteral("staff")) &&
+                      !tnames.contains(QStringLiteral("employees")),
                   "rename: staff exists, employees gone");
 
             /* --- Duplicate Table (structure): retarget showCreate()'s own
              * DDL text to the new name, since SQLite has no LIKE clause */
             QString err;
-            QString ddl = c->showCreate(QStringLiteral("TABLE"), QString(),
-                                        QStringLiteral("staff"), &err);
+            QString ddl =
+                c->showCreate(QStringLiteral("TABLE"), QString(), QStringLiteral("staff"), &err);
             static const QRegularExpression nameRe(
                 QStringLiteral("^(CREATE\\s+TABLE\\s+(?:IF\\s+NOT\\s+EXISTS\\s+)?)"
                                "(?:\"[^\"]+\"|`[^`]+`|\\[[^\\]]+\\]|\\w+)"),
                 QRegularExpression::CaseInsensitiveOption);
             const QString dst = c->qualify(QString(), QStringLiteral("staff_copy"));
             ddl.replace(nameRe, QStringLiteral("\\1") + dst);
-            check(!ddl.isEmpty() && ddl.contains(QStringLiteral("staff_copy"))
-                  && !ddl.contains(QStringLiteral("\"staff\"")),
+            check(!ddl.isEmpty() && ddl.contains(QStringLiteral("staff_copy")) &&
+                      !ddl.contains(QStringLiteral("\"staff\"")),
                   "duplicate: DDL retargeted to staff_copy, no leftover staff reference");
             check(c->query(ddl, nullptr, &stmtErr), "duplicate: retargeted DDL executes");
             if(!stmtErr.isEmpty() && !stmtErr.startsWith(QStringLiteral("OK")))
                 QTextStream(stdout) << "  error: " << stmtErr << " ddl=" << ddl << '\n';
-            check(c->query(QStringLiteral(
-                      "INSERT INTO \"staff_copy\" (\"name\") SELECT \"name\" FROM \"staff\""),
+            check(c->query(
+                      QStringLiteral(
+                          "INSERT INTO \"staff_copy\" (\"name\") SELECT \"name\" FROM \"staff\""),
                       nullptr, &stmtErr),
                   "duplicate: data copy into the new table works");
             DbResultSet drs;
@@ -698,12 +695,11 @@ int main(int argc, char *argv[])
             /* --- Foreign Keys: adding one to an existing SQLite table must
              * be refused (via limitation()), not sent as broken SQL */
             ForeignKeyDialog fkdlg(QString(), QStringLiteral("staff"), {},
-                                   { QStringLiteral("id"), QStringLiteral("name") },
-                                   { QStringLiteral("staff") }, nullptr, DriverType::Sqlite);
+                                   {QStringLiteral("id"), QStringLiteral("name")},
+                                   {QStringLiteral("staff")}, nullptr, DriverType::Sqlite);
             fkdlg.findChild<QComboBox *>(QStringLiteral("localCol"))
                 ->setCurrentText(QStringLiteral("name"));
-            fkdlg.findChild<QLineEdit *>(QStringLiteral("refCol"))
-                ->setText(QStringLiteral("name"));
+            fkdlg.findChild<QLineEdit *>(QStringLiteral("refCol"))->setText(QStringLiteral("name"));
             fkdlg.findChild<QPushButton *>(QStringLiteral("addFkBtn"))->click();
             const QString fkSql = fkdlg.buildSql();
             check(fkSql.isEmpty(), "fk: SQLite add-FK produces no SQL");
@@ -727,8 +723,11 @@ int main(int argc, char *argv[])
             }
             ConnectionParams cp;
             cp.driverType = DriverType::Postgres;
-            cp.host = p[0]; cp.port = p[1].toUInt();
-            cp.user = p[2]; cp.password = p[3]; cp.database = p[4];
+            cp.host = p[0];
+            cp.port = p[1].toUInt();
+            cp.user = p[2];
+            cp.password = p[3];
+            cp.database = p[4];
             QString connectError;
             IDbConnection *c = dbDriverFor(cp.driverType)->connect(cp, &connectError);
             if(!c) {
@@ -737,9 +736,9 @@ int main(int argc, char *argv[])
             }
             int fails = 0;
             const auto check = [&](bool ok, const QString &what) {
-                if(!ok) ++fails;
-                QTextStream(stdout) << "pgtest " << what
-                                    << (ok ? "  PASS\n" : "  FAIL\n");
+                if(!ok)
+                    ++fails;
+                QTextStream(stdout) << "pgtest " << what << (ok ? "  PASS\n" : "  FAIL\n");
             };
             const auto findRow = [](const DbResultSet &rs, int col, const QString &val) {
                 for(const QStringList &row : rs.rows)
@@ -748,56 +747,50 @@ int main(int argc, char *argv[])
                 return QStringList{};
             };
 
-            check(c->listDatabases().contains(QStringLiteral("public")),
-                  "schemas contain public");
+            check(c->listDatabases().contains(QStringLiteral("public")), "schemas contain public");
 
             const QStringList tbls = c->listTables(QStringLiteral("public"));
-            check(tbls.contains(QStringLiteral("employees"))
-                  && tbls.contains(QStringLiteral("emp_dept"))
-                  && !tbls.contains(QStringLiteral("v_employee_dept")),
+            check(tbls.contains(QStringLiteral("employees")) &&
+                      tbls.contains(QStringLiteral("emp_dept")) &&
+                      !tbls.contains(QStringLiteral("v_employee_dept")),
                   "listTables base tables");
-            const QStringList views = c->listTables(QStringLiteral("public"),
-                                                    QStringLiteral("VIEW"));
+            const QStringList views =
+                c->listTables(QStringLiteral("public"), QStringLiteral("VIEW"));
             check(views.contains(QStringLiteral("v_employee_dept")), "listTables views");
 
-            const DbResultSet cols = c->listColumns(QStringLiteral("public"),
-                                                    QStringLiteral("employees"));
+            const DbResultSet cols =
+                c->listColumns(QStringLiteral("public"), QStringLiteral("employees"));
             const QStringList idCol = findRow(cols, 0, QStringLiteral("id"));
-            check(idCol.value(2) == QStringLiteral("NO")
-                  && idCol.value(3) == QStringLiteral("PRI"),
+            check(idCol.value(2) == QStringLiteral("NO") && idCol.value(3) == QStringLiteral("PRI"),
                   "listColumns id shape");
-            check(findRow(cols, 0, QStringLiteral("name")).value(2)
-                      == QStringLiteral("NO")
-                  && findRow(cols, 0, QStringLiteral("salary")).value(2)
-                         == QStringLiteral("YES"),
+            check(findRow(cols, 0, QStringLiteral("name")).value(2) == QStringLiteral("NO") &&
+                      findRow(cols, 0, QStringLiteral("salary")).value(2) == QStringLiteral("YES"),
                   "listColumns nullability");
 
-            const DbResultSet ixs = c->listIndexes(QStringLiteral("public"),
-                                                   QStringLiteral("employees"));
+            const DbResultSet ixs =
+                c->listIndexes(QStringLiteral("public"), QStringLiteral("employees"));
             const QStringList pk = findRow(ixs, 2, QStringLiteral("PRIMARY"));
             check(pk.value(1) == QStringLiteral("0") && pk.value(4) == QStringLiteral("id"),
                   "listIndexes PRIMARY");
-            const QStringList cityIx = findRow(ixs, 2,
-                                               QStringLiteral("idx_employees_city"));
-            check(cityIx.value(1) == QStringLiteral("1")
-                  && cityIx.value(4) == QStringLiteral("city"),
+            const QStringList cityIx = findRow(ixs, 2, QStringLiteral("idx_employees_city"));
+            check(cityIx.value(1) == QStringLiteral("1") &&
+                      cityIx.value(4) == QStringLiteral("city"),
                   "listIndexes secondary index");
 
-            const DbResultSet fks = c->listForeignKeys(QStringLiteral("public"),
-                                                       QStringLiteral("employees"));
-            check(!fks.rows.isEmpty()
-                  && fks.rows.first().value(1) == QStringLiteral("dept_id")
-                  && fks.rows.first().value(2) == QStringLiteral("emp_dept")
-                  && fks.rows.first().value(3) == QStringLiteral("id"),
+            const DbResultSet fks =
+                c->listForeignKeys(QStringLiteral("public"), QStringLiteral("employees"));
+            check(!fks.rows.isEmpty() && fks.rows.first().value(1) == QStringLiteral("dept_id") &&
+                      fks.rows.first().value(2) == QStringLiteral("emp_dept") &&
+                      fks.rows.first().value(3) == QStringLiteral("id"),
                   "listForeignKeys shape");
 
-            const DbResultSet trgs = c->listTableTriggers(
-                QStringLiteral("public"), QStringLiteral("employees"));
-            check(trgs.rows.size() == 1
-                  && trgs.rows.first().value(0)
-                         == QStringLiteral("trg_employees_no_negative_salary")
-                  && trgs.rows.first().value(1) == QStringLiteral("BEFORE")
-                  && trgs.rows.first().value(2) == QStringLiteral("INSERT"),
+            const DbResultSet trgs =
+                c->listTableTriggers(QStringLiteral("public"), QStringLiteral("employees"));
+            check(trgs.rows.size() == 1 &&
+                      trgs.rows.first().value(0) ==
+                          QStringLiteral("trg_employees_no_negative_salary") &&
+                      trgs.rows.first().value(1) == QStringLiteral("BEFORE") &&
+                      trgs.rows.first().value(2) == QStringLiteral("INSERT"),
                   "listTableTriggers shape");
             check(c->listTriggers(QStringLiteral("public"))
                       .contains(QStringLiteral("trg_employees_no_negative_salary")),
@@ -826,9 +819,8 @@ int main(int argc, char *argv[])
                                 QStringLiteral("trg_no_negative_salary"), &ddlErr)
                       .contains(QStringLiteral("FUNCTION")),
                   "showCreate FUNCTION");
-            const QString evtDdl = c->showCreate(
-                QStringLiteral("EVENT"), QStringLiteral("public"),
-                QStringLiteral("nope"), &ddlErr);
+            const QString evtDdl = c->showCreate(QStringLiteral("EVENT"), QStringLiteral("public"),
+                                                 QStringLiteral("nope"), &ddlErr);
             check(evtDdl.isEmpty() && !ddlErr.isEmpty(), "showCreate EVENT rejected");
 
             check(c->sqlInsertDefaults(QStringLiteral("public"), QStringLiteral("t"))
@@ -844,19 +836,23 @@ int main(int argc, char *argv[])
             {
                 QString e;
                 c->query(QStringLiteral("DROP TABLE IF EXISTS dml_t"), nullptr, nullptr);
-                bool ok = c->query(QStringLiteral(
-                    "CREATE TABLE dml_t (id SERIAL PRIMARY KEY, name TEXT)"), nullptr, &e);
-                ok = c->query(c->sqlInsertDefaults(QStringLiteral("public"),
-                                                   QStringLiteral("dml_t")),
-                              nullptr, &e) && ok;
-                ok = c->query(QStringLiteral(
-                    "UPDATE \"dml_t\" SET \"name\" = 'x' WHERE \"id\" = 1"),
-                    nullptr, &e) && ok;
-                ok = c->query(QStringLiteral(
-                    "DELETE FROM \"dml_t\" WHERE \"name\" = 'x'"), nullptr, &e) && ok;
+                bool ok = c->query(
+                    QStringLiteral("CREATE TABLE dml_t (id SERIAL PRIMARY KEY, name TEXT)"),
+                    nullptr, &e);
+                ok = c->query(
+                         c->sqlInsertDefaults(QStringLiteral("public"), QStringLiteral("dml_t")),
+                         nullptr, &e) &&
+                     ok;
+                ok =
+                    c->query(QStringLiteral("UPDATE \"dml_t\" SET \"name\" = 'x' WHERE \"id\" = 1"),
+                             nullptr, &e) &&
+                    ok;
+                ok = c->query(QStringLiteral("DELETE FROM \"dml_t\" WHERE \"name\" = 'x'"), nullptr,
+                              &e) &&
+                     ok;
                 DbResultSet rs;
-                ok = c->query(QStringLiteral("SELECT COUNT(*) FROM \"dml_t\""), &rs, &e)
-                     && ok && rs.rows.first().value(0) == QStringLiteral("0");
+                ok = c->query(QStringLiteral("SELECT COUNT(*) FROM \"dml_t\""), &rs, &e) && ok &&
+                     rs.rows.first().value(0) == QStringLiteral("0");
                 check(ok, "dml: defaults/UPDATE/DELETE round-trip");
                 if(!ok)
                     QTextStream(stdout) << "  last error: " << e << '\n';
@@ -878,10 +874,10 @@ int main(int argc, char *argv[])
                 check(c2 != nullptr, "idle timeout/keepalive: connect with options set");
                 if(c2) {
                     DbResultSet rs;
-                    const bool queried = c2->query(
-                        QStringLiteral("SHOW idle_session_timeout"), &rs, nullptr);
-                    check(queried && !rs.rows.isEmpty()
-                              && rs.rows.first().value(0) == QStringLiteral("45s"),
+                    const bool queried =
+                        c2->query(QStringLiteral("SHOW idle_session_timeout"), &rs, nullptr);
+                    check(queried && !rs.rows.isEmpty() &&
+                              rs.rows.first().value(0) == QStringLiteral("45s"),
                           "idle timeout: SET idle_session_timeout applied");
                     delete c2;
                 }
@@ -906,47 +902,58 @@ int main(int argc, char *argv[])
             }
             ConnectionParams cp;
             cp.driverType = DriverType::Postgres;
-            cp.host = p[0]; cp.port = p[1].toUInt();
-            cp.user = p[2]; cp.password = p[3]; cp.database = p[4];
+            cp.host = p[0];
+            cp.port = p[1].toUInt();
+            cp.user = p[2];
+            cp.password = p[3];
+            cp.database = p[4];
             QString connectError;
             IDbConnection *c = dbDriverFor(cp.driverType)->connect(cp, &connectError);
             if(!c) {
-                QTextStream(stdout) << "pgschematest: connect failed: "
-                                    << connectError << '\n';
+                QTextStream(stdout) << "pgschematest: connect failed: " << connectError << '\n';
                 return 1;
             }
             const QString db = QStringLiteral("public");
             auto run = [&](const QString &sql) {
                 QString err;
                 const bool ok = c->query(sql, nullptr, &err);
-                if(!ok) QTextStream(stdout) << "  [run failed] " << sql.left(200)
-                                            << "\n  -> " << err << '\n';
+                if(!ok)
+                    QTextStream(stdout)
+                        << "  [run failed] " << sql.left(200) << "\n  -> " << err << '\n';
                 return ok;
             };
             auto exists = [&](const QString &q) {
                 DbResultSet rs;
-                if(!c->query(q, &rs, nullptr)) return -1;
+                if(!c->query(q, &rs, nullptr))
+                    return -1;
                 return rs.rows.isEmpty() ? 0 : rs.rows.first().value(0).toInt();
             };
             run(QStringLiteral("DROP TABLE IF EXISTS oy_schema_test_t"));
             run(QStringLiteral("CREATE TABLE oy_schema_test_t (id INT)"));
 
-            struct Case { QString kw, name, iq; };
+            struct Case
+            {
+                QString kw, name, iq;
+            };
             const QList<Case> cases = {
-                { QStringLiteral("VIEW"), QStringLiteral("oy_st_view"),
-                  QStringLiteral("SELECT COUNT(*) FROM information_schema.views "
-                    "WHERE table_schema='%1' AND table_name='oy_st_view'").arg(db) },
-                { QStringLiteral("PROCEDURE"), QStringLiteral("oy_st_proc"),
-                  QStringLiteral("SELECT COUNT(*) FROM information_schema.routines "
-                    "WHERE routine_schema='%1' AND routine_name='oy_st_proc' "
-                    "AND routine_type='PROCEDURE'").arg(db) },
-                { QStringLiteral("FUNCTION"), QStringLiteral("oy_st_func"),
-                  QStringLiteral("SELECT COUNT(*) FROM information_schema.routines "
-                    "WHERE routine_schema='%1' AND routine_name='oy_st_func' "
-                    "AND routine_type='FUNCTION'").arg(db) },
-                { QStringLiteral("TRIGGER"), QStringLiteral("oy_st_trg"),
-                  QStringLiteral("SELECT COUNT(*) FROM information_schema.triggers "
-                    "WHERE trigger_schema='%1' AND trigger_name='oy_st_trg'").arg(db) },
+                {QStringLiteral("VIEW"), QStringLiteral("oy_st_view"),
+                 QStringLiteral("SELECT COUNT(*) FROM information_schema.views "
+                                "WHERE table_schema='%1' AND table_name='oy_st_view'")
+                     .arg(db)},
+                {QStringLiteral("PROCEDURE"), QStringLiteral("oy_st_proc"),
+                 QStringLiteral("SELECT COUNT(*) FROM information_schema.routines "
+                                "WHERE routine_schema='%1' AND routine_name='oy_st_proc' "
+                                "AND routine_type='PROCEDURE'")
+                     .arg(db)},
+                {QStringLiteral("FUNCTION"), QStringLiteral("oy_st_func"),
+                 QStringLiteral("SELECT COUNT(*) FROM information_schema.routines "
+                                "WHERE routine_schema='%1' AND routine_name='oy_st_func' "
+                                "AND routine_type='FUNCTION'")
+                     .arg(db)},
+                {QStringLiteral("TRIGGER"), QStringLiteral("oy_st_trg"),
+                 QStringLiteral("SELECT COUNT(*) FROM information_schema.triggers "
+                                "WHERE trigger_schema='%1' AND trigger_name='oy_st_trg'")
+                     .arg(db)},
             };
             bool allOk = true;
             for(const Case &cs : cases) {
@@ -959,15 +966,14 @@ int main(int argc, char *argv[])
                     run(QStringLiteral("DROP FUNCTION IF EXISTS \"%1\".\"%2_fn\"")
                             .arg(db, cs.name));
                 } else {
-                    run(QStringLiteral("DROP %1 IF EXISTS \"%2\".\"%3\"")
-                            .arg(cs.kw, db, cs.name));
+                    run(QStringLiteral("DROP %1 IF EXISTS \"%2\".\"%3\"").arg(cs.kw, db, cs.name));
                 }
                 QString tmpl = SchemaSql::createTemplate(cs.kw, db, DriverType::Postgres);
-                tmpl.replace(QStringLiteral("new_view"),    cs.name);
-                tmpl.replace(QStringLiteral("new_proc"),    cs.name);
-                tmpl.replace(QStringLiteral("new_func"),    cs.name);
+                tmpl.replace(QStringLiteral("new_view"), cs.name);
+                tmpl.replace(QStringLiteral("new_proc"), cs.name);
+                tmpl.replace(QStringLiteral("new_func"), cs.name);
                 tmpl.replace(QStringLiteral("new_trigger"), cs.name);
-                tmpl.replace(QStringLiteral("some_table"),  QStringLiteral("oy_schema_test_t"));
+                tmpl.replace(QStringLiteral("some_table"), QStringLiteral("oy_schema_test_t"));
                 bool cOk = true;
                 for(const QString &s : splitStatements(SchemaSql::editorText(
                         cs.kw, db, cs.name, tmpl, true, DriverType::Postgres)))
@@ -976,9 +982,9 @@ int main(int argc, char *argv[])
 
                 const QString ddl = c->showCreate(cs.kw, db, cs.name, nullptr);
                 bool aOk = !ddl.isEmpty();
-                for(const QString &s : splitStatements(SchemaSql::editorText(
-                        cs.kw, db, cs.name, SchemaSql::stripDefiner(ddl), false,
-                        DriverType::Postgres)))
+                for(const QString &s : splitStatements(
+                        SchemaSql::editorText(cs.kw, db, cs.name, SchemaSql::stripDefiner(ddl),
+                                              false, DriverType::Postgres)))
                     aOk = run(s) && aOk;
                 const bool stillThere = exists(cs.iq) == 1;
 
@@ -987,19 +993,18 @@ int main(int argc, char *argv[])
                     dOk = run(QStringLiteral("DROP TRIGGER IF EXISTS \"%1\" ON oy_schema_test_t")
                                   .arg(cs.name));
                     run(QStringLiteral("DROP FUNCTION IF EXISTS \"%1\".\"%2_fn\"")
-                            .arg(db, cs.name));   /* the template's companion function */
+                            .arg(db, cs.name)); /* the template's companion function */
                 } else {
-                    dOk = run(QStringLiteral("DROP %1 IF EXISTS \"%2\".\"%3\"")
-                                  .arg(cs.kw, db, cs.name));
+                    dOk = run(
+                        QStringLiteral("DROP %1 IF EXISTS \"%2\".\"%3\"").arg(cs.kw, db, cs.name));
                 }
                 const bool gone = exists(cs.iq) == 0;
                 const bool caseOk = cOk && present && aOk && stillThere && dOk && gone;
                 allOk = allOk && caseOk;
                 QTextStream(stdout)
-                    << "pgschematest " << cs.kw << ": create=" << cOk
-                    << " present=" << present << " alter=" << aOk
-                    << " kept=" << stillThere << " drop=" << dOk << " gone=" << gone
-                    << (caseOk ? "  PASS\n" : "  FAIL\n");
+                    << "pgschematest " << cs.kw << ": create=" << cOk << " present=" << present
+                    << " alter=" << aOk << " kept=" << stillThere << " drop=" << dOk
+                    << " gone=" << gone << (caseOk ? "  PASS\n" : "  FAIL\n");
             }
             run(QStringLiteral("DROP TABLE IF EXISTS oy_schema_test_t"));
             delete c;
@@ -1018,58 +1023,66 @@ int main(int argc, char *argv[])
                 return 2;
             }
             ConnectionParams cp;
-            cp.host = p[0]; cp.port = p[1].toUInt();
-            cp.user = p[2]; cp.password = p[3]; cp.database = p[4];
+            cp.host = p[0];
+            cp.port = p[1].toUInt();
+            cp.user = p[2];
+            cp.password = p[3];
+            cp.database = p[4];
             QString connectError;
             IDbConnection *c = dbDriverFor(cp.driverType)->connect(cp, &connectError);
             if(!c) {
-                QTextStream(stdout) << "schematest: connect failed: "
-                                    << connectError << '\n';
+                QTextStream(stdout) << "schematest: connect failed: " << connectError << '\n';
                 return 1;
             }
             const QString db = p[4];
-            auto run = [&](const QString &sql) {
-                return c->query(sql, nullptr, nullptr);
-            };
+            auto run = [&](const QString &sql) { return c->query(sql, nullptr, nullptr); };
             auto exists = [&](const QString &q) {
                 DbResultSet rs;
-                if(!c->query(q, &rs, nullptr)) return -1;
+                if(!c->query(q, &rs, nullptr))
+                    return -1;
                 return rs.rows.isEmpty() ? 0 : rs.rows.first().value(0).toInt();
             };
-            struct Case { QString kw, name, iq; };
+            struct Case
+            {
+                QString kw, name, iq;
+            };
             const QList<Case> cases = {
-                { QStringLiteral("VIEW"), QStringLiteral("oy_st_view"),
-                  QStringLiteral("SELECT COUNT(*) FROM information_schema.VIEWS "
-                    "WHERE TABLE_SCHEMA='%1' AND TABLE_NAME='oy_st_view'").arg(db) },
-                { QStringLiteral("PROCEDURE"), QStringLiteral("oy_st_proc"),
-                  QStringLiteral("SELECT COUNT(*) FROM information_schema.ROUTINES "
-                    "WHERE ROUTINE_SCHEMA='%1' AND ROUTINE_NAME='oy_st_proc' "
-                    "AND ROUTINE_TYPE='PROCEDURE'").arg(db) },
-                { QStringLiteral("FUNCTION"), QStringLiteral("oy_st_func"),
-                  QStringLiteral("SELECT COUNT(*) FROM information_schema.ROUTINES "
-                    "WHERE ROUTINE_SCHEMA='%1' AND ROUTINE_NAME='oy_st_func' "
-                    "AND ROUTINE_TYPE='FUNCTION'").arg(db) },
-                { QStringLiteral("TRIGGER"), QStringLiteral("oy_st_trg"),
-                  QStringLiteral("SELECT COUNT(*) FROM information_schema.TRIGGERS "
-                    "WHERE TRIGGER_SCHEMA='%1' AND TRIGGER_NAME='oy_st_trg'").arg(db) },
-                { QStringLiteral("EVENT"), QStringLiteral("oy_st_event"),
-                  QStringLiteral("SELECT COUNT(*) FROM information_schema.EVENTS "
-                    "WHERE EVENT_SCHEMA='%1' AND EVENT_NAME='oy_st_event'").arg(db) },
+                {QStringLiteral("VIEW"), QStringLiteral("oy_st_view"),
+                 QStringLiteral("SELECT COUNT(*) FROM information_schema.VIEWS "
+                                "WHERE TABLE_SCHEMA='%1' AND TABLE_NAME='oy_st_view'")
+                     .arg(db)},
+                {QStringLiteral("PROCEDURE"), QStringLiteral("oy_st_proc"),
+                 QStringLiteral("SELECT COUNT(*) FROM information_schema.ROUTINES "
+                                "WHERE ROUTINE_SCHEMA='%1' AND ROUTINE_NAME='oy_st_proc' "
+                                "AND ROUTINE_TYPE='PROCEDURE'")
+                     .arg(db)},
+                {QStringLiteral("FUNCTION"), QStringLiteral("oy_st_func"),
+                 QStringLiteral("SELECT COUNT(*) FROM information_schema.ROUTINES "
+                                "WHERE ROUTINE_SCHEMA='%1' AND ROUTINE_NAME='oy_st_func' "
+                                "AND ROUTINE_TYPE='FUNCTION'")
+                     .arg(db)},
+                {QStringLiteral("TRIGGER"), QStringLiteral("oy_st_trg"),
+                 QStringLiteral("SELECT COUNT(*) FROM information_schema.TRIGGERS "
+                                "WHERE TRIGGER_SCHEMA='%1' AND TRIGGER_NAME='oy_st_trg'")
+                     .arg(db)},
+                {QStringLiteral("EVENT"), QStringLiteral("oy_st_event"),
+                 QStringLiteral("SELECT COUNT(*) FROM information_schema.EVENTS "
+                                "WHERE EVENT_SCHEMA='%1' AND EVENT_NAME='oy_st_event'")
+                     .arg(db)},
             };
             bool allOk = true;
             for(const Case &cs : cases) {
-                run(QStringLiteral("DROP %1 IF EXISTS `%2`.`%3`")
-                        .arg(cs.kw, db, cs.name));
+                run(QStringLiteral("DROP %1 IF EXISTS `%2`.`%3`").arg(cs.kw, db, cs.name));
                 QString tmpl = SchemaSql::createTemplate(cs.kw, db);
-                tmpl.replace(QStringLiteral("new_view"),    cs.name);
-                tmpl.replace(QStringLiteral("new_proc"),    cs.name);
-                tmpl.replace(QStringLiteral("new_func"),    cs.name);
+                tmpl.replace(QStringLiteral("new_view"), cs.name);
+                tmpl.replace(QStringLiteral("new_proc"), cs.name);
+                tmpl.replace(QStringLiteral("new_func"), cs.name);
                 tmpl.replace(QStringLiteral("new_trigger"), cs.name);
-                tmpl.replace(QStringLiteral("new_event"),   cs.name);
-                tmpl.replace(QStringLiteral("some_table"),  QStringLiteral("employees"));
+                tmpl.replace(QStringLiteral("new_event"), cs.name);
+                tmpl.replace(QStringLiteral("some_table"), QStringLiteral("employees"));
                 bool cOk = true;
-                for(const QString &s : splitStatements(SchemaSql::editorText(
-                        cs.kw, db, cs.name, tmpl, true)))
+                for(const QString &s :
+                    splitStatements(SchemaSql::editorText(cs.kw, db, cs.name, tmpl, true)))
                     cOk = run(s) && cOk;
                 const bool present = exists(cs.iq) == 1;
                 /* alter round-trip */
@@ -1079,16 +1092,15 @@ int main(int argc, char *argv[])
                         cs.kw, db, cs.name, SchemaSql::stripDefiner(ddl), false)))
                     aOk = run(s) && aOk;
                 const bool stillThere = exists(cs.iq) == 1;
-                const bool dOk = run(QStringLiteral("DROP %1 IF EXISTS `%2`.`%3`")
-                                         .arg(cs.kw, db, cs.name));
+                const bool dOk =
+                    run(QStringLiteral("DROP %1 IF EXISTS `%2`.`%3`").arg(cs.kw, db, cs.name));
                 const bool gone = exists(cs.iq) == 0;
                 const bool caseOk = cOk && present && aOk && stillThere && dOk && gone;
                 allOk = allOk && caseOk;
                 QTextStream(stdout)
-                    << "schematest " << cs.kw << ": create=" << cOk
-                    << " present=" << present << " alter=" << aOk
-                    << " kept=" << stillThere << " drop=" << dOk << " gone=" << gone
-                    << (caseOk ? "  PASS\n" : "  FAIL\n");
+                    << "schematest " << cs.kw << ": create=" << cOk << " present=" << present
+                    << " alter=" << aOk << " kept=" << stillThere << " drop=" << dOk
+                    << " gone=" << gone << (caseOk ? "  PASS\n" : "  FAIL\n");
             }
             delete c;
             return allOk ? 0 : 1;
@@ -1097,24 +1109,27 @@ int main(int argc, char *argv[])
          * check the output has the expected shape/markers */
         if(a.startsWith(QStringLiteral("--exporttest="))) {
             const QString dir = a.mid(13);
-            const QStringList headers = { QStringLiteral("id"),
-                                          QStringLiteral("name"),
-                                          QStringLiteral("note") };
+            const QStringList headers = {QStringLiteral("id"), QStringLiteral("name"),
+                                         QStringLiteral("note")};
             const QStringList vals = {
-                QStringLiteral("1"), QStringLiteral("Ann,B"), QStringLiteral("ok"),
+                QStringLiteral("1"), QStringLiteral("Ann,B"),  QStringLiteral("ok"),
                 QStringLiteral("2"), QStringLiteral("Q\"x\""), QStringLiteral("NULL"),
-                QStringLiteral("3"), QStringLiteral("<t>"), QStringLiteral("a'b") };
+                QStringLiteral("3"), QStringLiteral("<t>"),    QStringLiteral("a'b")};
             const auto cell = [&](int r, int c) { return vals.at(r * 3 + c); };
-            struct T { ResultExport::Format f; const char *name, *must; };
+            struct T
+            {
+                ResultExport::Format f;
+                const char *name, *must;
+            };
             const QList<T> ts = {
-                { ResultExport::Format::Csv, "csv", "\"Ann,B\"" },
-                { ResultExport::Format::Tsv, "tsv", "Ann,B\t" },
-                { ResultExport::Format::Html, "html", "<td>&lt;t&gt;</td>" },
-                { ResultExport::Format::Json, "json", "\"note\": null" },
-                { ResultExport::Format::Markdown, "md", "| id | name | note |" },
-                { ResultExport::Format::Xml, "xml", "<note xsi:nil=\"true\"/>" },
-                { ResultExport::Format::Sql, "sql", "'a\\'b'" },
-                { ResultExport::Format::Excel, "xls", "mso-application" },
+                {ResultExport::Format::Csv, "csv", "\"Ann,B\""},
+                {ResultExport::Format::Tsv, "tsv", "Ann,B\t"},
+                {ResultExport::Format::Html, "html", "<td>&lt;t&gt;</td>"},
+                {ResultExport::Format::Json, "json", "\"note\": null"},
+                {ResultExport::Format::Markdown, "md", "| id | name | note |"},
+                {ResultExport::Format::Xml, "xml", "<note xsi:nil=\"true\"/>"},
+                {ResultExport::Format::Sql, "sql", "'a\\'b'"},
+                {ResultExport::Format::Excel, "xls", "mso-application"},
             };
             bool ok = true;
             ResultExport::Options opt;
@@ -1130,9 +1145,8 @@ int main(int argc, char *argv[])
                 }
                 const bool has = body.contains(QString::fromUtf8(t.must));
                 ok = ok && w && has;
-                QTextStream(stdout)
-                    << "exporttest " << t.name << ": wrote=" << w
-                    << " marker=" << has << (w && has ? "  PASS\n" : "  FAIL\n");
+                QTextStream(stdout) << "exporttest " << t.name << ": wrote=" << w
+                                    << " marker=" << has << (w && has ? "  PASS\n" : "  FAIL\n");
             }
             /* SQL with structure */
             {
@@ -1142,18 +1156,17 @@ int main(int argc, char *argv[])
                 so.sqlCreate = QStringLiteral("CREATE TABLE `t1` (`id` INT)");
                 const QString p = dir + QStringLiteral("/exporttest_struct.sql");
                 QString err;
-                bool w = ResultExport::write(p, ResultExport::Format::Sql, headers,
-                                             cell, 3, 3, so, &err);
+                bool w = ResultExport::write(p, ResultExport::Format::Sql, headers, cell, 3, 3, so,
+                                             &err);
                 QString body;
                 QFile fh(p);
                 if(w && fh.open(QIODevice::ReadOnly))
                     body = QString::fromUtf8(fh.readAll());
-                const bool has = body.contains(QStringLiteral("DROP TABLE IF EXISTS `t1`"))
-                              && body.contains(QStringLiteral("CREATE TABLE `t1`"))
-                              && body.contains(QStringLiteral("INSERT INTO `t1`"));
+                const bool has = body.contains(QStringLiteral("DROP TABLE IF EXISTS `t1`")) &&
+                                 body.contains(QStringLiteral("CREATE TABLE `t1`")) &&
+                                 body.contains(QStringLiteral("INSERT INTO `t1`"));
                 ok = ok && w && has;
-                QTextStream(stdout) << "exporttest sql+structure: wrote=" << w
-                                    << " marker=" << has
+                QTextStream(stdout) << "exporttest sql+structure: wrote=" << w << " marker=" << has
                                     << (w && has ? "  PASS\n" : "  FAIL\n");
             }
             /* SQL, non-MySQL dialect: double-quoted identifiers, and the
@@ -1168,19 +1181,19 @@ int main(int argc, char *argv[])
                 po.sqlCreate = QStringLiteral("CREATE TABLE \"t1\" (\"id\" integer)");
                 const QString p = dir + QStringLiteral("/exporttest_pg.sql");
                 QString err;
-                bool w = ResultExport::write(p, ResultExport::Format::Sql, headers,
-                                             cell, 3, 3, po, &err);
+                bool w = ResultExport::write(p, ResultExport::Format::Sql, headers, cell, 3, 3, po,
+                                             &err);
                 QString body;
                 QFile fh(p);
                 if(w && fh.open(QIODevice::ReadOnly))
                     body = QString::fromUtf8(fh.readAll());
-                const bool has = body.contains(QStringLiteral("DROP TABLE IF EXISTS \"t1\""))
-                              && body.contains(QStringLiteral("INSERT INTO \"t1\" (\"id\", \"name\", \"note\")"))
-                              && body.contains(QStringLiteral("'a''b'"))
-                              && !body.contains(QStringLiteral("\\'"));
+                const bool has = body.contains(QStringLiteral("DROP TABLE IF EXISTS \"t1\"")) &&
+                                 body.contains(QStringLiteral(
+                                     "INSERT INTO \"t1\" (\"id\", \"name\", \"note\")")) &&
+                                 body.contains(QStringLiteral("'a''b'")) &&
+                                 !body.contains(QStringLiteral("\\'"));
                 ok = ok && w && has;
-                QTextStream(stdout) << "exporttest sql pg-dialect: wrote=" << w
-                                    << " marker=" << has
+                QTextStream(stdout) << "exporttest sql pg-dialect: wrote=" << w << " marker=" << has
                                     << (w && has ? "  PASS\n" : "  FAIL\n");
             }
             return ok ? 0 : 1;
@@ -1193,11 +1206,10 @@ int main(int argc, char *argv[])
             MainWindow w;
             const QList<QAction *> acts = w.findChildren<QAction *>();
             int hinted = 0, wired = 0;
-            const QStringList wantKeys = {
-                QStringLiteral("F9"), QStringLiteral("Ctrl+F9"),
-                QStringLiteral("Ctrl+T"), QStringLiteral("Ctrl+F"),
-                QStringLiteral("Ctrl+Shift+E"), QStringLiteral("Ctrl+D"),
-                QStringLiteral("F5"), QStringLiteral("Ctrl+U") };
+            const QStringList wantKeys = {QStringLiteral("F9"),           QStringLiteral("Ctrl+F9"),
+                                          QStringLiteral("Ctrl+T"),       QStringLiteral("Ctrl+F"),
+                                          QStringLiteral("Ctrl+Shift+E"), QStringLiteral("Ctrl+D"),
+                                          QStringLiteral("F5"),           QStringLiteral("Ctrl+U")};
             QStringList haveKeys;
             for(QAction *ac : acts) {
                 if(ac->text().contains(QLatin1Char('\t'))) {
@@ -1212,8 +1224,7 @@ int main(int argc, char *argv[])
             for(const QString &k : wantKeys) {
                 const bool has = haveKeys.contains(k);
                 ok = ok && has;
-                QTextStream(stdout) << "shortcuttest " << k << ": "
-                                    << (has ? "PASS\n" : "FAIL\n");
+                QTextStream(stdout) << "shortcuttest " << k << ": " << (has ? "PASS\n" : "FAIL\n");
             }
             QTextStream(stdout) << "shortcuttest: " << wired << "/" << hinted
                                 << " hinted menu actions now have a real shortcut\n";
@@ -1221,16 +1232,19 @@ int main(int argc, char *argv[])
         }
         /* --stmtattest — statementAt() picks the right statement for a cursor */
         if(a == QStringLiteral("--stmtattest")) {
-            const QString sql =
-                QStringLiteral("SELECT 1;\nSELECT 2;\nDELIMITER $$\n"
-                               "CREATE PROCEDURE p() BEGIN SELECT 3; END$$\n"
-                               "DELIMITER ;\nSELECT 4;\n");
-            struct C { int pos; const char *want; };
+            const QString sql = QStringLiteral("SELECT 1;\nSELECT 2;\nDELIMITER $$\n"
+                                               "CREATE PROCEDURE p() BEGIN SELECT 3; END$$\n"
+                                               "DELIMITER ;\nSELECT 4;\n");
+            struct C
+            {
+                int pos;
+                const char *want;
+            };
             const C cs[] = {
-                { 3,  "SELECT 1" },
-                { 14, "SELECT 2" },
-                { 55, "CREATE PROCEDURE p() BEGIN SELECT 3; END" },
-                { int(sql.size()) - 2, "SELECT 4" },
+                {3, "SELECT 1"},
+                {14, "SELECT 2"},
+                {55, "CREATE PROCEDURE p() BEGIN SELECT 3; END"},
+                {int(sql.size()) - 2, "SELECT 4"},
             };
             bool ok = true;
             for(const C &c : cs) {
@@ -1238,8 +1252,7 @@ int main(int argc, char *argv[])
                 const bool pass = got == QString::fromUtf8(c.want);
                 ok = ok && pass;
                 QTextStream(stdout) << "stmtattest pos " << c.pos << ": "
-                                    << (pass ? "PASS" : "FAIL got=[" + got + "]")
-                                    << "\n";
+                                    << (pass ? "PASS" : "FAIL got=[" + got + "]") << "\n";
             }
             return ok ? 0 : 1;
         }
@@ -1251,27 +1264,30 @@ int main(int argc, char *argv[])
             const auto qi = [](const QString &c) { return QStringLiteral("`%1`").arg(c); };
             const auto esc = [](const QString &v) { return QString(v).replace("'", "''"); };
             using Row = CustomFilterDialog::Row;
-            struct C { QVector<Row> rows; const char *want; };
+            struct C
+            {
+                QVector<Row> rows;
+                const char *want;
+            };
             const C cs[] = {
-                { { { "city", "=", "Dhaka" } }, "`city` = 'Dhaka'" },
-                { { { "city", "=", "NULL" } }, "`city` IS NULL" },
-                { { { "city", "<>", "(null)" } }, "`city` IS NOT NULL" },
-                { { { "name", "LIKE", "%foo%" } }, "`name` LIKE '%foo%'" },
-                { { { "name", "LIKE", "foo%" } }, "`name` LIKE 'foo%'" },
-                { { { "name", "LIKE", "%foo" } }, "`name` LIKE '%foo'" },
-                { { { "name", "LIKE", "foo" } }, "`name` LIKE 'foo'" },
-                { { { "id", ">", "10" }, {}, { "city", "=", "Dhaka" } },
-                  "`id` > '10' AND `city` = 'Dhaka'" },
-                { {}, "" },
+                {{{"city", "=", "Dhaka"}}, "`city` = 'Dhaka'"},
+                {{{"city", "=", "NULL"}}, "`city` IS NULL"},
+                {{{"city", "<>", "(null)"}}, "`city` IS NOT NULL"},
+                {{{"name", "LIKE", "%foo%"}}, "`name` LIKE '%foo%'"},
+                {{{"name", "LIKE", "foo%"}}, "`name` LIKE 'foo%'"},
+                {{{"name", "LIKE", "%foo"}}, "`name` LIKE '%foo'"},
+                {{{"name", "LIKE", "foo"}}, "`name` LIKE 'foo'"},
+                {{{"id", ">", "10"}, {}, {"city", "=", "Dhaka"}},
+                 "`id` > '10' AND `city` = 'Dhaka'"},
+                {{}, ""},
             };
             bool ok = true;
             for(const C &c : cs) {
                 const QString got = CustomFilterDialog::buildWhere(c.rows, qi, esc);
                 const bool pass = got == QString::fromUtf8(c.want);
                 ok = ok && pass;
-                QTextStream(stdout) << "filtertest [" << c.want << "]: "
-                                    << (pass ? "PASS" : "FAIL got=[" + got + "]")
-                                    << "\n";
+                QTextStream(stdout) << "filtertest [" << c.want
+                                    << "]: " << (pass ? "PASS" : "FAIL got=[" + got + "]") << "\n";
             }
             return ok ? 0 : 1;
         }
@@ -1281,9 +1297,8 @@ int main(int argc, char *argv[])
             qputenv("QT_QPA_PLATFORM", "offscreen");
             QApplication app2(argc, argv);
             SqlEditor ed;
-            ed.setCompletions({ QStringLiteral("employees"),
-                                QStringLiteral("emp_dept"),
-                                QStringLiteral("orders") });
+            ed.setCompletions({QStringLiteral("employees"), QStringLiteral("emp_dept"),
+                               QStringLiteral("orders")});
             const auto countFor = [&ed](const QString &sql) {
                 ed.setPlainText(sql);
                 ed.moveCursorToEnd();
@@ -1297,17 +1312,17 @@ int main(int argc, char *argv[])
                                 << (ok ? "  PASS\n" : "  FAIL\n");
             /* 2. clause-aware routing */
             ed.setCompletions({});
-            ed.setSchema({ QStringLiteral("employees"), QStringLiteral("emp_dept") },
-                         { QStringLiteral("emp_id"), QStringLiteral("emp_name"),
-                           QStringLiteral("hire_dt") });
+            ed.setSchema(
+                {QStringLiteral("employees"), QStringLiteral("emp_dept")},
+                {QStringLiteral("emp_id"), QStringLiteral("emp_name"), QStringLiteral("hire_dt")});
             const int t = countFor(QStringLiteral("SELECT * FROM emp"));
             const int col = countFor(QStringLiteral("SELECT emp"));
             const int colW = countFor(QStringLiteral("SELECT * FROM x WHERE emp"));
             const bool okT = t == 2, okC = col == 2 && colW == 2;
             QTextStream(stdout) << "comptest: FROM->tables 'emp' = " << t
                                 << (okT ? "  PASS" : "  FAIL")
-                                << " | SELECT/WHERE->columns 'emp' = " << col
-                                << "/" << colW << (okC ? "  PASS\n" : "  FAIL\n");
+                                << " | SELECT/WHERE->columns 'emp' = " << col << "/" << colW
+                                << (okC ? "  PASS\n" : "  FAIL\n");
             return (ok && okT && okC) ? 0 : 1;
         }
         if(a.startsWith(QStringLiteral("--opentable="))) {
@@ -1343,9 +1358,9 @@ int main(int argc, char *argv[])
                 autoConnect.user = parts[2];
                 autoConnect.password = parts[3];
                 autoConnect.database = parts[4];
-                autoConnect.name =
-                    QStringLiteral("%1@%2:%3").arg(autoConnect.user,
-                                                   autoConnect.host).arg(autoConnect.port);
+                autoConnect.name = QStringLiteral("%1@%2:%3")
+                                       .arg(autoConnect.user, autoConnect.host)
+                                       .arg(autoConnect.port);
                 doAutoConnect = true;
             }
         }
@@ -1369,17 +1384,17 @@ int main(int argc, char *argv[])
                 autoConnect.user = parts[2];
                 autoConnect.password = parts[3];
                 autoConnect.database = parts[4];
-                autoConnect.name =
-                    QStringLiteral("%1@%2:%3").arg(autoConnect.user,
-                                                   autoConnect.host).arg(autoConnect.port);
+                autoConnect.name = QStringLiteral("%1@%2:%3")
+                                       .arg(autoConnect.user, autoConnect.host)
+                                       .arg(autoConnect.port);
                 doAutoConnect = true;
             }
         }
     }
 
     /* headless rendering: needs to be set before QApplication starts */
-    if((!screenshot.isEmpty() || !dumpPath.isEmpty() || !copyDbArg.isEmpty())
-       && qEnvironmentVariableIsEmpty("QT_QPA_PLATFORM"))
+    if((!screenshot.isEmpty() || !dumpPath.isEmpty() || !copyDbArg.isEmpty()) &&
+       qEnvironmentVariableIsEmpty("QT_QPA_PLATFORM"))
         qputenv("QT_QPA_PLATFORM", "offscreen");
 
     QApplication app(argc, argv);
@@ -1401,9 +1416,8 @@ int main(int argc, char *argv[])
 
     /* window / taskbar icon — qt/openyog.svg rasterised into qt/resources, via the .qrc */
     QIcon appIcon;
-    for(int sz : { 16, 32, 64, 256 })
-        appIcon.addFile(QStringLiteral(":/resources/openyog-%1.png").arg(sz),
-                        QSize(sz, sz));
+    for(int sz : {16, 32, 64, 256})
+        appIcon.addFile(QStringLiteral(":/resources/openyog-%1.png").arg(sz), QSize(sz, sz));
     QApplication::setWindowIcon(appIcon);
 
     /* SQLyog-look tab bars; palette/stylesheets follow the saved theme */
@@ -1420,8 +1434,7 @@ int main(int argc, char *argv[])
         const bool existed = ConnectionStore::storedNames().contains(delConn);
         ConnectionStore::remove(delConn);
         const bool gone = !ConnectionStore::storedNames().contains(delConn);
-        qInfo("delconn '%s': existed=%d removed=%d",
-              qPrintable(delConn), existed, gone);
+        qInfo("delconn '%s': existed=%d removed=%d", qPrintable(delConn), existed, gone);
         QThreadPool::globalInstance()->waitForDone();
         dbDriverFor(DriverType::Mysql)->libraryShutdown();
         return (existed && gone) ? 0 : 1;
@@ -1440,8 +1453,7 @@ int main(int argc, char *argv[])
     if(!copyDbArg.isEmpty() && doAutoConnect) {
         const QStringList p = copyDbArg.split(':');
         MainWindow w;
-        rc = (p.size() == 2 && w.openAndRun(autoConnect)
-              && w.selftestCopyDb(p[0], p[1])) ? 0 : 1;
+        rc = (p.size() == 2 && w.openAndRun(autoConnect) && w.selftestCopyDb(p[0], p[1])) ? 0 : 1;
         QThreadPool::globalInstance()->waitForDone();
         dbDriverFor(DriverType::Mysql)->libraryShutdown();
         return rc;
@@ -1452,8 +1464,9 @@ int main(int argc, char *argv[])
     if(!pgCopyDbArg.isEmpty() && doAutoConnect) {
         const QStringList p = pgCopyDbArg.split(':');
         MainWindow w;
-        rc = (p.size() == 2 && w.openAndRun(autoConnect)
-              && w.selftestCopyDbPostgres(p[0], p[1])) ? 0 : 1;
+        rc = (p.size() == 2 && w.openAndRun(autoConnect) && w.selftestCopyDbPostgres(p[0], p[1]))
+                 ? 0
+                 : 1;
         QThreadPool::globalInstance()->waitForDone();
         dbDriverFor(DriverType::Mysql)->libraryShutdown();
         return rc;
@@ -1484,15 +1497,15 @@ int main(int argc, char *argv[])
     if(dumpCombo && doAutoConnect) {
         MainWindow w;
         bool ok = false;
-        w.show();   /* lay out the real window — a synthesized click on a
-                      * never-shown, zero-sized tree viewport is silently
-                      * dropped by Qt (see ObjectBrowser::clickTreeItem) */
+        w.show(); /* lay out the real window — a synthesized click on a
+                   * never-shown, zero-sized tree viewport is silently
+                   * dropped by Qt (see ObjectBrowser::clickTreeItem) */
         QTimer::singleShot(1500, [&] {
             ok = w.openAndRun(autoConnect);
             QTimer::singleShot(600, [&] {
-                QTextStream(stdout) << "combo: "
-                                    << w.selftestComboItems().join(QStringLiteral(", "))
-                                    << " tabs=" << w.selftestTabCount() << '\n';
+                QTextStream(stdout)
+                    << "combo: " << w.selftestComboItems().join(QStringLiteral(", "))
+                    << " tabs=" << w.selftestTabCount() << '\n';
                 if(!pickSchemaArg.isEmpty()) {
                     /* setCurrentText(), not useDatabaseFromCombo() directly
                      * — the latter is the slot a real click's signal calls
@@ -1501,9 +1514,9 @@ int main(int argc, char *argv[])
                      * wouldn't exercise that (a real pick already showing
                      * the picked schema, not requiring a resync) */
                     w.selftestPickDropdownSchema(pickSchemaArg);
-                    QTextStream(stdout) << "after pick: combo="
-                                        << w.selftestComboItems().join(QStringLiteral(", "))
-                                        << '\n';
+                    QTextStream(stdout)
+                        << "after pick: combo=" << w.selftestComboItems().join(QStringLiteral(", "))
+                        << '\n';
                 }
                 if(switchDbArg.isEmpty()) {
                     /* --clicktreepath works without --switchdb too: a real
@@ -1512,10 +1525,10 @@ int main(int argc, char *argv[])
                      * right away */
                     if(!clickTreePath.isEmpty()) {
                         w.selftestClickBrowserItem(clickTreePath);
-                        QTextStream(stdout) << "after click " << clickTreePath
-                                            << ": combo="
-                                            << w.selftestComboItems().join(QStringLiteral(", "))
-                                            << " title=" << w.windowTitle() << '\n';
+                        QTextStream(stdout)
+                            << "after click " << clickTreePath
+                            << ": combo=" << w.selftestComboItems().join(QStringLiteral(", "))
+                            << " title=" << w.windowTitle() << '\n';
                     }
                     QApplication::quit();
                     return;
@@ -1531,20 +1544,20 @@ int main(int argc, char *argv[])
                      * but leaves tab count unchanged (still the same tab);
                      * "Connect in New Tab" would instead leave the title
                      * alone and increase the tab count */
-                    QTextStream(stdout) << "after switch: title=" << w.windowTitle()
-                                        << " combo="
-                                        << w.selftestComboItems().join(QStringLiteral(", "))
-                                        << " tabs=" << w.selftestTabCount() << '\n';
+                    QTextStream(stdout)
+                        << "after switch: title=" << w.windowTitle()
+                        << " combo=" << w.selftestComboItems().join(QStringLiteral(", "))
+                        << " tabs=" << w.selftestTabCount() << '\n';
                     /* --clicktreepath=db/schema: a real (synthesized) mouse
                      * click on that tree node — single-clicking a schema
                      * after a switch should make it the combo's selection
                      * right away */
                     if(!clickTreePath.isEmpty()) {
                         w.selftestClickBrowserItem(clickTreePath);
-                        QTextStream(stdout) << "after click " << clickTreePath
-                                            << ": combo="
-                                            << w.selftestComboItems().join(QStringLiteral(", "))
-                                            << " title=" << w.windowTitle() << '\n';
+                        QTextStream(stdout)
+                            << "after click " << clickTreePath
+                            << ": combo=" << w.selftestComboItems().join(QStringLiteral(", "))
+                            << " title=" << w.windowTitle() << '\n';
                     }
                     QApplication::quit();
                 });
@@ -1560,11 +1573,9 @@ int main(int argc, char *argv[])
      * --autoconnectfile=), copy the open .sqlite file, exit */
     if(!sqliteCopyDbArg.isEmpty() && doAutoConnect) {
         const bool nodata = sqliteCopyDbArg.endsWith(QStringLiteral(":nodata"));
-        const QString target = nodata
-            ? sqliteCopyDbArg.chopped(7) : sqliteCopyDbArg;
+        const QString target = nodata ? sqliteCopyDbArg.chopped(7) : sqliteCopyDbArg;
         MainWindow w;
-        rc = (w.openAndRun(autoConnect)
-              && w.selftestCopySqliteFile(target, !nodata)) ? 0 : 1;
+        rc = (w.openAndRun(autoConnect) && w.selftestCopySqliteFile(target, !nodata)) ? 0 : 1;
         QThreadPool::globalInstance()->waitForDone();
         dbDriverFor(DriverType::Mysql)->libraryShutdown();
         return rc;
@@ -1575,9 +1586,10 @@ int main(int argc, char *argv[])
     if(!sqliteCsvImportArg.isEmpty() && doAutoConnect) {
         const QStringList p = sqliteCsvImportArg.split(':');
         MainWindow w;
-        rc = (p.size() == 2 && w.openAndRun(autoConnect)
-              && w.selftestCsvImportBatched({}, p[0], p[1], QStringLiteral("IGNORE")))
-             ? 0 : 1;
+        rc = (p.size() == 2 && w.openAndRun(autoConnect) &&
+              w.selftestCsvImportBatched({}, p[0], p[1], QStringLiteral("IGNORE")))
+                 ? 0
+                 : 1;
         QThreadPool::globalInstance()->waitForDone();
         dbDriverFor(DriverType::Mysql)->libraryShutdown();
         return rc;
@@ -1588,10 +1600,11 @@ int main(int argc, char *argv[])
     if(!pgCsvImportArg.isEmpty() && doAutoConnect) {
         const QStringList p = pgCsvImportArg.split(':');
         MainWindow w;
-        rc = (p.size() >= 2 && w.openAndRun(autoConnect)
-              && w.selftestCsvImportBatched(QStringLiteral("public"), p[0], p[1],
-                                            p.size() > 2 ? p[2] : QStringLiteral("IGNORE")))
-             ? 0 : 1;
+        rc = (p.size() >= 2 && w.openAndRun(autoConnect) &&
+              w.selftestCsvImportBatched(QStringLiteral("public"), p[0], p[1],
+                                         p.size() > 2 ? p[2] : QStringLiteral("IGNORE")))
+                 ? 0
+                 : 1;
         QThreadPool::globalInstance()->waitForDone();
         dbDriverFor(DriverType::Mysql)->libraryShutdown();
         return rc;
@@ -1601,8 +1614,7 @@ int main(int argc, char *argv[])
      * schema HTML, write it to disk, exit */
     if(!schemaHtmlArg.isEmpty() && doAutoConnect) {
         MainWindow w;
-        rc = (w.openAndRun(autoConnect)
-              && w.selftestSchemaHtml(schemaHtmlArg)) ? 0 : 1;
+        rc = (w.openAndRun(autoConnect) && w.selftestSchemaHtml(schemaHtmlArg)) ? 0 : 1;
         QThreadPool::globalInstance()->waitForDone();
         dbDriverFor(DriverType::Mysql)->libraryShutdown();
         return rc;
@@ -1613,31 +1625,32 @@ int main(int argc, char *argv[])
             QWidget *dlg = nullptr;
             if(shotExportDlg) {
                 auto *ed = new ExportDialog(QStringLiteral("employees"),
-                    QStringLiteral("employees"), 42, true);
+                                            QStringLiteral("employees"), 42, true);
                 if(auto *cb = ed->findChild<QComboBox *>())
                     cb->setCurrentText(QStringLiteral("SQL INSERT statements"));
                 dlg = ed;
             } else if(shotIndexDlg) {
-                IndexDialog::IndexDef pk{ QStringLiteral("PRIMARY"),
-                    { QStringLiteral("id") }, true, true };
-                IndexDialog::IndexDef ix{ QStringLiteral("idx_city"),
-                    { QStringLiteral("city") }, false, false };
-                dlg = new IndexDialog(QStringLiteral("port_test"),
-                    QStringLiteral("employees"), { pk, ix },
-                    { QStringLiteral("id"), QStringLiteral("name"),
-                      QStringLiteral("salary"), QStringLiteral("city") });
+                IndexDialog::IndexDef pk{
+                    QStringLiteral("PRIMARY"), {QStringLiteral("id")}, true, true};
+                IndexDialog::IndexDef ix{
+                    QStringLiteral("idx_city"), {QStringLiteral("city")}, false, false};
+                dlg = new IndexDialog(QStringLiteral("port_test"), QStringLiteral("employees"),
+                                      {pk, ix},
+                                      {QStringLiteral("id"), QStringLiteral("name"),
+                                       QStringLiteral("salary"), QStringLiteral("city")});
             } else if(shotCreateTable) {
                 dlg = new CreateTableDialog(QStringLiteral("port_test"));
             } else {
                 dlg = new ConnectionDialog;
                 if(!dialogDriver.isEmpty()) {
-                    if(auto *combo = dlg->findChild<QComboBox *>(
-                           QStringLiteral("driverCombo"))) {
+                    if(auto *combo = dlg->findChild<QComboBox *>(QStringLiteral("driverCombo"))) {
                         const int idx =
-                            dialogDriver.compare(QStringLiteral("sqlite"),
-                                                 Qt::CaseInsensitive) == 0 ? 1
-                          : dialogDriver.compare(QStringLiteral("postgres"),
-                                                 Qt::CaseInsensitive) == 0 ? 2 : 0;
+                            dialogDriver.compare(QStringLiteral("sqlite"), Qt::CaseInsensitive) == 0
+                                ? 1
+                            : dialogDriver.compare(QStringLiteral("postgres"),
+                                                   Qt::CaseInsensitive) == 0
+                                ? 2
+                                : 0;
                         combo->setCurrentIndex(idx);
                     }
                 }
@@ -1680,8 +1693,7 @@ int main(int argc, char *argv[])
                 level = target->actions();
             }
             if(!target) {
-                QTextStream(stdout) << "shotmenu: no menu at path \""
-                                    << shotMenuArg << "\"\n";
+                QTextStream(stdout) << "shotmenu: no menu at path \"" << shotMenuArg << "\"\n";
                 return 1;
             }
             target->move(60, 60);

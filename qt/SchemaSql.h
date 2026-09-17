@@ -30,8 +30,7 @@
 
 #include <QString>
 
-namespace SchemaSql
-{
+namespace SchemaSql {
 /* strip a leading `DEFINER=`user`@`host`` clause from a SHOW CREATE result
  * (a MySQL-only concept; a no-op on other backends' DDL text) */
 QString stripDefiner(const QString &ddl);
@@ -56,6 +55,5 @@ int showCreateColumn(const QString &objType);
  * body (template for new, stripped SHOW CREATE / showCreate() text for
  * alter). */
 QString editorText(const QString &objType, const QString &db, const QString &name,
-                   const QString &createSql, bool create,
-                   DriverType driver = DriverType::Mysql);
+                   const QString &createSql, bool create, DriverType driver = DriverType::Mysql);
 } // namespace SchemaSql

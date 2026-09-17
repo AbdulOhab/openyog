@@ -7,8 +7,7 @@
 #include <QHash>
 #include <QIcon>
 
-namespace Icons
-{
+namespace Icons {
 inline QString dir()
 {
     return QDir(QCoreApplication::applicationDirPath())

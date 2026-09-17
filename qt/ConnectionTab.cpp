@@ -92,7 +92,10 @@ namespace {
  * existing QueryModel/result-grid convention); callers that need "no value"
  * semantics instead (e.g. an optional column default fed into generated DDL)
  * must convert back — this undoes that sentinel where it matters. */
-QString orEmpty(const QString &v) { return v == QStringLiteral("NULL") ? QString() : v; }
+QString orEmpty(const QString &v)
+{
+    return v == QStringLiteral("NULL") ? QString() : v;
+}
 
 /* query timeout: same OpenYog.ini Theme::load()/save() already use, a new
  * [Query] section. 0 = disabled (the default — no upstream equivalent to
@@ -119,13 +122,11 @@ void saveQueryTimeoutSecs(int secs)
 QComboBox *importCharsetCombo(QWidget *p)
 {
     auto *c = new QComboBox(p);
-    c->addItems({ QStringLiteral("utf8mb4"), QStringLiteral("utf8"),
-                  QStringLiteral("latin1"), QStringLiteral("cp1250"),
-                  QStringLiteral("cp1251"), QStringLiteral("cp1252"),
-                  QStringLiteral("utf16"), QStringLiteral("utf16le"),
-                  QStringLiteral("ascii"), QStringLiteral("big5"),
-                  QStringLiteral("gbk"), QStringLiteral("sjis"),
-                  QStringLiteral("euckr") });
+    c->addItems({QStringLiteral("utf8mb4"), QStringLiteral("utf8"), QStringLiteral("latin1"),
+                 QStringLiteral("cp1250"), QStringLiteral("cp1251"), QStringLiteral("cp1252"),
+                 QStringLiteral("utf16"), QStringLiteral("utf16le"), QStringLiteral("ascii"),
+                 QStringLiteral("big5"), QStringLiteral("gbk"), QStringLiteral("sjis"),
+                 QStringLiteral("euckr")});
     c->setEditable(true);
     return c;
 }
@@ -135,8 +136,7 @@ QComboBox *importDupCombo(QWidget *p)
 {
     auto *c = new QComboBox(p);
     c->addItem(QStringLiteral("IGNORE duplicate rows"), QStringLiteral("IGNORE"));
-    c->addItem(QStringLiteral("REPLACE duplicate rows (by key)"),
-               QStringLiteral("REPLACE"));
+    c->addItem(QStringLiteral("REPLACE duplicate rows (by key)"), QStringLiteral("REPLACE"));
     return c;
 }
 
@@ -175,8 +175,8 @@ void appendHistoryLine(const QString &conn, const QString &sql)
         return;
     QString one = sql;
     one.replace('\n', QLatin1Char(' ')).replace('\r', QString());
-    QTextStream(&f) << QDateTime::currentDateTime().toString(Qt::ISODate)
-                    << '\t' << conn << '\t' << one << '\n';
+    QTextStream(&f) << QDateTime::currentDateTime().toString(Qt::ISODate) << '\t' << conn << '\t'
+                    << one << '\n';
 }
 
 /* the last `max` history lines for `conn`, oldest first, as "[time date] sql" */
@@ -194,11 +194,10 @@ QList<QPair<QString, QString>> loadHistoryFor(const QString &conn, int max)
             continue;
         const QDateTime dt = QDateTime::fromString(p[0], Qt::ISODate);
         const QString sql = p.mid(2).join(QLatin1Char('\t'));
-        out << qMakePair(QStringLiteral("[%1] %2")
-                             .arg(dt.isValid()
-                                      ? dt.toString(QStringLiteral("MMM d  hh:mm:ss"))
-                                      : p[0], sql),
-                         sql);
+        out << qMakePair(
+            QStringLiteral("[%1] %2").arg(
+                dt.isValid() ? dt.toString(QStringLiteral("MMM d  hh:mm:ss")) : p[0], sql),
+            sql);
     }
     return out.mid(qMax(0, out.size() - max));
 }
@@ -208,13 +207,14 @@ class GridSortProxy : public QSortFilterProxyModel
 {
 public:
     using QSortFilterProxyModel::QSortFilterProxyModel;
+
 protected:
     bool lessThan(const QModelIndex &l, const QModelIndex &r) const override
     {
         const QString a = sourceModel()->data(l).toString();
         const QString b = sourceModel()->data(r).toString();
         if(a == QStringLiteral("NULL") || b == QStringLiteral("NULL"))
-            return b != QStringLiteral("NULL");   /* NULLs sort to the end */
+            return b != QStringLiteral("NULL"); /* NULLs sort to the end */
         bool an = false, bn = false;
         const double av = a.toDouble(&an), bv = b.toDouble(&bn);
         if(an && bn)
@@ -233,8 +233,10 @@ void installGridCopy(QTableView *grid)
             return;
         int r0 = sel.first().row(), r1 = r0, c0 = sel.first().column(), c1 = c0;
         for(const QModelIndex &i : sel) {
-            r0 = qMin(r0, i.row()); r1 = qMax(r1, i.row());
-            c0 = qMin(c0, i.column()); c1 = qMax(c1, i.column());
+            r0 = qMin(r0, i.row());
+            r1 = qMax(r1, i.row());
+            c0 = qMin(c0, i.column());
+            c1 = qMax(c1, i.column());
         }
         QString out;
         for(int r = r0; r <= r1; ++r) {
@@ -249,8 +251,7 @@ void installGridCopy(QTableView *grid)
 
 /* runs in a worker thread: dedicated connection per batch, results
  * collected as plain data (no driver objects cross threads) */
-QVector<QueryResult> runOnConnection(const ConnectionParams &p,
-                                     const QStringList &statements,
+QVector<QueryResult> runOnConnection(const ConnectionParams &p, const QStringList &statements,
                                      LiveConnection *liveConn = nullptr)
 {
     QVector<QueryResult> results;
@@ -280,8 +281,8 @@ QVector<QueryResult> runOnConnection(const ConnectionParams &p,
             r.headers = rs.headers;
             r.rows = rs.rows;
             r.message = rs.headers.isEmpty()
-                ? QStringLiteral("OK, %1 row(s) affected").arg(c->affectedRows())
-                : QStringLiteral("%1 row(s)").arg(r.rows.size());
+                            ? QStringLiteral("OK, %1 row(s) affected").arg(c->affectedRows())
+                            : QStringLiteral("%1 row(s)").arg(r.rows.size());
         } else {
             r.message = message;
         }
@@ -302,51 +303,77 @@ QVector<QueryResult> runOnConnection(const ConnectionParams &p,
  * and \r\n as a line end regardless of the dialog's "Line separator" pick
  * — used only by the SQLite import path, which has no server-side loader
  * to hand the raw separator/terminator strings to. */
-QList<QStringList> parseDelimitedText(const QString &text, QChar sep,
-                                      QChar quote, QChar esc)
+QList<QStringList> parseDelimitedText(const QString &text, QChar sep, QChar quote, QChar esc)
 {
     QList<QStringList> rows;
     QStringList cur;
     QString field;
     bool inQuotes = false;
     const int n = text.size();
-    for(int i = 0; i < n; ) {
+    for(int i = 0; i < n;) {
         const QChar c = text[i];
         if(inQuotes) {
             if(!esc.isNull() && esc != quote && c == esc && i + 1 < n) {
-                field += text[i + 1]; i += 2; continue;
+                field += text[i + 1];
+                i += 2;
+                continue;
             }
             if(!quote.isNull() && c == quote) {
-                if(i + 1 < n && text[i + 1] == quote) { field += quote; i += 2; continue; }
-                inQuotes = false; ++i; continue;
+                if(i + 1 < n && text[i + 1] == quote) {
+                    field += quote;
+                    i += 2;
+                    continue;
+                }
+                inQuotes = false;
+                ++i;
+                continue;
             }
-            field += c; ++i; continue;
+            field += c;
+            ++i;
+            continue;
         }
-        if(!quote.isNull() && c == quote) { inQuotes = true; ++i; continue; }
-        if(c == sep) { cur << field; field.clear(); ++i; continue; }
-        if(c == QLatin1Char('\r')) { ++i; continue; }
+        if(!quote.isNull() && c == quote) {
+            inQuotes = true;
+            ++i;
+            continue;
+        }
+        if(c == sep) {
+            cur << field;
+            field.clear();
+            ++i;
+            continue;
+        }
+        if(c == QLatin1Char('\r')) {
+            ++i;
+            continue;
+        }
         if(c == QLatin1Char('\n')) {
-            cur << field; field.clear();
-            rows << cur; cur.clear();
-            ++i; continue;
+            cur << field;
+            field.clear();
+            rows << cur;
+            cur.clear();
+            ++i;
+            continue;
         }
-        field += c; ++i;
+        field += c;
+        ++i;
     }
-    if(!field.isEmpty() || !cur.isEmpty()) { cur << field; rows << cur; }
+    if(!field.isEmpty() || !cur.isEmpty()) {
+        cur << field;
+        rows << cur;
+    }
     return rows;
 }
 
 } // namespace
 
 ConnectionTab::ConnectionTab(const ConnectionParams &params, QWidget *parent)
-    : QWidget(parent), m_params(params),
-      m_cancelState(std::make_shared<LiveConnection>())
+    : QWidget(parent), m_params(params), m_cancelState(std::make_shared<LiveConnection>())
 {
     /* ---- left: object browser ------------------------------------ */
     m_browser = new ObjectBrowser(this);
-    m_browser->setConnectionResolver([this](const QString &database, QString *error) {
-        return connectionFor(database, error);
-    });
+    m_browser->setConnectionResolver(
+        [this](const QString &database, QString *error) { return connectionFor(database, error); });
     connect(m_browser, &ObjectBrowser::openDatabaseInNewTabRequested, this,
             [this](const QString &database) { emit newTabRequested(paramsFor(database)); });
     connect(m_browser, &ObjectBrowser::switchDatabaseRequested, this,
@@ -366,8 +393,7 @@ ConnectionTab::ConnectionTab(const ConnectionParams &params, QWidget *parent)
     m_history = new QTextBrowser(this);
     m_history->setOpenLinks(false);
     m_history->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
-    connect(m_history, &QTextBrowser::anchorClicked, this,
-            [this](const QUrl &u) {
+    connect(m_history, &QTextBrowser::anchorClicked, this, [this](const QUrl &u) {
         const int i = u.path().toInt();
         if(i < 0 || i >= m_historyQueries.size() || m_historyQueries[i].isEmpty())
             return;
@@ -388,8 +414,7 @@ ConnectionTab::ConnectionTab(const ConnectionParams &params, QWidget *parent)
 
     m_historySearch = new QLineEdit(this);
     m_historySearch->setPlaceholderText(QStringLiteral("filter history…"));
-    connect(m_historySearch, &QLineEdit::textChanged, this,
-            &ConnectionTab::renderHistory);
+    connect(m_historySearch, &QLineEdit::textChanged, this, &ConnectionTab::renderHistory);
     /* explicit reset button — the built-in clear ✕ is unreliable under the
      * app stylesheet / icon theme */
     auto *histReset = new QToolButton(this);
@@ -402,10 +427,9 @@ ConnectionTab::ConnectionTab(const ConnectionParams &params, QWidget *parent)
     histClear->setToolTip(QStringLiteral("Delete the saved query history file"));
     connect(histClear, &QPushButton::clicked, this, &ConnectionTab::clearHistory);
     auto *histCopyAll = new QPushButton(QStringLiteral("Copy All"), this);
-    histCopyAll->setToolTip(QStringLiteral(
-        "Copy every query shown (matching the filter) as one script"));
-    connect(histCopyAll, &QPushButton::clicked, this,
-            &ConnectionTab::copyAllShownHistory);
+    histCopyAll->setToolTip(
+        QStringLiteral("Copy every query shown (matching the filter) as one script"));
+    connect(histCopyAll, &QPushButton::clicked, this, &ConnectionTab::copyAllShownHistory);
     auto *histTop = new QHBoxLayout;
     histTop->setContentsMargins(3, 3, 3, 0);
     histTop->addWidget(new QLabel(QStringLiteral("Filter:"), this));
@@ -427,21 +451,21 @@ ConnectionTab::ConnectionTab(const ConnectionParams &params, QWidget *parent)
     m_editorTabs->setDocumentMode(true);
     m_editorTabs->setTabsClosable(true);
     m_editorTabs->setMovable(true);
-    m_editorTabs->tabBar()->setExpanding(false);   /* SQLyog left-aligns tabs */
-    connect(m_editorTabs, &QTabWidget::tabCloseRequested,
-            this, &ConnectionTab::closeEditorTab);
+    m_editorTabs->tabBar()->setExpanding(false); /* SQLyog left-aligns tabs */
+    connect(m_editorTabs, &QTabWidget::tabCloseRequested, this, &ConnectionTab::closeEditorTab);
     m_editorTabs->setCornerWidget(
         [&] {
             auto *plus = new QPushButton(QStringLiteral("+"), this);
             plus->setFlat(true);
             plus->setFixedSize(22, 20);
-            plus->setStyleSheet(QStringLiteral(
-                "QPushButton { background: transparent; color: #3B7DBB; "
-                "border: none; font-weight: bold; }"
-                "QPushButton:hover { background: #E8F2FA; }"));
+            plus->setStyleSheet(
+                QStringLiteral("QPushButton { background: transparent; color: #3B7DBB; "
+                               "border: none; font-weight: bold; }"
+                               "QPushButton:hover { background: #E8F2FA; }"));
             connect(plus, &QPushButton::clicked, this, &ConnectionTab::addEditorTab);
             return plus;
-        }(), Qt::TopRightCorner);
+        }(),
+        Qt::TopRightCorner);
     m_editorTabs->addTab(m_editor, Icons::get(QStringLiteral("query_16.ico")),
                          QStringLiteral("Query 1"));
     m_editorTabs->addTab(m_historyPage, Icons::get(QStringLiteral("history.ico")),
@@ -459,30 +483,28 @@ ConnectionTab::ConnectionTab(const ConnectionParams &params, QWidget *parent)
     m_resultTabs->setObjectName(QStringLiteral("resultTabs"));
     m_resultTabs->setDocumentMode(true);
     m_resultTabs->setTabPosition(QTabWidget::North);
-    m_resultTabs->tabBar()->setExpanding(false);   /* SQLyog left-aligns tabs */
+    m_resultTabs->tabBar()->setExpanding(false); /* SQLyog left-aligns tabs */
     /* the three fixed tabs below stay open always (no × of their own —
      * hidden right after they're added); each query run instead adds its
      * own new "Execute Query N" tab here, closable independently, so
      * running another query never throws away the previous result */
     m_resultTabs->setTabsClosable(true);
-    connect(m_resultTabs, &QTabWidget::tabCloseRequested,
-            this, &ConnectionTab::closeResultTab);
+    connect(m_resultTabs, &QTabWidget::tabCloseRequested, this, &ConnectionTab::closeResultTab);
     m_tableData = new TableDataView(this);
 
-    m_resultTabs->addTab(m_messages,   Icons::get(QStringLiteral("notification.ico")),
-                        QStringLiteral("1 Messages"));
-    m_resultTabs->addTab(m_tableData,  Icons::get(QStringLiteral("grid_view.ico")),
-                        QStringLiteral("2 Table Data"));
-    m_resultTabs->addTab(m_info,       Icons::get(QStringLiteral("info.ico")),
-                        QStringLiteral("3 Info"));
+    m_resultTabs->addTab(m_messages, Icons::get(QStringLiteral("notification.ico")),
+                         QStringLiteral("Messages"));
+    m_resultTabs->addTab(m_tableData, Icons::get(QStringLiteral("grid_view.ico")),
+                         QStringLiteral("Table Data"));
+    m_resultTabs->addTab(m_info, Icons::get(QStringLiteral("info.ico")), QStringLiteral("Info"));
     for(int i = 0; i < 3; ++i)
         m_resultTabs->tabBar()->setTabButton(i, QTabBar::RightSide, nullptr);
     m_resultTabs->setCurrentIndex(0);
     /* the connection label tracks which result page is in front: a side
      * connection is only "the active connection" while its Table Data
      * grid is the visible one (see m_tableDataPhysDb) */
-    connect(m_resultTabs, &QTabWidget::currentChanged,
-            this, [this](int) { updateActiveConnectionLabel(); });
+    connect(m_resultTabs, &QTabWidget::currentChanged, this,
+            [this](int) { updateActiveConnectionLabel(); });
 
     m_findBar = new FindBar([this] { return currentEditor(); }, this);
 
@@ -505,12 +527,12 @@ ConnectionTab::ConnectionTab(const ConnectionParams &params, QWidget *parent)
     mainSplit->addWidget(rightSplit);
     mainSplit->setStretchFactor(0, 0);
     mainSplit->setStretchFactor(1, 1);
-    mainSplit->setSizes({215, 985});   /* spec: object browser ~1/5 width */
+    mainSplit->setSizes({215, 985}); /* spec: object browser ~1/5 width */
 
     /* bottom LIMIT strip — solid blue, "All" combo hard left (Flat theme) */
     m_limitCombo = new QComboBox(this);
-    m_limitCombo->addItems({ QStringLiteral("All"), QStringLiteral("1000"),
-                             QStringLiteral("5000"), QStringLiteral("10000") });
+    m_limitCombo->addItems({QStringLiteral("All"), QStringLiteral("1000"), QStringLiteral("5000"),
+                            QStringLiteral("10000")});
     auto *limitStrip = new QFrame(this);
     limitStrip->setObjectName(QStringLiteral("limitStrip"));
     auto *limitRow = new QHBoxLayout(limitStrip);
@@ -527,8 +549,7 @@ ConnectionTab::ConnectionTab(const ConnectionParams &params, QWidget *parent)
     /* ---- open the connection ------------------------------------- */
     {
         QString error;
-        m_conn = dbDriverFor(m_params.driverType)
-                     ->connect(m_params, &error, /*localInfile=*/true);
+        m_conn = dbDriverFor(m_params.driverType)->connect(m_params, &error, /*localInfile=*/true);
         if(!m_conn) {
             m_messages->setPlainText(QStringLiteral("Connection failed: ") + error);
             return;
@@ -552,51 +573,44 @@ ConnectionTab::ConnectionTab(const ConnectionParams &params, QWidget *parent)
         m_keepAliveTimer->start();
     }
 
-    connect(m_browser, &ObjectBrowser::databaseActivated, this,
-            &ConnectionTab::useDatabase);
+    connect(m_browser, &ObjectBrowser::databaseActivated, this, &ConnectionTab::useDatabase);
     connect(m_browser, &ObjectBrowser::tableActivated, this,
             [this](const QString &db, const QString &table, const QString &physDb) {
-        if(!m_conn)
-            return;
-        /* physDb routes PostgreSQL's multi-database tree: a table under a
-         * non-primary database loads through that database's own (pooled)
-         * side connection, not m_conn. connectionFor() falls back to m_conn
-         * for an empty physDb (MySQL/SQLite) or the current primary, and
-         * pool entries are only ever moved between m_conn and the pool —
-         * never deleted — so the pointer stays valid for this tab's life. */
-        QString error;
-        IDbConnection *c = connectionFor(physDb, &error);
-        if(!c) {
-            m_messages->setPlainText(
-                QStringLiteral("Could not open %1.%2: %3").arg(physDb, table, error));
-            m_resultTabs->setCurrentWidget(m_messages);
-            return;
-        }
-        m_tableData->load(c, db, table);
-        /* remember whose connection is feeding the grid — primary (empty)
-         * or a foreign database's side connection — so the status bar can
-         * say which one the rows on screen came from */
-        m_tableDataPhysDb = (c == m_conn) ? QString() : physDb;
-        m_resultTabs->setCurrentWidget(m_tableData);
-        updateActiveConnectionLabel();
-    });
+                if(!m_conn)
+                    return;
+                /* physDb routes PostgreSQL's multi-database tree: a table under a
+                 * non-primary database loads through that database's own (pooled)
+                 * side connection, not m_conn. connectionFor() falls back to m_conn
+                 * for an empty physDb (MySQL/SQLite) or the current primary, and
+                 * pool entries are only ever moved between m_conn and the pool —
+                 * never deleted — so the pointer stays valid for this tab's life. */
+                QString error;
+                IDbConnection *c = connectionFor(physDb, &error);
+                if(!c) {
+                    m_messages->setPlainText(
+                        QStringLiteral("Could not open %1.%2: %3").arg(physDb, table, error));
+                    m_resultTabs->setCurrentWidget(m_messages);
+                    return;
+                }
+                m_tableData->load(c, db, table);
+                /* remember whose connection is feeding the grid — primary (empty)
+                 * or a foreign database's side connection — so the status bar can
+                 * say which one the rows on screen came from */
+                m_tableDataPhysDb = (c == m_conn) ? QString() : physDb;
+                m_resultTabs->setCurrentWidget(m_tableData);
+                updateActiveConnectionLabel();
+            });
     connect(m_tableData, &TableDataView::statusMessage, this,
-            [this](const QString &text) {
-        m_messages->appendPlainText(text);
-    });
+            [this](const QString &text) { m_messages->appendPlainText(text); });
 
-    connect(m_browser, &ObjectBrowser::dropTableRequested, this,
-            &ConnectionTab::dropTable);
+    connect(m_browser, &ObjectBrowser::dropTableRequested, this, &ConnectionTab::dropTable);
     connect(m_browser, &ObjectBrowser::createTableRequested, this,
             [this](const QString &db) { promptCreateTable(db); });
     connect(m_browser, &ObjectBrowser::alterTableRequested, this,
-            [this](const QString &db, const QString &table) {
-        promptAlterTable(db, table);
-    });
+            [this](const QString &db, const QString &table) { promptAlterTable(db, table); });
     connect(m_browser, &ObjectBrowser::renameTableRequested, this,
             &ConnectionTab::promptRenameTable);
-    connect(m_browser, &ObjectBrowser::copyTableRequested, this,
-            &ConnectionTab::promptCopyTable);
+    connect(m_browser, &ObjectBrowser::copyTableRequested, this, &ConnectionTab::promptCopyTable);
     connect(m_browser, &ObjectBrowser::manageIndexesRequested, this,
             &ConnectionTab::promptManageIndexes);
     connect(m_browser, &ObjectBrowser::manageForeignKeysRequested, this,
@@ -605,42 +619,36 @@ ConnectionTab::ConnectionTab(const ConnectionParams &params, QWidget *parent)
             [this](const QString &db) { promptDumpDatabase(db); });
     connect(m_browser, &ObjectBrowser::copyDatabaseRequested, this,
             [this](const QString &db) { promptCopyDatabase(db); });
-    connect(m_browser, &ObjectBrowser::importCsvRequested, this,
-            &ConnectionTab::promptImportCsv);
-    connect(m_browser, &ObjectBrowser::importXmlRequested, this,
-            &ConnectionTab::promptImportXml);
-    connect(m_browser, &ObjectBrowser::exportTableRequested, this,
-            &ConnectionTab::exportTableData);
-    connect(m_browser, &ObjectBrowser::truncateTableRequested, this,
-            &ConnectionTab::truncateTable);
+    connect(m_browser, &ObjectBrowser::importCsvRequested, this, &ConnectionTab::promptImportCsv);
+    connect(m_browser, &ObjectBrowser::importXmlRequested, this, &ConnectionTab::promptImportXml);
+    connect(m_browser, &ObjectBrowser::exportTableRequested, this, &ConnectionTab::exportTableData);
+    connect(m_browser, &ObjectBrowser::truncateTableRequested, this, &ConnectionTab::truncateTable);
     connect(m_browser, &ObjectBrowser::createObjectRequested, this,
             &ConnectionTab::createSchemaObject);
     connect(m_browser, &ObjectBrowser::alterObjectRequested, this,
             &ConnectionTab::alterSchemaObject);
-    connect(m_browser, &ObjectBrowser::dropObjectRequested, this,
-            &ConnectionTab::dropSchemaObject);
-    connect(m_browser, &ObjectBrowser::dropDatabaseRequested, this,
-            &ConnectionTab::dropDatabase);
+    connect(m_browser, &ObjectBrowser::dropObjectRequested, this, &ConnectionTab::dropSchemaObject);
+    connect(m_browser, &ObjectBrowser::dropDatabaseRequested, this, &ConnectionTab::dropDatabase);
     connect(m_browser, &ObjectBrowser::truncateDatabaseRequested, this,
             &ConnectionTab::truncateDatabase);
-    connect(m_browser, &ObjectBrowser::emptyDatabaseRequested, this,
-            &ConnectionTab::emptyDatabase);
+    connect(m_browser, &ObjectBrowser::emptyDatabaseRequested, this, &ConnectionTab::emptyDatabase);
     connect(m_browser, &ObjectBrowser::alterDatabaseRequested, this,
             &ConnectionTab::promptAlterDatabase);
 
     const bool isSqlite = m_params.driverType == DriverType::Sqlite;
 
     m_browser->setConnectionLabel(isSqlite
-        ? QFileInfo(m_params.filePath).fileName()
-        : QStringLiteral("%1@%2").arg(m_params.user, m_params.host));
+                                      ? QFileInfo(m_params.filePath).fileName()
+                                      : QStringLiteral("%1@%2").arg(m_params.user, m_params.host));
     m_browser->loadDatabases(m_conn, defaultDb(), m_params.database);
     updateCompletions();
     m_messages->setPlainText(isSqlite
-        ? QStringLiteral("Connected to %1\nSQLite version: %2")
-              .arg(m_params.filePath, m_conn->serverInfo())
-        : QStringLiteral("Connected to %1:%2 as %3\nServer version: %4")
-              .arg(m_params.host).arg(m_params.port)
-              .arg(m_params.user, m_conn->serverInfo()));
+                                 ? QStringLiteral("Connected to %1\nSQLite version: %2")
+                                       .arg(m_params.filePath, m_conn->serverInfo())
+                                 : QStringLiteral("Connected to %1:%2 as %3\nServer version: %4")
+                                       .arg(m_params.host)
+                                       .arg(m_params.port)
+                                       .arg(m_params.user, m_conn->serverInfo()));
 
     QStringList dbs;
     if(m_conn)
@@ -672,8 +680,7 @@ void ConnectionTab::attachEditor(SqlEditor *ed, const QString &title)
     connect(ed, &QsciScintilla::cursorPositionChanged, this, [this, ed] {
         int line = 0, index = 0;
         ed->getCursorPosition(&line, &index);
-        emit cursorMoved(QStringLiteral("Ln %1, Col %2")
-                             .arg(line + 1).arg(index + 1));
+        emit cursorMoved(QStringLiteral("Ln %1, Col %2").arg(line + 1).arg(index + 1));
     });
     ed->setCompletions(m_completions);
     ed->setSchema(m_tableNames, m_columnNames);
@@ -689,8 +696,7 @@ QString ConnectionTab::defaultDb() const
      * Procedure etc.) hit "Select a database first." instead of doing their
      * normal thing (which for PROCEDURE/FUNCTION/EVENT is the SQLite guard) */
     if(m_params.driverType == DriverType::Sqlite)
-        return m_params.database.isEmpty() ? QStringLiteral("main")
-                                           : m_params.database;
+        return m_params.database.isEmpty() ? QStringLiteral("main") : m_params.database;
     return m_params.database;
 }
 
@@ -698,17 +704,15 @@ QString ConnectionTab::activeConnectionLabel() const
 {
     if(m_params.driverType == DriverType::Sqlite)
         return m_params.filePath;
-    const QString where =
-        QStringLiteral("%1:%2").arg(m_params.host).arg(m_params.port);
+    const QString where = QStringLiteral("%1:%2").arg(m_params.host).arg(m_params.port);
     /* the visible grid came from another physical database's side
      * connection — name it, with the marker telling the user why the
      * footer disagrees with the title bar's primary connection */
     if(!m_tableDataPhysDb.isEmpty() && m_resultTabs->currentWidget() == m_tableData)
         return QStringLiteral("%1@%2 — table data").arg(m_tableDataPhysDb, where);
-    return QStringLiteral("%1@%2%3")
-        .arg(m_params.user, where,
-             m_params.database.isEmpty()
-                 ? QString() : QStringLiteral("/") + m_params.database);
+    return QStringLiteral("%1@%2%3").arg(
+        m_params.user, where,
+        m_params.database.isEmpty() ? QString() : QStringLiteral("/") + m_params.database);
 }
 
 void ConnectionTab::updateActiveConnectionLabel()
@@ -762,8 +766,7 @@ bool ConnectionTab::switchDatabase(const QString &database)
     IDbConnection *newConn = connectionFor(database, &error);
     if(!newConn) {
         QApplication::restoreOverrideCursor();
-        m_messages->setPlainText(
-            QStringLiteral("Could not switch to %1: %2").arg(database, error));
+        m_messages->setPlainText(QStringLiteral("Could not switch to %1: %2").arg(database, error));
         m_resultTabs->setCurrentWidget(m_messages);
         return false;
     }
@@ -777,7 +780,7 @@ bool ConnectionTab::switchDatabase(const QString &database)
     m_conn = newConn;
     m_params.database = database;
     m_params.name = database;
-    m_currentSchema.clear();   /* belonged to the old database's search_path */
+    m_currentSchema.clear(); /* belonged to the old database's search_path */
     /* whatever rows the Table Data grid still holds were loaded through a
      * connection that just moved into (or out of) the side pool — no
      * longer a valid "the active connection is X" answer; the switch's
@@ -814,8 +817,9 @@ void ConnectionTab::updateCompletions()
         QStringList tbls = m_conn->listTables(db, QStringLiteral("BASE TABLE"));
         tbls += m_conn->listTables(db, QStringLiteral("VIEW"));
         for(const QString &t : tbls)
-            if(!t.isEmpty()) tables.insert(t);
-        m_tableNames  = QStringList(tables.cbegin(), tables.cend());
+            if(!t.isEmpty())
+                tables.insert(t);
+        m_tableNames = QStringList(tables.cbegin(), tables.cend());
         /* one bulk query instead of a listColumns() round trip per table —
          * see IDbConnection::listAllColumnNames() */
         m_columnNames = m_conn->listAllColumnNames(db);
@@ -911,9 +915,9 @@ void ConnectionTab::renameCurrentEditorTab()
     if(idx < 0 || m_editorTabs->widget(idx) == m_historyPage)
         return;
     bool ok = false;
-    const QString name = QInputDialog::getText(
-        this, QStringLiteral("Rename Tab"), QStringLiteral("Tab name:"),
-        QLineEdit::Normal, m_editorTabs->tabText(idx), &ok);
+    const QString name =
+        QInputDialog::getText(this, QStringLiteral("Rename Tab"), QStringLiteral("Tab name:"),
+                              QLineEdit::Normal, m_editorTabs->tabText(idx), &ok);
     if(ok && !name.trimmed().isEmpty())
         m_editorTabs->setTabText(idx, name.trimmed());
 }
@@ -924,30 +928,28 @@ void ConnectionTab::dumpTable(const QString &database, const QString &table)
         return;
     const QString db = database.isEmpty() ? defaultDb() : database;
     const QString path = QFileDialog::getSaveFileName(
-        this, QStringLiteral("Backup `%1` as SQL dump").arg(table),
-        table + QStringLiteral(".sql"), QStringLiteral("SQL (*.sql);;All (*)"));
+        this, QStringLiteral("Backup `%1` as SQL dump").arg(table), table + QStringLiteral(".sql"),
+        QStringLiteral("SQL (*.sql);;All (*)"));
     if(path.isEmpty())
         return;
     QApplication::setOverrideCursor(Qt::WaitCursor);
     QString err;
-    const bool ok = dumpDatabaseToFile(db, path, { table }, SqlDump::Options{}, &err);
+    const bool ok = dumpDatabaseToFile(db, path, {table}, SqlDump::Options{}, &err);
     QApplication::restoreOverrideCursor();
-    m_messages->setPlainText(ok
-        ? QStringLiteral("Dumped `%1`.`%2` → %3").arg(db, table, path)
-        : QStringLiteral("Dump failed: %1").arg(err));
+    m_messages->setPlainText(ok ? QStringLiteral("Dumped `%1`.`%2` → %3").arg(db, table, path)
+                                : QStringLiteral("Dump failed: %1").arg(err));
     m_resultTabs->setCurrentWidget(m_messages);
 }
 
-SqlEditor *ConnectionTab::openEditorWithSql(const QString &title,
-                                             const QString &sql)
+SqlEditor *ConnectionTab::openEditorWithSql(const QString &title, const QString &sql)
 {
     auto *ed = new SqlEditor(this);
     attachEditor(ed, {});
     if(!sql.isEmpty())
         ed->setPlainText(sql);
     const int histIdx = m_editorTabs->indexOf(m_historyPage);
-    m_editorTabs->insertTab(histIdx == -1 ? m_editorTabs->count() : histIdx,
-                            ed, Icons::get(QStringLiteral("query_16.ico")), title);
+    m_editorTabs->insertTab(histIdx == -1 ? m_editorTabs->count() : histIdx, ed,
+                            Icons::get(QStringLiteral("query_16.ico")), title);
     const int idx = m_editorTabs->indexOf(ed);
     m_editorTabs->setTabToolTip(idx, title);
     m_editorTabs->setCurrentWidget(ed);
@@ -958,9 +960,9 @@ void ConnectionTab::logHistory(const QString &sql)
 {
     QString flat = sql;
     flat.replace('\n', QLatin1Char(' ')).replace('\r', QString());
-    m_historyLines << QStringLiteral("[%1] %2")
-        .arg(QTime::currentTime().toString(QStringLiteral("hh:mm:ss")), flat);
-    m_historyQueries << sql;                 /* keep the original line breaks */
+    m_historyLines << QStringLiteral("[%1] %2").arg(
+        QTime::currentTime().toString(QStringLiteral("hh:mm:ss")), flat);
+    m_historyQueries << sql; /* keep the original line breaks */
     renderHistory();
     appendHistoryLine(m_params.name, sql);
 }
@@ -973,10 +975,8 @@ void ConnectionTab::sendHistoryToEditor(const QString &sql)
     QString cur = ed->toPlainText();
     if(!cur.isEmpty() && !cur.endsWith('\n'))
         cur += QLatin1Char('\n');
-    ed->setPlainText(cur + sql
-                     + (sql.trimmed().endsWith(';') ? QString()
-                                                    : QStringLiteral(";"))
-                     + QLatin1Char('\n'));
+    ed->setPlainText(cur + sql + (sql.trimmed().endsWith(';') ? QString() : QStringLiteral(";")) +
+                     QLatin1Char('\n'));
     ed->moveCursorToEnd();
     m_editorTabs->setCurrentWidget(ed);
     ed->setFocus();
@@ -985,35 +985,32 @@ void ConnectionTab::sendHistoryToEditor(const QString &sql)
 void ConnectionTab::renderHistory()
 {
     const QString filter = m_historySearch->text().trimmed();
-    QString html = QStringLiteral(
-        "<style>a{text-decoration:none;font-size:13px}"
-        ".ts{color:#8a8a8a}"
-        ".q{white-space:pre-wrap}</style>"
-        "<table cellspacing='0' cellpadding='1'>");
+    QString html = QStringLiteral("<style>a{text-decoration:none;font-size:13px}"
+                                  ".ts{color:#8a8a8a}"
+                                  ".q{white-space:pre-wrap}</style>"
+                                  "<table cellspacing='0' cellpadding='1'>");
     for(int i = 0; i < m_historyLines.size(); ++i) {
         const QString &l = m_historyLines[i];
         if(!filter.isEmpty() && !l.contains(filter, Qt::CaseInsensitive))
             continue;
-        if(m_historyQueries.value(i).isEmpty()) {          /* session divider */
+        if(m_historyQueries.value(i).isEmpty()) { /* session divider */
             html += QStringLiteral("<tr><td></td><td><i>%1</i></td></tr>")
                         .arg(l.trimmed().toHtmlEscaped());
             continue;
         }
         const int rb = l.indexOf(']');
         const QString tsPart = rb > 0 ? l.left(rb + 1) : QString();
-        html += QStringLiteral(
-            "<tr><td valign='top' style='white-space:nowrap'>"
-            "<a href='c:%1' title='Copy query'>⧉</a>&#160;"
-            "<a href='e:%1' title='Send to editor (formatted)'>&#8618;</a>"
-            "&#160;&#160;</td>"
-            "<td><span class='ts'>%2</span> <span class='q'>%3</span></td></tr>")
-            .arg(i)
-            .arg(tsPart.toHtmlEscaped(), m_historyQueries[i].toHtmlEscaped());
+        html += QStringLiteral("<tr><td valign='top' style='white-space:nowrap'>"
+                               "<a href='c:%1' title='Copy query'>⧉</a>&#160;"
+                               "<a href='e:%1' title='Send to editor (formatted)'>&#8618;</a>"
+                               "&#160;&#160;</td>"
+                               "<td><span class='ts'>%2</span> <span class='q'>%3</span></td></tr>")
+                    .arg(i)
+                    .arg(tsPart.toHtmlEscaped(), m_historyQueries[i].toHtmlEscaped());
     }
     html += QStringLiteral("</table>");
     m_history->setHtml(html);
-    m_history->verticalScrollBar()->setValue(
-        m_history->verticalScrollBar()->maximum());
+    m_history->verticalScrollBar()->setValue(m_history->verticalScrollBar()->maximum());
 }
 
 void ConnectionTab::copyAllShownHistory()
@@ -1023,8 +1020,7 @@ void ConnectionTab::copyAllShownHistory()
     for(int i = 0; i < m_historyLines.size(); ++i) {
         if(m_historyQueries.value(i).isEmpty())
             continue;
-        if(!filter.isEmpty()
-           && !m_historyLines[i].contains(filter, Qt::CaseInsensitive))
+        if(!filter.isEmpty() && !m_historyLines[i].contains(filter, Qt::CaseInsensitive))
             continue;
         QString q = m_historyQueries[i].trimmed();
         if(!q.endsWith(';'))
@@ -1035,14 +1031,16 @@ void ConnectionTab::copyAllShownHistory()
         return;
     QApplication::clipboard()->setText(out.join(QStringLiteral("\n\n")));
     emit executed(QStringLiteral("Copied %1 quer%2 to the clipboard")
-                      .arg(out.size()).arg(out.size() == 1 ? "y" : "ies"));
+                      .arg(out.size())
+                      .arg(out.size() == 1 ? "y" : "ies"));
 }
 
 void ConnectionTab::clearHistory()
 {
-    if(QMessageBox::question(this, QStringLiteral("Clear History"),
-           QStringLiteral("Delete all saved query history for every connection?"))
-           != QMessageBox::Yes)
+    if(QMessageBox::question(
+           this, QStringLiteral("Clear History"),
+           QStringLiteral("Delete all saved query history for every connection?")) !=
+       QMessageBox::Yes)
         return;
     QFile(historyPath()).resize(0);
     m_historyLines.clear();
@@ -1055,19 +1053,17 @@ void ConnectionTab::addCurrentToFavorites()
     SqlEditor *ed = currentEditor();
     if(!ed)
         return;
-    QString sql = ed->hasSelectedText()
-        ? ed->selectedText()
-        : ed->toPlainText();
+    QString sql = ed->hasSelectedText() ? ed->selectedText() : ed->toPlainText();
     sql = sql.trimmed();
     if(sql.isEmpty()) {
         QMessageBox::information(this, QStringLiteral("Add To Favorites"),
-            QStringLiteral("Nothing to save — the editor is empty."));
+                                 QStringLiteral("Nothing to save — the editor is empty."));
         return;
     }
     bool ok = false;
-    const QString name = QInputDialog::getText(
-        this, QStringLiteral("Add To Favorites"), QStringLiteral("Name:"),
-        QLineEdit::Normal, QString(), &ok);
+    const QString name =
+        QInputDialog::getText(this, QStringLiteral("Add To Favorites"), QStringLiteral("Name:"),
+                              QLineEdit::Normal, QString(), &ok);
     if(!ok || name.trimmed().isEmpty())
         return;
     FavoritesStore::save(name.trimmed(), sql);
@@ -1089,10 +1085,10 @@ void ConnectionTab::organizeFavorites()
     auto *insertBtn = new QPushButton(QStringLiteral("&Insert Into Editor"), &dlg);
     auto *renameBtn = new QPushButton(QStringLiteral("&Rename…"), &dlg);
     auto *deleteBtn = new QPushButton(QStringLiteral("&Delete"), &dlg);
-    for(QPushButton *b : { insertBtn, renameBtn, deleteBtn })
+    for(QPushButton *b : {insertBtn, renameBtn, deleteBtn})
         b->setEnabled(false);
     connect(list, &QListWidget::currentRowChanged, &dlg, [=](int row) {
-        for(QPushButton *b : { insertBtn, renameBtn, deleteBtn })
+        for(QPushButton *b : {insertBtn, renameBtn, deleteBtn})
             b->setEnabled(row >= 0);
     });
     connect(insertBtn, &QPushButton::clicked, &dlg, [=, this, &dlg] {
@@ -1101,27 +1097,28 @@ void ConnectionTab::organizeFavorites()
             dlg.accept();
         }
     });
-    connect(list, &QListWidget::itemDoubleClicked, &dlg,
-            [=, this, &dlg](QListWidgetItem *item) {
+    connect(list, &QListWidget::itemDoubleClicked, &dlg, [=, this, &dlg](QListWidgetItem *item) {
         insertFavorite(item->text());
         dlg.accept();
     });
     connect(renameBtn, &QPushButton::clicked, &dlg, [=, &dlg] {
         auto *item = list->currentItem();
-        if(!item) return;
+        if(!item)
+            return;
         bool ok = false;
-        const QString name = QInputDialog::getText(
-            &dlg, QStringLiteral("Rename Favorite"), QStringLiteral("New name:"),
-            QLineEdit::Normal, item->text(), &ok);
-        if(ok && !name.trimmed().isEmpty()
-           && FavoritesStore::rename(item->text(), name.trimmed()))
+        const QString name = QInputDialog::getText(&dlg, QStringLiteral("Rename Favorite"),
+                                                   QStringLiteral("New name:"), QLineEdit::Normal,
+                                                   item->text(), &ok);
+        if(ok && !name.trimmed().isEmpty() && FavoritesStore::rename(item->text(), name.trimmed()))
             item->setText(name.trimmed());
     });
     connect(deleteBtn, &QPushButton::clicked, &dlg, [=, &dlg] {
         auto *item = list->currentItem();
-        if(!item) return;
+        if(!item)
+            return;
         if(QMessageBox::question(&dlg, QStringLiteral("Delete Favorite"),
-               QStringLiteral("Delete \"%1\"?").arg(item->text())) != QMessageBox::Yes)
+                                 QStringLiteral("Delete \"%1\"?").arg(item->text())) !=
+           QMessageBox::Yes)
             return;
         FavoritesStore::remove(item->text());
         delete item;
@@ -1148,8 +1145,8 @@ void ConnectionTab::runQuery()
     if(!ed)
         return;
     const QString sql = ed->hasSelectedText()
-        ? ed->selectedText()
-        : statementAt(ed->toPlainText(), ed->cursorPosition());
+                            ? ed->selectedText()
+                            : statementAt(ed->toPlainText(), ed->cursorPosition());
     runStatements(splitStatements(sql), QStringLiteral("Execute Query"));
 }
 
@@ -1167,29 +1164,25 @@ void ConnectionTab::runAndEdit()
     SqlEditor *ed = currentEditor();
     if(!ed)
         return;
-    const QString stmt = (ed->hasSelectedText()
-        ? ed->selectedText()
-        : statementAt(ed->toPlainText(), ed->cursorPosition())).trimmed();
+    const QString stmt =
+        (ed->hasSelectedText() ? ed->selectedText()
+                               : statementAt(ed->toPlainText(), ed->cursorPosition()))
+            .trimmed();
 
-    static const QRegularExpression re(
-        QStringLiteral("^SELECT\\b.*\\bFROM\\s+`?([A-Za-z0-9_$]+)`?"
-                       "(?:\\.`?([A-Za-z0-9_$]+)`?)?"),
-        QRegularExpression::CaseInsensitiveOption
-            | QRegularExpression::DotMatchesEverythingOption);
+    static const QRegularExpression re(QStringLiteral("^SELECT\\b.*\\bFROM\\s+`?([A-Za-z0-9_$]+)`?"
+                                                      "(?:\\.`?([A-Za-z0-9_$]+)`?)?"),
+                                       QRegularExpression::CaseInsensitiveOption |
+                                           QRegularExpression::DotMatchesEverythingOption);
     const auto m = re.match(stmt);
     /* reject if a second table is joined/comma'd */
     const bool multiTable = stmt.contains(QRegularExpression(
-        QStringLiteral("\\bJOIN\\b|\\bFROM\\b[^,]+,"),
-        QRegularExpression::CaseInsensitiveOption));
+        QStringLiteral("\\bJOIN\\b|\\bFROM\\b[^,]+,"), QRegularExpression::CaseInsensitiveOption));
 
     if(m.hasMatch() && !multiTable) {
-        const QString db = m.captured(2).isEmpty() ? defaultDb()
-                                                   : m.captured(1);
-        const QString table = m.captured(2).isEmpty() ? m.captured(1)
-                                                      : m.captured(2);
+        const QString db = m.captured(2).isEmpty() ? defaultDb() : m.captured(1);
+        const QString table = m.captured(2).isEmpty() ? m.captured(1) : m.captured(2);
         openTableData(db, table);
-        emit executed(QStringLiteral("Editing `%1`.`%2` in Table Data")
-                          .arg(db, table));
+        emit executed(QStringLiteral("Editing `%1`.`%2` in Table Data").arg(db, table));
         return;
     }
     m_messages->appendPlainText(
@@ -1210,9 +1203,8 @@ void ConnectionTab::explainCurrent(bool json)
     SqlEditor *ed = currentEditor();
     if(!ed)
         return;
-    QString stmt = ed->hasSelectedText()
-        ? ed->selectedText()
-        : statementAt(ed->toPlainText(), ed->cursorPosition());
+    QString stmt = ed->hasSelectedText() ? ed->selectedText()
+                                         : statementAt(ed->toPlainText(), ed->cursorPosition());
     stmt = stmt.trimmed();
     while(stmt.endsWith(QLatin1Char(';')))
         stmt.chop(1);
@@ -1225,13 +1217,13 @@ void ConnectionTab::explainCurrent(bool json)
         explainSql = QStringLiteral("EXPLAIN (FORMAT JSON) %1").arg(stmt);
     } else if(driverType() == DriverType::Sqlite) {
         QMessageBox::information(this, QStringLiteral("Explain"),
-            QStringLiteral("SQLite has no EXPLAIN FORMAT=JSON — use plain "
-                           "EXPLAIN instead."));
+                                 QStringLiteral("SQLite has no EXPLAIN FORMAT=JSON — use plain "
+                                                "EXPLAIN instead."));
         return;
     } else {
         explainSql = QStringLiteral("EXPLAIN FORMAT=JSON %1").arg(stmt);
     }
-    runStatements({ explainSql }, QStringLiteral("Explain"));
+    runStatements({explainSql}, QStringLiteral("Explain"));
 }
 
 /* headless-test hook (--explain=json|plain): put a known statement in the
@@ -1249,8 +1241,7 @@ void ConnectionTab::selftestExplain(const QString &mode)
     explainCurrent(mode == QLatin1String("json"));
 }
 
-void ConnectionTab::runStatements(const QStringList &statements,
-                                  const QString &tabPrefix)
+void ConnectionTab::runStatements(const QStringList &statements, const QString &tabPrefix)
 {
     if(m_running) {
         m_messages->appendPlainText(QStringLiteral("a batch is already running…"));
@@ -1264,8 +1255,7 @@ void ConnectionTab::runStatements(const QStringList &statements,
 
     m_running = true;
     const int gen = ++m_batchGen;
-    m_messages->setPlainText(QStringLiteral("Executing %1 statement(s)…")
-                                 .arg(statements.size()));
+    m_messages->setPlainText(QStringLiteral("Executing %1 statement(s)…").arg(statements.size()));
     m_resultTabs->setCurrentWidget(m_messages);
 
     /* worker thread: fresh connection, plain-data results. Holds its own
@@ -1288,12 +1278,14 @@ void ConnectionTab::runStatements(const QStringList &statements,
     const ConnectionParams p = m_params;
     std::shared_ptr<LiveConnection> cancelState = m_cancelState;
     QThreadPool::globalInstance()->start([guard, p, statements, tabPrefix, cancelState] {
-        const QVector<QueryResult> results =
-            runOnConnection(p, statements, cancelState.get());
-        QMetaObject::invokeMethod(guard, [guard, results, tabPrefix] {
-            if(guard)
-                guard->applyResults(results, tabPrefix);
-        }, Qt::QueuedConnection);
+        const QVector<QueryResult> results = runOnConnection(p, statements, cancelState.get());
+        QMetaObject::invokeMethod(
+            guard,
+            [guard, results, tabPrefix] {
+                if(guard)
+                    guard->applyResults(results, tabPrefix);
+            },
+            Qt::QueuedConnection);
     });
 
     /* the timeout re-checks m_batchGen before cancelling: without it, a
@@ -1309,8 +1301,14 @@ void ConnectionTab::runStatements(const QStringList &statements,
     }
 }
 
-int ConnectionTab::queryTimeoutSecs() { return loadQueryTimeoutSecs(); }
-void ConnectionTab::setQueryTimeoutSecs(int secs) { saveQueryTimeoutSecs(secs); }
+int ConnectionTab::queryTimeoutSecs()
+{
+    return loadQueryTimeoutSecs();
+}
+void ConnectionTab::setQueryTimeoutSecs(int secs)
+{
+    saveQueryTimeoutSecs(secs);
+}
 
 void ConnectionTab::cancelQuery()
 {
@@ -1325,15 +1323,13 @@ void ConnectionTab::openTable(const QString &db, const QString &table)
 {
     if(m_running || !m_conn)
         return;
-    const QString sql = QStringLiteral("SELECT * FROM %1 LIMIT 1000")
-                            .arg(m_conn->qualify(db, table));
+    const QString sql =
+        QStringLiteral("SELECT * FROM %1 LIMIT 1000").arg(m_conn->qualify(db, table));
     logHistory(sql);
-    runStatements(QStringList{ sql },
-                  QStringLiteral("%1.%2").arg(db, table));
+    runStatements(QStringList{sql}, QStringLiteral("%1.%2").arg(db, table));
 }
 
-void ConnectionTab::applyResults(const QVector<QueryResult> &results,
-                                 const QString &tabPrefix)
+void ConnectionTab::applyResults(const QVector<QueryResult> &results, const QString &tabPrefix)
 {
     m_running = false;
 
@@ -1349,12 +1345,13 @@ void ConnectionTab::applyResults(const QVector<QueryResult> &results,
 
         if(!r.ok) {
             summary += QStringLiteral("✗ [%1] %2 (%3 sec)\n")
-                           .arg(i + 1).arg(r.message)
+                           .arg(i + 1)
+                           .arg(r.message)
                            .arg(r.secs, 0, 'f', 2);
             continue;
         }
-        summary += QStringLiteral("✓ [%1] %2 (%3 sec)\n")
-                       .arg(i + 1).arg(r.message).arg(r.secs, 0, 'f', 2);
+        summary +=
+            QStringLiteral("✓ [%1] %2 (%3 sec)\n").arg(i + 1).arg(r.message).arg(r.secs, 0, 'f', 2);
 
         if(!r.headers.isEmpty()) {
             ++grids;
@@ -1362,8 +1359,7 @@ void ConnectionTab::applyResults(const QVector<QueryResult> &results,
              * every call) — old result tabs are never cleared anymore, so
              * a per-call counter would produce duplicate titles ("Execute
              * Query 1" appearing again on the next run) */
-            addResultGrid(r, QStringLiteral("%1 %2")
-                                    .arg(tabPrefix).arg(++m_resultTabCounter));
+            addResultGrid(r, QStringLiteral("%1 %2").arg(tabPrefix).arg(++m_resultTabCounter));
             if(!firstGrid)
                 firstGrid = m_dynamicResultTabs.last();
         }
@@ -1372,12 +1368,12 @@ void ConnectionTab::applyResults(const QVector<QueryResult> &results,
     if(grids)
         summary += QStringLiteral("\n%1 result set(s) displayed.").arg(grids);
     m_messages->setPlainText(summary);
-    m_resultTabs->setCurrentWidget(
-        firstGrid ? firstGrid : static_cast<QWidget *>(m_messages));
+    m_resultTabs->setCurrentWidget(firstGrid ? firstGrid : static_cast<QWidget *>(m_messages));
 
     const double exec = total;
     emit executed(QStringLiteral("Exec: %1 sec | Total: %2 sec")
-                      .arg(exec, 0, 'f', 2).arg(m_totalSecs, 0, 'f', 2));
+                      .arg(exec, 0, 'f', 2)
+                      .arg(m_totalSecs, 0, 'f', 2));
 }
 
 void ConnectionTab::addResultGrid(const QueryResult &r, const QString &title)
@@ -1410,23 +1406,27 @@ void ConnectionTab::addResultGrid(const QueryResult &r, const QString &title)
 void ConnectionTab::wireResultGrid(QTableView *grid)
 {
     grid->setContextMenuPolicy(Qt::CustomContextMenu);
-    connect(grid, &QTableView::customContextMenuRequested, grid,
-            [this, grid](const QPoint &pos) {
+    connect(grid, &QTableView::customContextMenuRequested, grid, [this, grid](const QPoint &pos) {
         QAbstractItemModel *m = grid->model();
         if(!m || m->rowCount() == 0)
             return;
         const QModelIndex at = grid->indexAt(pos);
-        const QModelIndexList sel = grid->selectionModel()
-            ? grid->selectionModel()->selectedIndexes() : QModelIndexList();
+        const QModelIndexList sel =
+            grid->selectionModel() ? grid->selectionModel()->selectedIndexes() : QModelIndexList();
 
         /* unique sorted row / column sets from the selection (or the clicked
          * cell if nothing is selected) */
         QList<int> rowSet, colSet;
         for(const QModelIndex &i : sel) {
-            if(!rowSet.contains(i.row())) rowSet << i.row();
-            if(!colSet.contains(i.column())) colSet << i.column();
+            if(!rowSet.contains(i.row()))
+                rowSet << i.row();
+            if(!colSet.contains(i.column()))
+                colSet << i.column();
         }
-        if(rowSet.isEmpty() && at.isValid()) { rowSet << at.row(); colSet << at.column(); }
+        if(rowSet.isEmpty() && at.isValid()) {
+            rowSet << at.row();
+            colSet << at.column();
+        }
         std::sort(rowSet.begin(), rowSet.end());
         std::sort(colSet.begin(), colSet.end());
         if(rowSet.isEmpty())
@@ -1441,9 +1441,9 @@ void ConnectionTab::wireResultGrid(QTableView *grid)
         if(at.isValid())
             menu.addAction(QStringLiteral("&View Cell…"), grid, [this, grid, at] {
                 QDialog d(grid);
-                d.setWindowTitle(QStringLiteral("Cell — %1")
-                    .arg(grid->model()->headerData(at.column(), Qt::Horizontal)
-                             .toString()));
+                d.setWindowTitle(
+                    QStringLiteral("Cell — %1")
+                        .arg(grid->model()->headerData(at.column(), Qt::Horizontal).toString()));
                 d.resize(520, 320);
                 auto *tv = new QPlainTextEdit(&d);
                 tv->setReadOnly(true);
@@ -1460,7 +1460,8 @@ void ConnectionTab::wireResultGrid(QTableView *grid)
         menu.addSeparator();
 
         menu.addAction(QStringLiteral("Copy Row(s) as &TSV"), grid, [=] {
-            ResultExport::Options o; o.header = true;
+            ResultExport::Options o;
+            o.header = true;
             const std::function<QString(int, int)> cell = [=](int r, int c) {
                 return m->index(rowSet.at(r), c).data().toString();
             };
@@ -1504,9 +1505,9 @@ void ConnectionTab::openSqlFile(const QString &path)
 
 void ConnectionTab::saveEditor()
 {
-    const QString f = QFileDialog::getSaveFileName(
-        this, QStringLiteral("Save SQL"), QStringLiteral("query.sql"),
-        QStringLiteral("SQL (*.sql);;All (*)"));
+    const QString f =
+        QFileDialog::getSaveFileName(this, QStringLiteral("Save SQL"), QStringLiteral("query.sql"),
+                                     QStringLiteral("SQL (*.sql);;All (*)"));
     if(f.isEmpty())
         return;
     QFile file(f);
@@ -1517,9 +1518,8 @@ void ConnectionTab::saveEditor()
 
 void ConnectionTab::showHistory()
 {
-    if(m_editorTabs->indexOf(m_historyPage) == -1)   /* was closed — bring it back */
-        m_editorTabs->addTab(m_historyPage,
-                             Icons::get(QStringLiteral("history.ico")),
+    if(m_editorTabs->indexOf(m_historyPage) == -1) /* was closed — bring it back */
+        m_editorTabs->addTab(m_historyPage, Icons::get(QStringLiteral("history.ico")),
                              QStringLiteral("History"));
     m_editorTabs->setCurrentWidget(m_historyPage);
 }
@@ -1543,8 +1543,8 @@ void ConnectionTab::exportResult()
             sel << i.row();
     std::sort(sel.begin(), sel.end());
 
-    ExportDialog dlg(QStringLiteral("result"), QStringLiteral("exported"),
-                     m->rowCount(), !sel.isEmpty(), this);
+    ExportDialog dlg(QStringLiteral("result"), QStringLiteral("exported"), m->rowCount(),
+                     !sel.isEmpty(), this);
     if(dlg.exec() != QDialog::Accepted || dlg.path().isEmpty())
         return;
 
@@ -1557,8 +1557,7 @@ void ConnectionTab::exportResult()
     ResultExport::Options opt = dlg.options();
     opt.driver = m_params.driverType;
     QString err;
-    if(ResultExport::write(dlg.path(), dlg.format(), headers, cell, rows, cols,
-                           opt, &err))
+    if(ResultExport::write(dlg.path(), dlg.format(), headers, cell, rows, cols, opt, &err))
         m_messages->appendPlainText(
             QStringLiteral("Exported %1 row(s) → %2").arg(rows).arg(dlg.path()));
     else
@@ -1630,14 +1629,14 @@ void ConnectionTab::promptReplace()
     if(!ed)
         return;
     bool ok = false;
-    const QString from = QInputDialog::getText(
-        this, QStringLiteral("Replace"), QStringLiteral("Find what:"),
-        QLineEdit::Normal, m_lastFind, &ok);
+    const QString from =
+        QInputDialog::getText(this, QStringLiteral("Replace"), QStringLiteral("Find what:"),
+                              QLineEdit::Normal, m_lastFind, &ok);
     if(!ok || from.isEmpty())
         return;
-    const QString to = QInputDialog::getText(
-        this, QStringLiteral("Replace"), QStringLiteral("Replace with:"),
-        QLineEdit::Normal, QString(), &ok);
+    const QString to =
+        QInputDialog::getText(this, QStringLiteral("Replace"), QStringLiteral("Replace with:"),
+                              QLineEdit::Normal, QString(), &ok);
     if(!ok)
         return;
     m_lastFind = from;
@@ -1661,9 +1660,9 @@ void ConnectionTab::promptGoto()
     bool ok = false;
     int curLine = 0, curIndex = 0;
     ed->getCursorPosition(&curLine, &curIndex);
-    const int line = QInputDialog::getInt(
-        this, QStringLiteral("Go To Line"), QStringLiteral("Line number:"),
-        curLine + 1, 1, ed->lines(), 1, &ok);
+    const int line =
+        QInputDialog::getInt(this, QStringLiteral("Go To Line"), QStringLiteral("Line number:"),
+                             curLine + 1, 1, ed->lines(), 1, &ok);
     if(ok)
         ed->gotoLine(line);
 }
@@ -1687,12 +1686,12 @@ void ConnectionTab::formatQuery(int scope)
     auto *ed = currentEditor();
     if(!ed)
         return;
-    if(scope == 2) {                                   /* whole editor */
+    if(scope == 2) { /* whole editor */
         ed->selectAll();
         ed->replaceSelectedText(SqlFormat::pretty(ed->toPlainText()));
         return;
     }
-    if(scope == 1 && ed->hasSelectedText()) {         /* selection */
+    if(scope == 1 && ed->hasSelectedText()) { /* selection */
         ed->replaceSelectedText(SqlFormat::pretty(ed->selectedText()));
         return;
     }
@@ -1704,7 +1703,7 @@ void ConnectionTab::formatQuery(int scope)
     if(end < 0)
         end = all.size();
     else
-        ++end;                                        /* include the ';' */
+        ++end; /* include the ';' */
     int l0 = 0, i0 = 0, l1 = 0, i1 = 0;
     ed->getLineIndex(start, &l0, &i0);
     ed->getLineIndex(end, &l1, &i1);
@@ -1762,20 +1761,20 @@ void ConnectionTab::promptCreateTable(const QString &database)
     const QString sql = dlg.buildSql();
     if(sql.isEmpty()) {
         QMessageBox::warning(this, QStringLiteral("Create Table"),
-            QStringLiteral("Nothing to create — a table name and at least "
-                           "one column are required."));
+                             QStringLiteral("Nothing to create — a table name and at least "
+                                            "one column are required."));
         return;
     }
-    execDdl(sql);   /* execDdl already refreshes the object browser on success */
+    execDdl(sql); /* execDdl already refreshes the object browser on success */
 }
 
 void ConnectionTab::dropTable(const QString &database, const QString &table)
 {
     const QString db = database.isEmpty() ? defaultDb() : database;
-    if(table.isEmpty() || QMessageBox::question(this,
-            QStringLiteral("Drop Table"),
-            QStringLiteral("Permanently DROP table `%1`.`%2`?").arg(db, table))
-            != QMessageBox::Yes)
+    if(table.isEmpty() ||
+       QMessageBox::question(this, QStringLiteral("Drop Table"),
+                             QStringLiteral("Permanently DROP table `%1`.`%2`?").arg(db, table)) !=
+           QMessageBox::Yes)
         return;
     execDdl(QStringLiteral("DROP TABLE %1").arg(m_conn->qualify(db, table)));
     if(m_tableData->loadedTable() == table)
@@ -1785,20 +1784,19 @@ void ConnectionTab::dropTable(const QString &database, const QString &table)
 void ConnectionTab::truncateTable(const QString &database, const QString &table)
 {
     const QString db = database.isEmpty() ? defaultDb() : database;
-    if(table.isEmpty() || QMessageBox::question(this,
-            QStringLiteral("Truncate Table"),
-            QStringLiteral("Delete ALL rows of `%1`.`%2`?").arg(db, table))
-            != QMessageBox::Yes)
+    if(table.isEmpty() ||
+       QMessageBox::question(this, QStringLiteral("Truncate Table"),
+                             QStringLiteral("Delete ALL rows of `%1`.`%2`?").arg(db, table)) !=
+           QMessageBox::Yes)
         return;
     execDdl(m_conn->sqlTruncateTable(db, table));
     if(m_tableData->loadedTable() == table)
-        m_tableData->load(m_conn, db, table);   /* empty grid */
+        m_tableData->load(m_conn, db, table); /* empty grid */
 }
 
 /* ---- schema objects: View / Procedure / Function / Trigger / Event ------- */
 
-void ConnectionTab::createSchemaObject(const QString &database,
-                                       const QString &objType)
+void ConnectionTab::createSchemaObject(const QString &database, const QString &objType)
 {
     if(!m_conn)
         return;
@@ -1809,7 +1807,8 @@ void ConnectionTab::createSchemaObject(const QString &database,
         return;
     }
     if(m_params.driverType == DriverType::Postgres && objType == QStringLiteral("EVENT")) {
-        QMessageBox::information(this, QStringLiteral("Create Event"),
+        QMessageBox::information(
+            this, QStringLiteral("Create Event"),
             QStringLiteral("PostgreSQL has no built-in scheduled-event feature."));
         return;
     }
@@ -1821,26 +1820,25 @@ void ConnectionTab::createSchemaObject(const QString &database,
      * branch and opens an editor tab pre-filled with MySQL-only syntax
      * that just fails with a bare syntax error on Run — View and Trigger
      * are genuinely fine on SQLite and stay unguarded. */
-    if(m_params.driverType == DriverType::Sqlite
-       && (objType == QStringLiteral("PROCEDURE")
-           || objType == QStringLiteral("FUNCTION")
-           || objType == QStringLiteral("EVENT"))) {
+    if(m_params.driverType == DriverType::Sqlite &&
+       (objType == QStringLiteral("PROCEDURE") || objType == QStringLiteral("FUNCTION") ||
+        objType == QStringLiteral("EVENT"))) {
         QMessageBox::information(this, QStringLiteral("Create %1").arg(nice),
-            QStringLiteral("SQLite has no stored procedures, functions, or "
-                           "scheduled events — only tables, views, indexes "
-                           "and triggers."));
+                                 QStringLiteral("SQLite has no stored procedures, functions, or "
+                                                "scheduled events — only tables, views, indexes "
+                                                "and triggers."));
         return;
     }
     /* SQLyog opens the DDL in a new query-editor tab, not a modal dialog */
     openEditorWithSql(
         QStringLiteral("Create %1").arg(nice),
         SchemaSql::editorText(objType, db, QString(),
-                              SchemaSql::createTemplate(objType, db, m_params.driverType),
-                              true, m_params.driverType));
+                              SchemaSql::createTemplate(objType, db, m_params.driverType), true,
+                              m_params.driverType));
 }
 
-void ConnectionTab::alterSchemaObject(const QString &database,
-                                      const QString &objType, const QString &name)
+void ConnectionTab::alterSchemaObject(const QString &database, const QString &objType,
+                                      const QString &name)
 {
     if(!m_conn || name.isEmpty())
         return;
@@ -1858,43 +1856,43 @@ void ConnectionTab::alterSchemaObject(const QString &database,
                              QStringLiteral("Could not read the object's DDL."));
         return;
     }
-    openEditorWithSql(
-        QStringLiteral("Alter %1 `%2`").arg(nice, name),
-        SchemaSql::editorText(objType, db, name,
-                              SchemaSql::stripDefiner(ddl), false, m_params.driverType));
+    openEditorWithSql(QStringLiteral("Alter %1 `%2`").arg(nice, name),
+                      SchemaSql::editorText(objType, db, name, SchemaSql::stripDefiner(ddl), false,
+                                            m_params.driverType));
 }
 
-void ConnectionTab::dropSchemaObject(const QString &database,
-                                     const QString &objType, const QString &name)
+void ConnectionTab::dropSchemaObject(const QString &database, const QString &objType,
+                                     const QString &name)
 {
     if(!m_conn || name.isEmpty())
         return;
     const QString db = database.isEmpty() ? defaultDb() : database;
     const QString nice = objType.left(1) + objType.mid(1).toLower();
-    if(QMessageBox::question(this, QStringLiteral("Drop %1").arg(nice),
-            QStringLiteral("Permanently DROP %1 %2?")
-                .arg(nice, m_conn->qualify(db, name)))
-            != QMessageBox::Yes)
+    if(QMessageBox::question(
+           this, QStringLiteral("Drop %1").arg(nice),
+           QStringLiteral("Permanently DROP %1 %2?").arg(nice, m_conn->qualify(db, name))) !=
+       QMessageBox::Yes)
         return;
     /* PostgreSQL's DROP TRIGGER needs "ON table", not a db-qualified name —
      * pulled from pg_trigger since dropSchemaObject() has no table
      * parameter of its own to pass in */
     if(m_params.driverType == DriverType::Postgres && objType == QStringLiteral("TRIGGER")) {
         DbResultSet rs;
-        m_conn->query(QStringLiteral(
-            "SELECT c.relname FROM pg_trigger t "
-            "JOIN pg_class c ON c.oid = t.tgrelid "
-            "JOIN pg_namespace n ON n.oid = c.relnamespace "
-            "WHERE NOT t.tgisinternal AND n.nspname = '%1' AND t.tgname = '%2'")
-                .arg(db, name), &rs, nullptr);
+        m_conn->query(
+            QStringLiteral("SELECT c.relname FROM pg_trigger t "
+                           "JOIN pg_class c ON c.oid = t.tgrelid "
+                           "JOIN pg_namespace n ON n.oid = c.relnamespace "
+                           "WHERE NOT t.tgisinternal AND n.nspname = '%1' AND t.tgname = '%2'")
+                .arg(db, name),
+            &rs, nullptr);
         if(rs.rows.isEmpty()) {
-            QMessageBox::warning(this, QStringLiteral("Drop Trigger"),
+            QMessageBox::warning(
+                this, QStringLiteral("Drop Trigger"),
                 QStringLiteral("Could not find the table this trigger belongs to."));
             return;
         }
         execDdl(QStringLiteral("DROP TRIGGER IF EXISTS %1 ON %2")
-                    .arg(m_conn->quoteIdent(name),
-                         m_conn->qualify(db, rs.rows.first().value(0))));
+                    .arg(m_conn->quoteIdent(name), m_conn->qualify(db, rs.rows.first().value(0))));
         return;
     }
     execDdl(QStringLiteral("DROP %1 IF EXISTS %2").arg(objType, m_conn->qualify(db, name)));
@@ -1915,18 +1913,17 @@ void ConnectionTab::dropDatabase(const QString &database)
          * closest real equivalent; actually removing the file is a
          * filesystem operation the user does after closing the tab. */
         QMessageBox::information(this, QStringLiteral("Drop Database"),
-            QStringLiteral("A SQLite connection's database is the open file "
-                           "itself — there's nothing to DROP while it's "
-                           "connected. Use Empty Database to drop every "
-                           "table/view/trigger and keep the file, or close "
-                           "this connection and delete the file."));
+                                 QStringLiteral("A SQLite connection's database is the open file "
+                                                "itself — there's nothing to DROP while it's "
+                                                "connected. Use Empty Database to drop every "
+                                                "table/view/trigger and keep the file, or close "
+                                                "this connection and delete the file."));
         return;
     }
-    if(QMessageBox::warning(this, QStringLiteral("Drop Database"),
-            QStringLiteral("Permanently DROP database `%1` and everything in it?")
-                .arg(db),
-            QMessageBox::Yes | QMessageBox::No, QMessageBox::No)
-            != QMessageBox::Yes)
+    if(QMessageBox::warning(
+           this, QStringLiteral("Drop Database"),
+           QStringLiteral("Permanently DROP database `%1` and everything in it?").arg(db),
+           QMessageBox::Yes | QMessageBox::No, QMessageBox::No) != QMessageBox::Yes)
         return;
     /* PostgreSQL: "database" here means schema (see PostgresConnection.h —
      * a connection can't reach another actual Postgres database at all,
@@ -1943,10 +1940,11 @@ void ConnectionTab::truncateDatabase(const QString &database)
     if(db.isEmpty())
         return;
     if(QMessageBox::warning(this, QStringLiteral("Truncate Database"),
-            QStringLiteral("DROP every table, view, routine, trigger and event "
-                           "in `%1`?  (the empty database is kept)").arg(db),
-            QMessageBox::Yes | QMessageBox::No, QMessageBox::No)
-            != QMessageBox::Yes)
+                            QStringLiteral("DROP every table, view, routine, trigger and event "
+                                           "in `%1`?  (the empty database is kept)")
+                                .arg(db),
+                            QMessageBox::Yes | QMessageBox::No,
+                            QMessageBox::No) != QMessageBox::Yes)
         return;
 
     if(m_params.driverType == DriverType::Postgres) {
@@ -1974,19 +1972,18 @@ void ConnectionTab::truncateDatabase(const QString &database)
     QString charset = QStringLiteral("utf8mb4"), collation;
     {
         DbResultSet rs;
-        if(m_conn->query(QStringLiteral(
-               "SELECT DEFAULT_CHARACTER_SET_NAME, DEFAULT_COLLATION_NAME "
-               "FROM information_schema.SCHEMATA WHERE SCHEMA_NAME='%1'")
-                   .arg(QString(db).replace('\'', QStringLiteral("''"))),
-               &rs, nullptr) && !rs.rows.isEmpty()) {
+        if(m_conn->query(QStringLiteral("SELECT DEFAULT_CHARACTER_SET_NAME, DEFAULT_COLLATION_NAME "
+                                        "FROM information_schema.SCHEMATA WHERE SCHEMA_NAME='%1'")
+                             .arg(QString(db).replace('\'', QStringLiteral("''"))),
+                         &rs, nullptr) &&
+           !rs.rows.isEmpty()) {
             if(!orEmpty(rs.rows.first().value(0)).isEmpty())
                 charset = rs.rows.first().value(0);
             collation = orEmpty(rs.rows.first().value(1));
         }
     }
     const QString bq = QString(db).replace('`', QStringLiteral("``"));
-    QString create = QStringLiteral("CREATE DATABASE `%1` CHARACTER SET %2")
-                         .arg(bq, charset);
+    QString create = QStringLiteral("CREATE DATABASE `%1` CHARACTER SET %2").arg(bq, charset);
     if(!collation.isEmpty())
         create += QStringLiteral(" COLLATE %1").arg(collation);
     if(execDdl(QStringLiteral("DROP DATABASE `%1`").arg(bq)))
@@ -1998,11 +1995,10 @@ void ConnectionTab::emptyDatabase(const QString &database)
     const QString db = database.isEmpty() ? defaultDb() : database;
     if(db.isEmpty())
         return;
-    if(QMessageBox::warning(this, QStringLiteral("Empty Database"),
-            QStringLiteral("TRUNCATE every base table in `%1`?  All rows are lost.")
-                .arg(db),
-            QMessageBox::Yes | QMessageBox::No, QMessageBox::No)
-            != QMessageBox::Yes)
+    if(QMessageBox::warning(
+           this, QStringLiteral("Empty Database"),
+           QStringLiteral("TRUNCATE every base table in `%1`?  All rows are lost.").arg(db),
+           QMessageBox::Yes | QMessageBox::No, QMessageBox::No) != QMessageBox::Yes)
         return;
 
     const QStringList tables = m_conn->listTables(db, QStringLiteral("BASE TABLE"));
@@ -2010,8 +2006,7 @@ void ConnectionTab::emptyDatabase(const QString &database)
     for(const QString &t : tables)
         execDdl(m_conn->sqlTruncateTable(db, t));
     execDdl(m_conn->sqlFkChecks(true));
-    if(!m_tableData->loadedTable().isEmpty()
-       && tables.contains(m_tableData->loadedTable()))
+    if(!m_tableData->loadedTable().isEmpty() && tables.contains(m_tableData->loadedTable()))
         m_tableData->load(m_conn, db, m_tableData->loadedTable());
 }
 
@@ -2024,30 +2019,30 @@ void ConnectionTab::promptAlterDatabase(const QString &database)
         return;
     if(m_params.driverType == DriverType::Postgres) {
         QMessageBox::information(this, QStringLiteral("Alter Database"),
-            QStringLiteral("Character set/collation are whole-database "
-                           "properties in PostgreSQL, fixed at creation — "
-                           "there's nothing here to alter for a schema."));
+                                 QStringLiteral("Character set/collation are whole-database "
+                                                "properties in PostgreSQL, fixed at creation — "
+                                                "there's nothing here to alter for a schema."));
         return;
     }
     if(m_params.driverType == DriverType::Sqlite) {
         QMessageBox::information(this, QStringLiteral("Alter Database"),
-            QStringLiteral("SQLite has no per-database character set or "
-                           "collation to alter — text encoding is fixed "
-                           "(UTF-8/16) for the whole file at creation, and "
-                           "collations are attached per-column/-index, not "
-                           "to the database as a whole."));
+                                 QStringLiteral("SQLite has no per-database character set or "
+                                                "collation to alter — text encoding is fixed "
+                                                "(UTF-8/16) for the whole file at creation, and "
+                                                "collations are attached per-column/-index, not "
+                                                "to the database as a whole."));
         return;
     }
 
     QString curCharset, curCollation;
     {
         DbResultSet rs;
-        if(m_conn->query(QStringLiteral(
-               "SELECT DEFAULT_CHARACTER_SET_NAME, DEFAULT_COLLATION_NAME "
-               "FROM information_schema.SCHEMATA WHERE SCHEMA_NAME='%1'")
-                   .arg(QString(db).replace('\'', QStringLiteral("''"))),
-               &rs, nullptr) && !rs.rows.isEmpty()) {
-            curCharset   = orEmpty(rs.rows.first().value(0));
+        if(m_conn->query(QStringLiteral("SELECT DEFAULT_CHARACTER_SET_NAME, DEFAULT_COLLATION_NAME "
+                                        "FROM information_schema.SCHEMATA WHERE SCHEMA_NAME='%1'")
+                             .arg(QString(db).replace('\'', QStringLiteral("''"))),
+                         &rs, nullptr) &&
+           !rs.rows.isEmpty()) {
+            curCharset = orEmpty(rs.rows.first().value(0));
             curCollation = orEmpty(rs.rows.first().value(1));
         }
     }
@@ -2059,16 +2054,15 @@ void ConnectionTab::promptAlterDatabase(const QString &database)
     auto *collationEdit = new QLineEdit(curCollation, &dlg);
     form->addRow(QStringLiteral("Character set"), charsetEdit);
     form->addRow(QStringLiteral("Collation"), collationEdit);
-    auto *bb = new QDialogButtonBox(
-        QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
+    auto *bb = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
     form->addRow(bb);
     connect(bb, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
     connect(bb, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
     if(dlg.exec() != QDialog::Accepted)
         return;
 
-    QString sql = QStringLiteral("ALTER DATABASE `%1`")
-                      .arg(QString(db).replace('`', QStringLiteral("``")));
+    QString sql =
+        QStringLiteral("ALTER DATABASE `%1`").arg(QString(db).replace('`', QStringLiteral("``")));
     if(!charsetEdit->text().trimmed().isEmpty())
         sql += QStringLiteral(" CHARACTER SET %1").arg(charsetEdit->text().trimmed());
     if(!collationEdit->text().trimmed().isEmpty())
@@ -2076,28 +2070,26 @@ void ConnectionTab::promptAlterDatabase(const QString &database)
     execDdl(sql);
 }
 
-void ConnectionTab::promptRenameTable(const QString &database,
-                                      const QString &table)
+void ConnectionTab::promptRenameTable(const QString &database, const QString &table)
 {
     if(!m_conn || table.isEmpty())
         return;
     const QString db = database.isEmpty() ? defaultDb() : database;
     bool ok = false;
-    const QString name = QInputDialog::getText(
-        this, QStringLiteral("Rename Table"),
-        QStringLiteral("New name for `%1`:").arg(table),
-        QLineEdit::Normal, table, &ok);
+    const QString name = QInputDialog::getText(this, QStringLiteral("Rename Table"),
+                                               QStringLiteral("New name for `%1`:").arg(table),
+                                               QLineEdit::Normal, table, &ok);
     if(!ok || name.trimmed().isEmpty() || name == table)
         return;
     /* MySQL: RENAME TABLE db.old TO db.new. Neither PostgreSQL nor SQLite
      * has that statement — ALTER TABLE ... RENAME TO new does the same job
      * on both, within the same schema (there's no cross-schema form to
      * worry about since this function never changes db, only the name). */
-    execDdl(m_params.driverType != DriverType::Mysql
-                ? QStringLiteral("ALTER TABLE %1 RENAME TO %2")
-                      .arg(m_conn->qualify(db, table), m_conn->quoteIdent(name.trimmed()))
-                : QStringLiteral("RENAME TABLE `%1`.`%2` TO `%1`.`%3`")
-                      .arg(db, table, name.trimmed()));
+    execDdl(
+        m_params.driverType != DriverType::Mysql
+            ? QStringLiteral("ALTER TABLE %1 RENAME TO %2")
+                  .arg(m_conn->qualify(db, table), m_conn->quoteIdent(name.trimmed()))
+            : QStringLiteral("RENAME TABLE `%1`.`%2` TO `%1`.`%3`").arg(db, table, name.trimmed()));
     if(m_tableData->loadedTable() == table)
         m_tableData->load(m_conn, db, name.trimmed());
 }
@@ -2112,7 +2104,7 @@ void ConnectionTab::promptCopyTable(const QString &database, const QString &tabl
     dlg.setWindowTitle(QStringLiteral("Duplicate Table `%1`").arg(table));
     auto *name = new QLineEdit(table + QStringLiteral("_copy"), &dlg);
     auto *targetDb = new QComboBox(&dlg);
-    targetDb->addItems(m_databases.isEmpty() ? QStringList{ srcDb } : m_databases);
+    targetDb->addItems(m_databases.isEmpty() ? QStringList{srcDb} : m_databases);
     targetDb->setCurrentText(srcDb);
     auto *wantStructure = new QCheckBox(QStringLiteral("Structure"), &dlg);
     auto *wantData = new QCheckBox(QStringLiteral("Data"), &dlg);
@@ -2124,8 +2116,7 @@ void ConnectionTab::promptCopyTable(const QString &database, const QString &tabl
     form->addRow(QStringLiteral("Target database"), targetDb);
     form->addRow(QString(), wantStructure);
     form->addRow(QString(), wantData);
-    auto *buttons = new QDialogButtonBox(
-        QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
+    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
     buttons->button(QDialogButtonBox::Ok)->setText(QStringLiteral("Duplicate"));
     connect(buttons, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
     connect(buttons, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
@@ -2149,8 +2140,7 @@ void ConnectionTab::promptCopyTable(const QString &database, const QString &tabl
              * INCLUDING ALL to get the same completeness a bare MySQL LIKE
              * gives by default (otherwise only column definitions copy,
              * not indexes/defaults/constraints) */
-            ok = execDdl(QStringLiteral("CREATE TABLE %1 (LIKE %2 INCLUDING ALL)")
-                             .arg(dst, src));
+            ok = execDdl(QStringLiteral("CREATE TABLE %1 (LIKE %2 INCLUDING ALL)").arg(dst, src));
         } else if(m_params.driverType == DriverType::Sqlite) {
             /* SQLite has no LIKE clause at all — showCreate("TABLE") for
              * SQLite replays the table's own original CREATE TABLE text
@@ -2169,8 +2159,8 @@ void ConnectionTab::promptCopyTable(const QString &database, const QString &tabl
             ddl.replace(nameRe, QStringLiteral("\\1") + dst);
             ok = !ddl.isEmpty() && execDdl(ddl);
             if(!ok)
-                m_messages->appendPlainText(QStringLiteral("Duplicate Table failed: ")
-                                             + (err.isEmpty() ? ddl : err));
+                m_messages->appendPlainText(QStringLiteral("Duplicate Table failed: ") +
+                                            (err.isEmpty() ? ddl : err));
         } else {
             ok = execDdl(QStringLiteral("CREATE TABLE %1 LIKE %2").arg(dst, src));
         }
@@ -2193,27 +2183,24 @@ void ConnectionTab::promptDropColumn(const QString &database, const QString &tab
         cols << row.value(0);
     if(cols.isEmpty()) {
         QMessageBox::information(this, QStringLiteral("Drop Column"),
-            QStringLiteral("No columns found in %1.").arg(qualified));
+                                 QStringLiteral("No columns found in %1.").arg(qualified));
         return;
     }
     bool ok = false;
     const QString col = QInputDialog::getItem(
         this, QStringLiteral("Drop Column"),
-        QStringLiteral("Column to drop from %1:").arg(qualified),
-        cols, 0, false, &ok);
+        QStringLiteral("Column to drop from %1:").arg(qualified), cols, 0, false, &ok);
     if(!ok || col.isEmpty())
         return;
     if(QMessageBox::question(this, QStringLiteral("Drop Column"),
-           QStringLiteral("Drop column `%1` from %2? This cannot be undone.")
-               .arg(col, qualified))
-           != QMessageBox::Yes)
+                             QStringLiteral("Drop column `%1` from %2? This cannot be undone.")
+                                 .arg(col, qualified)) != QMessageBox::Yes)
         return;
-    execDdl(QStringLiteral("ALTER TABLE %1 DROP COLUMN %2")
-                .arg(qualified, m_conn->quoteIdent(col)));
+    execDdl(
+        QStringLiteral("ALTER TABLE %1 DROP COLUMN %2").arg(qualified, m_conn->quoteIdent(col)));
 }
 
-void ConnectionTab::promptManageIndexes(const QString &database,
-                                        const QString &table)
+void ConnectionTab::promptManageIndexes(const QString &database, const QString &table)
 {
     if(!m_conn || table.isEmpty())
         return;
@@ -2229,7 +2216,7 @@ void ConnectionTab::promptManageIndexes(const QString &database,
     /* canonical SHOW INDEX shape: Non_unique(1) Key_name(2) Column_name(4) */
     for(const QStringList &row : m_conn->listIndexes(db, table).rows) {
         const QString name = row.value(2);
-        const QString col  = row.value(4);
+        const QString col = row.value(4);
         IndexDialog::IndexDef *ix = findIx(name);
         if(!ix) {
             IndexDialog::IndexDef nd;
@@ -2252,7 +2239,7 @@ void ConnectionTab::promptManageIndexes(const QString &database,
     const QString sql = dlg.buildSql();
     if(sql.isEmpty()) {
         QMessageBox::information(this, QStringLiteral("Manage Indexes"),
-                                QStringLiteral("No changes to apply."));
+                                 QStringLiteral("No changes to apply."));
         return;
     }
     execDdl(sql);
@@ -2274,8 +2261,7 @@ void ConnectionTab::promptCopyDatabase(const QString &database)
     if(m_params.driverType == DriverType::Sqlite) {
         QDialog dlg(this);
         dlg.setWindowTitle(QStringLiteral("Copy Database"));
-        auto *path = new QLineEdit(
-            m_params.filePath + QStringLiteral("_copy.sqlite"), &dlg);
+        auto *path = new QLineEdit(m_params.filePath + QStringLiteral("_copy.sqlite"), &dlg);
         auto *browse = new QPushButton(QStringLiteral("Browse…"), &dlg);
         connect(browse, &QPushButton::clicked, &dlg, [&] {
             /* unlike the "open/create a file" browse button on the SQLite
@@ -2296,8 +2282,7 @@ void ConnectionTab::promptCopyDatabase(const QString &database)
         auto *form = new QFormLayout;
         form->addRow(QStringLiteral("Copy to file"), pathRow);
         form->addRow(QString(), wantData);
-        auto *buttons = new QDialogButtonBox(
-            QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
+        auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
         buttons->button(QDialogButtonBox::Ok)->setText(QStringLiteral("Copy"));
         connect(buttons, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
         connect(buttons, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
@@ -2313,19 +2298,18 @@ void ConnectionTab::promptCopyDatabase(const QString &database)
         /* the Browse… button's own save dialog already confirms an
          * overwrite, but a path typed directly into the field skips that —
          * ask here too before the upcoming QFile::remove() */
-        if(QFile::exists(target)
-           && QMessageBox::question(this, QStringLiteral("Copy Database"),
-                  QStringLiteral("%1 already exists. Overwrite it?").arg(target))
-                  != QMessageBox::Yes)
+        if(QFile::exists(target) &&
+           QMessageBox::question(this, QStringLiteral("Copy Database"),
+                                 QStringLiteral("%1 already exists. Overwrite it?").arg(target)) !=
+               QMessageBox::Yes)
             return;
 
         QApplication::setOverrideCursor(Qt::WaitCursor);
         QString err;
         const bool ok = copySqliteFileTo(target, wantData->isChecked(), &err);
         QApplication::restoreOverrideCursor();
-        m_messages->setPlainText(ok
-            ? QStringLiteral("Copied database to %1").arg(target)
-            : QStringLiteral("Copy failed:\n%1").arg(err));
+        m_messages->setPlainText(ok ? QStringLiteral("Copied database to %1").arg(target)
+                                    : QStringLiteral("Copy failed:\n%1").arg(err));
         m_resultTabs->setCurrentWidget(m_messages);
         return;
     }
@@ -2333,7 +2317,7 @@ void ConnectionTab::promptCopyDatabase(const QString &database)
     const QString srcDb = database.isEmpty() ? defaultDb() : database;
     if(srcDb.isEmpty()) {
         QMessageBox::information(this, QStringLiteral("Copy Database"),
-            QStringLiteral("Select a database first."));
+                                 QStringLiteral("Select a database first."));
         return;
     }
 
@@ -2347,8 +2331,9 @@ void ConnectionTab::promptCopyDatabase(const QString &database)
     const bool isPg = m_params.driverType == DriverType::Postgres;
 
     QDialog dlg(this);
-    dlg.setWindowTitle(QStringLiteral("Copy %1 `%2`")
-                            .arg(isPg ? QStringLiteral("Schema") : QStringLiteral("Database"), srcDb));
+    dlg.setWindowTitle(
+        QStringLiteral("Copy %1 `%2`")
+            .arg(isPg ? QStringLiteral("Schema") : QStringLiteral("Database"), srcDb));
     auto *tHost = new QLineEdit(m_params.host, &dlg);
     auto *tPort = new QSpinBox(&dlg);
     tPort->setRange(1, 65535);
@@ -2360,11 +2345,12 @@ void ConnectionTab::promptCopyDatabase(const QString &database)
     auto *name = new QLineEdit(srcDb + QStringLiteral("_copy"), &dlg);
     auto *wantData = new QCheckBox(QStringLiteral("Copy table data"), &dlg);
     wantData->setChecked(true);
-    auto *dropFirst = new QCheckBox(
-        QStringLiteral("Drop target %1 first if it exists")
-            .arg(isPg ? QStringLiteral("schema") : QStringLiteral("database")), &dlg);
-    auto *wantRoutines = new QCheckBox(
-        QStringLiteral("Also copy views, routines, triggers, events"), &dlg);
+    auto *dropFirst =
+        new QCheckBox(QStringLiteral("Drop target %1 first if it exists")
+                          .arg(isPg ? QStringLiteral("schema") : QStringLiteral("database")),
+                      &dlg);
+    auto *wantRoutines =
+        new QCheckBox(QStringLiteral("Also copy views, routines, triggers, events"), &dlg);
     wantRoutines->setChecked(true);
     auto *form = new QFormLayout;
     if(!isPg) {
@@ -2373,25 +2359,24 @@ void ConnectionTab::promptCopyDatabase(const QString &database)
         form->addRow(QStringLiteral("Target user"), tUser);
         form->addRow(QStringLiteral("Target password"), tPass);
     }
-    form->addRow(isPg ? QStringLiteral("New schema name")
-                       : QStringLiteral("New database name"), name);
+    form->addRow(isPg ? QStringLiteral("New schema name") : QStringLiteral("New database name"),
+                 name);
     form->addRow(QString(), wantData);
     form->addRow(QString(), wantRoutines);
     form->addRow(QString(), dropFirst);
-    auto *buttons = new QDialogButtonBox(
-        QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
+    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
     buttons->button(QDialogButtonBox::Ok)->setText(QStringLiteral("Copy"));
     connect(buttons, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
     connect(buttons, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
     auto *lay = new QVBoxLayout(&dlg);
     lay->addLayout(form);
-    lay->addWidget(new QLabel(isPg
-        ? QStringLiteral("Copies the schema within this connection "
-                         "(CREATE TABLE … LIKE … INCLUDING ALL, plus foreign keys, "
-                         "views, routines and triggers).")
-        : QStringLiteral(
-            "Same host + port + user → fast CREATE … LIKE copy; a different target "
-            "streams a dump over a fresh connection. DEFINER clauses are stripped."),
+    lay->addWidget(new QLabel(
+        isPg ? QStringLiteral("Copies the schema within this connection "
+                              "(CREATE TABLE … LIKE … INCLUDING ALL, plus foreign keys, "
+                              "views, routines and triggers).")
+             : QStringLiteral(
+                   "Same host + port + user → fast CREATE … LIKE copy; a different target "
+                   "streams a dump over a fresh connection. DEFINER clauses are stripped."),
         &dlg));
     lay->addWidget(buttons);
     if(dlg.exec() != QDialog::Accepted)
@@ -2400,11 +2385,12 @@ void ConnectionTab::promptCopyDatabase(const QString &database)
     const QString tgt = name->text().trimmed();
     if(tgt.isEmpty())
         return;
-    const bool sameServer = isPg || (tHost->text().trimmed() == m_params.host
-                            && tPort->value() == m_params.port
-                            && tUser->text().trimmed() == m_params.user);
+    const bool sameServer =
+        isPg || (tHost->text().trimmed() == m_params.host && tPort->value() == m_params.port &&
+                 tUser->text().trimmed() == m_params.user);
     if(sameServer && tgt == srcDb) {
-        QMessageBox::information(this, QStringLiteral("Copy Database"),
+        QMessageBox::information(
+            this, QStringLiteral("Copy Database"),
             QStringLiteral("Target must differ from the source on the same %1.")
                 .arg(isPg ? QStringLiteral("connection") : QStringLiteral("server")));
         return;
@@ -2414,11 +2400,11 @@ void ConnectionTab::promptCopyDatabase(const QString &database)
     QString err;
     bool ok;
     if(isPg) {
-        ok = copyDatabaseToPostgres(srcDb, tgt, wantData->isChecked(),
-                                    dropFirst->isChecked(), wantRoutines->isChecked(), &err);
+        ok = copyDatabaseToPostgres(srcDb, tgt, wantData->isChecked(), dropFirst->isChecked(),
+                                    wantRoutines->isChecked(), &err);
     } else if(sameServer) {
-        ok = copyDatabaseTo(srcDb, tgt, wantData->isChecked(),
-                            dropFirst->isChecked(), wantRoutines->isChecked(), &err);
+        ok = copyDatabaseTo(srcDb, tgt, wantData->isChecked(), dropFirst->isChecked(),
+                            wantRoutines->isChecked(), &err);
     } else {
         ConnectionParams tp;
         tp.host = tHost->text().trimmed();
@@ -2432,11 +2418,12 @@ void ConnectionTab::promptCopyDatabase(const QString &database)
         } else {
             const QString tq = QString(tgt).replace('`', QStringLiteral("``"));
             if(dropFirst->isChecked())
-                dst->query(QStringLiteral("DROP DATABASE IF EXISTS `%1`").arg(tq),
-                          nullptr, nullptr);
+                dst->query(QStringLiteral("DROP DATABASE IF EXISTS `%1`").arg(tq), nullptr,
+                           nullptr);
             dst->query(QStringLiteral("CREATE DATABASE IF NOT EXISTS `%1` "
-                                      "CHARACTER SET utf8mb4").arg(tq),
-                      nullptr, nullptr);
+                                      "CHARACTER SET utf8mb4")
+                           .arg(tq),
+                       nullptr, nullptr);
             dst->query(QStringLiteral("USE `%1`").arg(tq), nullptr, nullptr);
             SqlDump::Options opt;
             opt.data = wantData->isChecked();
@@ -2456,29 +2443,32 @@ void ConnectionTab::promptCopyDatabase(const QString &database)
     }
     QApplication::restoreOverrideCursor();
 
-    m_messages->setPlainText(ok
-        ? QStringLiteral("Copied `%1` → %2`%3`.")
-              .arg(srcDb,
-                   sameServer ? QString()
-                              : QStringLiteral("%1:%2/").arg(tHost->text().trimmed())
-                                    .arg(tPort->value()),
-                   tgt)
-        : QStringLiteral("Copy failed:\n%1").arg(err));
+    m_messages->setPlainText(ok ? QStringLiteral("Copied `%1` → %2`%3`.")
+                                      .arg(srcDb,
+                                           sameServer ? QString()
+                                                      : QStringLiteral("%1:%2/")
+                                                            .arg(tHost->text().trimmed())
+                                                            .arg(tPort->value()),
+                                           tgt)
+                                : QStringLiteral("Copy failed:\n%1").arg(err));
     m_resultTabs->setCurrentWidget(m_messages);
     refreshBrowser();
 }
 
-bool ConnectionTab::importCsvBatched(const QString &db, const QString &table,
-                                     const QString &file, const QString &sep,
-                                     const QString &quote, const QString &escCh,
-                                     bool hasHeader, int extraSkipLines,
-                                     bool truncateFirst, const QString &onDup,
-                                     int *rowsInserted, QString *error)
+bool ConnectionTab::importCsvBatched(const QString &db, const QString &table, const QString &file,
+                                     const QString &sep, const QString &quote, const QString &escCh,
+                                     bool hasHeader, int extraSkipLines, bool truncateFirst,
+                                     const QString &onDup, int *rowsInserted, QString *error)
 {
-    if(!m_conn) { if(error) *error = QStringLiteral("not connected"); return false; }
+    if(!m_conn) {
+        if(error)
+            *error = QStringLiteral("not connected");
+        return false;
+    }
     QFile f(file);
     if(!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
-        if(error) *error = QStringLiteral("could not open %1").arg(file);
+        if(error)
+            *error = QStringLiteral("could not open %1").arg(file);
         return false;
     }
     const QString text = QString::fromUtf8(f.readAll());
@@ -2510,8 +2500,8 @@ bool ConnectionTab::importCsvBatched(const QString &db, const QString &table,
     const auto qv = [&](const QString &v) {
         if(v == QStringLiteral("NULL"))
             return QStringLiteral("NULL");
-        return QLatin1Char('\'') + QString::fromUtf8(m_conn->escape(v.toUtf8()))
-             + QLatin1Char('\'');
+        return QLatin1Char('\'') + QString::fromUtf8(m_conn->escape(v.toUtf8())) +
+               QLatin1Char('\'');
     };
     const QString qualified = m_conn->qualify(db, table);
 
@@ -2530,16 +2520,17 @@ bool ConnectionTab::importCsvBatched(const QString &db, const QString &table,
     QString verb = QStringLiteral("INSERT");
     QString conflictClause;
     if(m_params.driverType == DriverType::Sqlite) {
-        verb = onDup == QStringLiteral("REPLACE")
-            ? QStringLiteral("INSERT OR REPLACE") : QStringLiteral("INSERT OR IGNORE");
+        verb = onDup == QStringLiteral("REPLACE") ? QStringLiteral("INSERT OR REPLACE")
+                                                  : QStringLiteral("INSERT OR IGNORE");
     } else if(m_params.driverType == DriverType::Postgres) {
         QStringList pkCols;
         for(const QStringList &row : m_conn->listIndexes(db, table).rows)
             if(row.value(2) == QStringLiteral("PRIMARY"))
                 pkCols << row.value(4);
-        const bool pkUsable = !pkCols.isEmpty() && !colNames.isEmpty()
-            && std::all_of(pkCols.cbegin(), pkCols.cend(), [&](const QString &c) {
-                   return colNames.contains(c, Qt::CaseInsensitive); });
+        const bool pkUsable = !pkCols.isEmpty() && !colNames.isEmpty() &&
+                              std::all_of(pkCols.cbegin(), pkCols.cend(), [&](const QString &c) {
+                                  return colNames.contains(c, Qt::CaseInsensitive);
+                              });
         if(onDup == QStringLiteral("REPLACE") && pkUsable) {
             QStringList pkQ, setClauses;
             for(const QString &c : pkCols)
@@ -2548,9 +2539,11 @@ bool ConnectionTab::importCsvBatched(const QString &db, const QString &table,
                 if(!pkCols.contains(c, Qt::CaseInsensitive))
                     setClauses << QStringLiteral("%1 = EXCLUDED.%1").arg(m_conn->quoteIdent(c));
             conflictClause = setClauses.isEmpty()
-                ? QStringLiteral(" ON CONFLICT (%1) DO NOTHING").arg(pkQ.join(QStringLiteral(", ")))
-                : QStringLiteral(" ON CONFLICT (%1) DO UPDATE SET %2")
-                      .arg(pkQ.join(QStringLiteral(", ")), setClauses.join(QStringLiteral(", ")));
+                                 ? QStringLiteral(" ON CONFLICT (%1) DO NOTHING")
+                                       .arg(pkQ.join(QStringLiteral(", ")))
+                                 : QStringLiteral(" ON CONFLICT (%1) DO UPDATE SET %2")
+                                       .arg(pkQ.join(QStringLiteral(", ")),
+                                            setClauses.join(QStringLiteral(", ")));
         } else {
             conflictClause = QStringLiteral(" ON CONFLICT DO NOTHING");
         }
@@ -2561,38 +2554,44 @@ bool ConnectionTab::importCsvBatched(const QString &db, const QString &table,
     for(int i = start; i < rows.size(); ++i) {
         const QStringList &row = rows.at(i);
         if(row.size() == 1 && row.first().isEmpty())
-            continue;   /* trailing blank line */
+            continue; /* trailing blank line */
         QStringList vals;
         for(const QString &v : row)
             vals << qv(v);
-        const QString sql = QStringLiteral("%1 INTO %2%3 VALUES (%4)%5")
-            .arg(verb, qualified, colClause, vals.join(QStringLiteral(", ")), conflictClause);
+        const QString sql =
+            QStringLiteral("%1 INTO %2%3 VALUES (%4)%5")
+                .arg(verb, qualified, colClause, vals.join(QStringLiteral(", ")), conflictClause);
         QString stmtErr;
         if(!m_conn->query(sql, nullptr, &stmtErr)) {
             m_conn->query(QStringLiteral("ROLLBACK"), nullptr, nullptr);
-            if(error) *error = QStringLiteral("%1\n  at row %2: %3")
-                                    .arg(stmtErr).arg(i + 1).arg(sql.left(120));
+            if(error)
+                *error = QStringLiteral("%1\n  at row %2: %3")
+                             .arg(stmtErr)
+                             .arg(i + 1)
+                             .arg(sql.left(120));
             return false;
         }
         ++inserted;
     }
     m_conn->query(QStringLiteral("COMMIT"), nullptr, nullptr);
-    if(rowsInserted) *rowsInserted = inserted;
+    if(rowsInserted)
+        *rowsInserted = inserted;
     return true;
 }
 
-bool ConnectionTab::copySqliteFileTo(const QString &target, bool withData,
-                                     QString *error)
+bool ConnectionTab::copySqliteFileTo(const QString &target, bool withData, QString *error)
 {
     if(!m_conn || m_params.driverType != DriverType::Sqlite || target.isEmpty()) {
-        if(error) *error = QStringLiteral("bad source/target");
+        if(error)
+            *error = QStringLiteral("bad source/target");
         return false;
     }
     QFile::remove(target);
     if(withData) {
         if(QFile::copy(m_params.filePath, target))
             return true;
-        if(error) *error = QStringLiteral("file copy failed");
+        if(error)
+            *error = QStringLiteral("file copy failed");
         return false;
     }
     ConnectionParams tp;
@@ -2602,17 +2601,18 @@ bool ConnectionTab::copySqliteFileTo(const QString &target, bool withData,
     if(!dst)
         return false;
     bool ok = true;
-    for(const QString &kind : { QStringLiteral("TABLE"), QStringLiteral("VIEW") }) {
-        if(!ok) break;
+    for(const QString &kind : {QStringLiteral("TABLE"), QStringLiteral("VIEW")}) {
+        if(!ok)
+            break;
         for(const QString &name : m_conn->listTables(
                 QStringLiteral("main"),
                 kind == QStringLiteral("TABLE") ? QStringLiteral("BASE TABLE") : kind)) {
             QString ddlErr;
-            const QString ddl = m_conn->showCreate(kind, QStringLiteral("main"),
-                                                   name, &ddlErr);
+            const QString ddl = m_conn->showCreate(kind, QStringLiteral("main"), name, &ddlErr);
             if(ddl.isEmpty() || !dst->query(ddl, nullptr, error)) {
                 ok = false;
-                if(error && error->isEmpty()) *error = ddlErr;
+                if(error && error->isEmpty())
+                    *error = ddlErr;
                 break;
             }
         }
@@ -2641,20 +2641,20 @@ void ConnectionTab::promptCopyTableToHost(const QString &database, const QString
      * Show, Set Autocommit, …) rather than sending SQL nobody asked for. */
     if(m_params.driverType != DriverType::Mysql) {
         QMessageBox::information(this, QStringLiteral("Copy Table To Different Host"),
-            QStringLiteral("This only supports a MySQL/MariaDB source right "
-                           "now — the target is always MySQL, and copying "
-                           "a %1 table's structure across dialects isn't "
-                           "implemented. Use Database ▸ Copy Database or "
-                           "Backup Table(s) As SQL Dump instead.")
-                .arg(m_params.driverType == DriverType::Postgres
-                         ? QStringLiteral("PostgreSQL") : QStringLiteral("SQLite")));
+                                 QStringLiteral("This only supports a MySQL/MariaDB source right "
+                                                "now — the target is always MySQL, and copying "
+                                                "a %1 table's structure across dialects isn't "
+                                                "implemented. Use Database ▸ Copy Database or "
+                                                "Backup Table(s) As SQL Dump instead.")
+                                     .arg(m_params.driverType == DriverType::Postgres
+                                              ? QStringLiteral("PostgreSQL")
+                                              : QStringLiteral("SQLite")));
         return;
     }
     const QString srcDb = database.isEmpty() ? defaultDb() : database;
 
     QDialog dlg(this);
-    dlg.setWindowTitle(QStringLiteral("Copy Table `%1` To Different Host/Database")
-                            .arg(table));
+    dlg.setWindowTitle(QStringLiteral("Copy Table `%1` To Different Host/Database").arg(table));
     /* driver is guaranteed MySQL past the guard above, so this can just
      * prefill from the source tab's own connection */
     auto *tHost = new QLineEdit(m_params.host, &dlg);
@@ -2675,17 +2675,17 @@ void ConnectionTab::promptCopyTableToHost(const QString &database, const QString
     form->addRow(QStringLiteral("Target password"), tPass);
     form->addRow(QStringLiteral("Target database"), tDb);
     form->addRow(QString(), wantData);
-    auto *buttons = new QDialogButtonBox(
-        QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
+    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
     buttons->button(QDialogButtonBox::Ok)->setText(QStringLiteral("Copy"));
     connect(buttons, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
     connect(buttons, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
     auto *lay = new QVBoxLayout(&dlg);
     lay->addLayout(form);
-    lay->addWidget(new QLabel(QStringLiteral(
-        "The table keeps its name on the target — copy, then rename there "
-        "if you need a different one. The target is always MySQL (there's "
-        "no \"host\" to speak of for a SQLite file)."), &dlg));
+    lay->addWidget(new QLabel(
+        QStringLiteral("The table keeps its name on the target — copy, then rename there "
+                       "if you need a different one. The target is always MySQL (there's "
+                       "no \"host\" to speak of for a SQLite file)."),
+        &dlg));
     lay->addWidget(buttons);
     if(dlg.exec() != QDialog::Accepted)
         return;
@@ -2706,14 +2706,13 @@ void ConnectionTab::promptCopyTableToHost(const QString &database, const QString
     bool ok = dst != nullptr;
     if(ok) {
         const QString tb = QString(tgtDb).replace('`', QStringLiteral("``"));
-        dst->query(QStringLiteral("CREATE DATABASE IF NOT EXISTS `%1`").arg(tb),
-                  nullptr, nullptr);
+        dst->query(QStringLiteral("CREATE DATABASE IF NOT EXISTS `%1`").arg(tb), nullptr, nullptr);
         dst->query(QStringLiteral("USE `%1`").arg(tb), nullptr, nullptr);
         SqlDump::Options opt;
         opt.data = wantData->isChecked();
         opt.routines = false;
         ok = SqlDump::forEachStatement(
-            m_conn, srcDb, { table }, opt,
+            m_conn, srcDb, {table}, opt,
             [&](const QString &stmt) {
                 QString stmtErr;
                 if(dst->query(stmt, nullptr, &stmtErr))
@@ -2727,19 +2726,18 @@ void ConnectionTab::promptCopyTableToHost(const QString &database, const QString
     }
     delete dst;
     QApplication::restoreOverrideCursor();
-    m_messages->setPlainText(ok
-        ? QStringLiteral("Copied `%1` to %2:%3/`%4`")
-              .arg(table, tp.host).arg(tp.port).arg(tgtDb)
-        : QStringLiteral("Copy failed:\n%1").arg(err));
+    m_messages->setPlainText(
+        ok ? QStringLiteral("Copied `%1` to %2:%3/`%4`").arg(table, tp.host).arg(tp.port).arg(tgtDb)
+           : QStringLiteral("Copy failed:\n%1").arg(err));
     m_resultTabs->setCurrentWidget(m_messages);
 }
 
-bool ConnectionTab::copyDatabaseTo(const QString &srcDb, const QString &tgtDb,
-                                   bool withData, bool dropFirst,
-                                   bool withRoutines, QString *error)
+bool ConnectionTab::copyDatabaseTo(const QString &srcDb, const QString &tgtDb, bool withData,
+                                   bool dropFirst, bool withRoutines, QString *error)
 {
     if(!m_conn || srcDb.isEmpty() || tgtDb.isEmpty() || srcDb == tgtDb) {
-        if(error) *error = QStringLiteral("bad source/target");
+        if(error)
+            *error = QStringLiteral("bad source/target");
         return false;
     }
     const QString sb = QString(srcDb).replace('`', QStringLiteral("``"));
@@ -2760,12 +2758,10 @@ bool ConnectionTab::copyDatabaseTo(const QString &srcDb, const QString &tgtDb,
                 out << row.value(col);
         return out;
     };
-    static const QRegularExpression kDefiner(
-        QStringLiteral("DEFINER=`[^`]*`@`[^`]*` "));
+    static const QRegularExpression kDefiner(QStringLiteral("DEFINER=`[^`]*`@`[^`]*` "));
     const auto retarget = [&](QString ddl) {
-        return ddl.remove(kDefiner)
-                  .replace(QStringLiteral("`%1`.").arg(srcDb),
-                           QStringLiteral("`%1`.").arg(tgtDb));
+        return ddl.remove(kDefiner).replace(QStringLiteral("`%1`.").arg(srcDb),
+                                            QStringLiteral("`%1`.").arg(tgtDb));
     };
 
     const auto bq = [](QString s) { return s.replace('`', QStringLiteral("``")); };
@@ -2776,8 +2772,8 @@ bool ConnectionTab::copyDatabaseTo(const QString &srcDb, const QString &tgtDb,
     QStringList tables;
     {
         DbResultSet rs;
-        if(!m_conn->query(QStringLiteral(
-               "SHOW FULL TABLES FROM `%1` WHERE Table_type='BASE TABLE'").arg(sb),
+        if(!m_conn->query(
+               QStringLiteral("SHOW FULL TABLES FROM `%1` WHERE Table_type='BASE TABLE'").arg(sb),
                &rs, error))
             return false;
         for(const QStringList &row : rs.rows)
@@ -2791,60 +2787,70 @@ bool ConnectionTab::copyDatabaseTo(const QString &srcDb, const QString &tgtDb,
     stmts << QStringLiteral("SET FOREIGN_KEY_CHECKS=0");
     for(const QString &t : std::as_const(tables)) {
         const QString tq = bq(t);
-        stmts << QStringLiteral("CREATE TABLE `%1`.`%2` LIKE `%3`.`%2`")
-                     .arg(tb, tq, sb);
+        stmts << QStringLiteral("CREATE TABLE `%1`.`%2` LIKE `%3`.`%2`").arg(tb, tq, sb);
         if(withData)
-            stmts << QStringLiteral("INSERT INTO `%1`.`%2` SELECT * FROM `%3`.`%2`")
-                         .arg(tb, tq, sb);
+            stmts
+                << QStringLiteral("INSERT INTO `%1`.`%2` SELECT * FROM `%3`.`%2`").arg(tb, tq, sb);
     }
 
     /* CREATE TABLE … LIKE does not carry FK constraints (MariaDB) — copy them
      * explicitly from information_schema once every table exists (FK checks
      * are off, so create order is irrelevant) */
     {
-        struct Fk { QString name, tbl, refTbl, onDel, onUpd; QStringList cols, refCols; };
+        struct Fk
+        {
+            QString name, tbl, refTbl, onDel, onUpd;
+            QStringList cols, refCols;
+        };
         QList<Fk> fks;
         DbResultSet rs;
-        if(m_conn->query(QStringLiteral(
-               "SELECT k.CONSTRAINT_NAME, k.TABLE_NAME, k.COLUMN_NAME, "
-               "k.REFERENCED_TABLE_NAME, k.REFERENCED_COLUMN_NAME, "
-               "r.DELETE_RULE, r.UPDATE_RULE "
-               "FROM information_schema.KEY_COLUMN_USAGE k "
-               "JOIN information_schema.REFERENTIAL_CONSTRAINTS r "
-               "  ON r.CONSTRAINT_SCHEMA=k.CONSTRAINT_SCHEMA "
-               "  AND r.CONSTRAINT_NAME=k.CONSTRAINT_NAME "
-               "WHERE k.TABLE_SCHEMA='%1' AND k.REFERENCED_TABLE_NAME IS NOT NULL "
-               "ORDER BY k.CONSTRAINT_NAME, k.ORDINAL_POSITION").arg(sb),
+        if(m_conn->query(
+               QStringLiteral("SELECT k.CONSTRAINT_NAME, k.TABLE_NAME, k.COLUMN_NAME, "
+                              "k.REFERENCED_TABLE_NAME, k.REFERENCED_COLUMN_NAME, "
+                              "r.DELETE_RULE, r.UPDATE_RULE "
+                              "FROM information_schema.KEY_COLUMN_USAGE k "
+                              "JOIN information_schema.REFERENTIAL_CONSTRAINTS r "
+                              "  ON r.CONSTRAINT_SCHEMA=k.CONSTRAINT_SCHEMA "
+                              "  AND r.CONSTRAINT_NAME=k.CONSTRAINT_NAME "
+                              "WHERE k.TABLE_SCHEMA='%1' AND k.REFERENCED_TABLE_NAME IS NOT NULL "
+                              "ORDER BY k.CONSTRAINT_NAME, k.ORDINAL_POSITION")
+                   .arg(sb),
                &rs, nullptr)) {
             for(const QStringList &row : rs.rows) {
                 const QString name = row.value(0);
                 Fk *f = nullptr;
                 for(auto &e : fks)
                     if(e.name == name && e.tbl == row.value(1)) {
-                        f = &e; break;
+                        f = &e;
+                        break;
                     }
                 if(!f) {
-                    fks << Fk{ name, row.value(1), row.value(3),
-                               row.value(5) == QStringLiteral("NULL") ? QStringLiteral("RESTRICT") : row.value(5),
-                               row.value(6) == QStringLiteral("NULL") ? QStringLiteral("RESTRICT") : row.value(6),
-                               {}, {} };
+                    fks << Fk{name,
+                              row.value(1),
+                              row.value(3),
+                              row.value(5) == QStringLiteral("NULL") ? QStringLiteral("RESTRICT")
+                                                                     : row.value(5),
+                              row.value(6) == QStringLiteral("NULL") ? QStringLiteral("RESTRICT")
+                                                                     : row.value(6),
+                              {},
+                              {}};
                     f = &fks.last();
                 }
-                f->cols    << row.value(2);
+                f->cols << row.value(2);
                 f->refCols << row.value(4);
             }
         }
         for(const Fk &f : std::as_const(fks)) {
             const auto btlist = [&](const QStringList &l) {
                 QStringList o;
-                for(const QString &c : l) o << QStringLiteral("`%1`").arg(bq(c));
+                for(const QString &c : l)
+                    o << QStringLiteral("`%1`").arg(bq(c));
                 return o.join(QStringLiteral(", "));
             };
-            stmts << QStringLiteral(
-                "ALTER TABLE `%1`.`%2` ADD CONSTRAINT `%3` FOREIGN KEY (%4) "
-                "REFERENCES `%1`.`%5` (%6) ON DELETE %7 ON UPDATE %8")
-                .arg(tb, bq(f.tbl), bq(f.name), btlist(f.cols),
-                     bq(f.refTbl), btlist(f.refCols), f.onDel, f.onUpd);
+            stmts << QStringLiteral("ALTER TABLE `%1`.`%2` ADD CONSTRAINT `%3` FOREIGN KEY (%4) "
+                                    "REFERENCES `%1`.`%5` (%6) ON DELETE %7 ON UPDATE %8")
+                         .arg(tb, bq(f.tbl), bq(f.name), btlist(f.cols), bq(f.refTbl),
+                              btlist(f.refCols), f.onDel, f.onUpd);
         }
     }
 
@@ -2852,10 +2858,9 @@ bool ConnectionTab::copyDatabaseTo(const QString &srcDb, const QString &tgtDb,
         stmts << QStringLiteral("USE `%1`").arg(tb);
 
         for(const QString &v : nameList(
-                QStringLiteral("SHOW FULL TABLES FROM `%1` WHERE Table_type='VIEW'")
-                    .arg(sb), 0)) {
-            QString ddl = retarget(oneRow(
-                QStringLiteral("SHOW CREATE VIEW `%1`.`%2`").arg(srcDb, v), 1));
+                QStringLiteral("SHOW FULL TABLES FROM `%1` WHERE Table_type='VIEW'").arg(sb), 0)) {
+            QString ddl =
+                retarget(oneRow(QStringLiteral("SHOW CREATE VIEW `%1`.`%2`").arg(srcDb, v), 1));
             ddl.replace(QStringLiteral(" VIEW `%1` ").arg(v),
                         QStringLiteral(" VIEW `%1`.`%2` ").arg(tgtDb, v));
             if(!ddl.isEmpty())
@@ -2863,29 +2868,33 @@ bool ConnectionTab::copyDatabaseTo(const QString &srcDb, const QString &tgtDb,
         }
 
         /* procedures + functions */
-        struct R { QString name, type; };
+        struct R
+        {
+            QString name, type;
+        };
         QList<R> routines;
         {
             DbResultSet rs;
-            if(m_conn->query(QStringLiteral(
-                   "SELECT ROUTINE_NAME, ROUTINE_TYPE FROM "
-                   "information_schema.ROUTINES WHERE ROUTINE_SCHEMA='%1'").arg(sb),
-                   &rs, nullptr))
+            if(m_conn->query(QStringLiteral("SELECT ROUTINE_NAME, ROUTINE_TYPE FROM "
+                                            "information_schema.ROUTINES WHERE ROUTINE_SCHEMA='%1'")
+                                 .arg(sb),
+                             &rs, nullptr))
                 for(const QStringList &row : rs.rows)
-                    routines << R{ row.value(0), row.value(1) };
+                    routines << R{row.value(0), row.value(1)};
         }
         for(const R &rt : std::as_const(routines)) {
             const bool proc = rt.type == QStringLiteral("PROCEDURE");
-            QString ddl = retarget(oneRow(
-                QStringLiteral("SHOW CREATE %1 `%2`.`%3`")
-                    .arg(proc ? QStringLiteral("PROCEDURE")
-                              : QStringLiteral("FUNCTION"), srcDb, rt.name), 2));
-            ddl.replace(QStringLiteral("%1 `%2`")
-                            .arg(proc ? QStringLiteral("PROCEDURE")
-                                      : QStringLiteral("FUNCTION"), rt.name),
+            QString ddl = retarget(
+                oneRow(QStringLiteral("SHOW CREATE %1 `%2`.`%3`")
+                           .arg(proc ? QStringLiteral("PROCEDURE") : QStringLiteral("FUNCTION"),
+                                srcDb, rt.name),
+                       2));
+            ddl.replace(QStringLiteral("%1 `%2`").arg(proc ? QStringLiteral("PROCEDURE")
+                                                           : QStringLiteral("FUNCTION"),
+                                                      rt.name),
                         QStringLiteral("%1 `%2`.`%3`")
-                            .arg(proc ? QStringLiteral("PROCEDURE")
-                                      : QStringLiteral("FUNCTION"), tgtDb, rt.name));
+                            .arg(proc ? QStringLiteral("PROCEDURE") : QStringLiteral("FUNCTION"),
+                                 tgtDb, rt.name));
             if(!ddl.isEmpty())
                 stmts << ddl;
         }
@@ -2893,20 +2902,17 @@ bool ConnectionTab::copyDatabaseTo(const QString &srcDb, const QString &tgtDb,
         /* triggers: SHOW TRIGGERS = Trigger,Event,Table,Statement,Timing,… */
         {
             DbResultSet rs;
-            if(m_conn->query(QStringLiteral("SHOW TRIGGERS FROM `%1`").arg(sb),
-                             &rs, nullptr))
+            if(m_conn->query(QStringLiteral("SHOW TRIGGERS FROM `%1`").arg(sb), &rs, nullptr))
                 for(const QStringList &row : rs.rows)
-                    stmts << QStringLiteral(
-                        "CREATE TRIGGER `%1`.`%2` %3 %4 ON `%1`.`%5` "
-                        "FOR EACH ROW %6")
-                        .arg(tgtDb, row.value(0), row.value(4), row.value(1),
-                             row.value(2), row.value(3));
+                    stmts << QStringLiteral("CREATE TRIGGER `%1`.`%2` %3 %4 ON `%1`.`%5` "
+                                            "FOR EACH ROW %6")
+                                 .arg(tgtDb, row.value(0), row.value(4), row.value(1), row.value(2),
+                                      row.value(3));
         }
 
-        for(const QString &e : nameList(
-                QStringLiteral("SHOW EVENTS FROM `%1`").arg(sb), 1)) {
-            QString ddl = retarget(oneRow(
-                QStringLiteral("SHOW CREATE EVENT `%1`.`%2`").arg(srcDb, e), 3));
+        for(const QString &e : nameList(QStringLiteral("SHOW EVENTS FROM `%1`").arg(sb), 1)) {
+            QString ddl =
+                retarget(oneRow(QStringLiteral("SHOW CREATE EVENT `%1`.`%2`").arg(srcDb, e), 3));
             ddl.replace(QStringLiteral(" EVENT `%1` ").arg(e),
                         QStringLiteral(" EVENT `%1`.`%2` ").arg(tgtDb, e));
             if(!ddl.isEmpty())
@@ -2935,11 +2941,12 @@ bool ConnectionTab::copyDatabaseTo(const QString &srcDb, const QString &tgtDb,
 }
 
 bool ConnectionTab::copyDatabaseToPostgres(const QString &srcSchema, const QString &tgtSchema,
-                                           bool withData, bool dropFirst,
-                                           bool withRoutines, QString *error)
+                                           bool withData, bool dropFirst, bool withRoutines,
+                                           QString *error)
 {
     if(!m_conn || srcSchema.isEmpty() || tgtSchema.isEmpty() || srcSchema == tgtSchema) {
-        if(error) *error = QStringLiteral("bad source/target");
+        if(error)
+            *error = QStringLiteral("bad source/target");
         return false;
     }
     const QString sq = m_conn->quoteIdent(srcSchema);
@@ -2981,11 +2988,9 @@ bool ConnectionTab::copyDatabaseToPostgres(const QString &srcSchema, const QStri
          * drawing values from the *source* schema's sequence rather than
          * getting an independent one; not fixed up here (narrow, only
          * affects externally-created tables using the legacy style). */
-        stmts << QStringLiteral("CREATE TABLE %1.%2 (LIKE %3.%2 INCLUDING ALL)")
-                     .arg(tq, tt, sq);
+        stmts << QStringLiteral("CREATE TABLE %1.%2 (LIKE %3.%2 INCLUDING ALL)").arg(tq, tt, sq);
         if(withData)
-            stmts << QStringLiteral("INSERT INTO %1.%2 SELECT * FROM %3.%2")
-                         .arg(tq, tt, sq);
+            stmts << QStringLiteral("INSERT INTO %1.%2 SELECT * FROM %3.%2").arg(tq, tt, sq);
     }
 
     /* foreign keys: not carried by LIKE, added once every table exists.
@@ -2997,60 +3002,68 @@ bool ConnectionTab::copyDatabaseToPostgres(const QString &srcSchema, const QStri
      * together (WITH ORDINALITY keeps each FK's column pairs and multi-
      * column order intact, same as ORDER BY ORDINAL_POSITION did above). */
     {
-        struct Fk { QString name, tbl, refTbl, onDel, onUpd; QStringList cols, refCols; };
+        struct Fk
+        {
+            QString name, tbl, refTbl, onDel, onUpd;
+            QStringList cols, refCols;
+        };
         QList<Fk> fks;
         DbResultSet rs;
-        if(m_conn->query(QStringLiteral(
-               "SELECT con.conname, cl.relname, refcl.relname, "
-               "  CASE con.confdeltype WHEN 'c' THEN 'CASCADE' WHEN 'n' THEN 'SET NULL' "
-               "    WHEN 'd' THEN 'SET DEFAULT' WHEN 'r' THEN 'RESTRICT' ELSE 'NO ACTION' END, "
-               "  CASE con.confupdtype WHEN 'c' THEN 'CASCADE' WHEN 'n' THEN 'SET NULL' "
-               "    WHEN 'd' THEN 'SET DEFAULT' WHEN 'r' THEN 'RESTRICT' ELSE 'NO ACTION' END, "
-               "  a.attname, af.attname "
-               "FROM pg_constraint con "
-               "JOIN pg_class cl ON cl.oid=con.conrelid "
-               "JOIN pg_namespace n ON n.oid=cl.relnamespace "
-               "JOIN pg_class refcl ON refcl.oid=con.confrelid "
-               "JOIN unnest(con.conkey, con.confkey) WITH ORDINALITY AS u(ck, cfk, ord) ON true "
-               "JOIN pg_attribute a ON a.attrelid=con.conrelid AND a.attnum=u.ck "
-               "JOIN pg_attribute af ON af.attrelid=con.confrelid AND af.attnum=u.cfk "
-               "WHERE con.contype='f' AND n.nspname='%1' "
-               "ORDER BY con.conname, u.ord").arg(srcSchema),
+        if(m_conn->query(
+               QStringLiteral(
+                   "SELECT con.conname, cl.relname, refcl.relname, "
+                   "  CASE con.confdeltype WHEN 'c' THEN 'CASCADE' WHEN 'n' THEN 'SET NULL' "
+                   "    WHEN 'd' THEN 'SET DEFAULT' WHEN 'r' THEN 'RESTRICT' ELSE 'NO ACTION' END, "
+                   "  CASE con.confupdtype WHEN 'c' THEN 'CASCADE' WHEN 'n' THEN 'SET NULL' "
+                   "    WHEN 'd' THEN 'SET DEFAULT' WHEN 'r' THEN 'RESTRICT' ELSE 'NO ACTION' END, "
+                   "  a.attname, af.attname "
+                   "FROM pg_constraint con "
+                   "JOIN pg_class cl ON cl.oid=con.conrelid "
+                   "JOIN pg_namespace n ON n.oid=cl.relnamespace "
+                   "JOIN pg_class refcl ON refcl.oid=con.confrelid "
+                   "JOIN unnest(con.conkey, con.confkey) WITH ORDINALITY AS u(ck, cfk, ord) ON "
+                   "true "
+                   "JOIN pg_attribute a ON a.attrelid=con.conrelid AND a.attnum=u.ck "
+                   "JOIN pg_attribute af ON af.attrelid=con.confrelid AND af.attnum=u.cfk "
+                   "WHERE con.contype='f' AND n.nspname='%1' "
+                   "ORDER BY con.conname, u.ord")
+                   .arg(srcSchema),
                &rs, nullptr)) {
             for(const QStringList &row : rs.rows) {
                 const QString name = row.value(0);
                 Fk *f = nullptr;
                 for(auto &e : fks)
                     if(e.name == name && e.tbl == row.value(1)) {
-                        f = &e; break;
+                        f = &e;
+                        break;
                     }
                 if(!f) {
-                    fks << Fk{ name, row.value(1), row.value(2),
-                               row.value(3), row.value(4), {}, {} };
+                    fks << Fk{name, row.value(1), row.value(2), row.value(3), row.value(4), {}, {}};
                     f = &fks.last();
                 }
-                f->cols    << row.value(5);
+                f->cols << row.value(5);
                 f->refCols << row.value(6);
             }
         }
         for(const Fk &f : std::as_const(fks)) {
             const auto qlist = [&](const QStringList &l) {
                 QStringList o;
-                for(const QString &c : l) o << m_conn->quoteIdent(c);
+                for(const QString &c : l)
+                    o << m_conn->quoteIdent(c);
                 return o.join(QStringLiteral(", "));
             };
-            stmts << QStringLiteral(
-                "ALTER TABLE %1.%2 ADD CONSTRAINT %3 FOREIGN KEY (%4) "
-                "REFERENCES %1.%5 (%6) ON DELETE %7 ON UPDATE %8")
-                .arg(tq, m_conn->quoteIdent(f.tbl), m_conn->quoteIdent(f.name), qlist(f.cols),
-                     m_conn->quoteIdent(f.refTbl), qlist(f.refCols), f.onDel, f.onUpd);
+            stmts << QStringLiteral("ALTER TABLE %1.%2 ADD CONSTRAINT %3 FOREIGN KEY (%4) "
+                                    "REFERENCES %1.%5 (%6) ON DELETE %7 ON UPDATE %8")
+                         .arg(tq, m_conn->quoteIdent(f.tbl), m_conn->quoteIdent(f.name),
+                              qlist(f.cols), m_conn->quoteIdent(f.refTbl), qlist(f.refCols),
+                              f.onDel, f.onUpd);
         }
     }
 
     /* the connection's schema before this call, so the "SET search_path"
      * done below for view/routine/trigger creation can be put back after */
-    const QString savedSearchPath = m_currentSchema.isEmpty()
-        ? QStringLiteral("public") : m_currentSchema;
+    const QString savedSearchPath =
+        m_currentSchema.isEmpty() ? QStringLiteral("public") : m_currentSchema;
 
     if(withRoutines) {
         /* narrow search_path to just the target for this section, mirroring
@@ -3059,20 +3072,22 @@ bool ConnectionTab::copyDatabaseToPostgres(const QString &srcSchema, const QStri
 
         for(const QString &v : m_conn->listTables(srcSchema, QStringLiteral("VIEW"))) {
             QString err;
-            const QString ddl = retarget(m_conn->showCreate(QStringLiteral("VIEW"), srcSchema, v, &err));
+            const QString ddl =
+                retarget(m_conn->showCreate(QStringLiteral("VIEW"), srcSchema, v, &err));
             if(!ddl.isEmpty())
                 stmts << ddl;
         }
 
-        for(const QString &kind : { QStringLiteral("FUNCTION"), QStringLiteral("PROCEDURE") }) {
+        for(const QString &kind : {QStringLiteral("FUNCTION"), QStringLiteral("PROCEDURE")}) {
             DbResultSet rs;
-            if(m_conn->query(QStringLiteral(
-                   "SELECT ROUTINE_NAME FROM information_schema.ROUTINES "
-                   "WHERE ROUTINE_SCHEMA='%1' AND ROUTINE_TYPE='%2'")
-                       .arg(srcSchema, kind), &rs, nullptr)) {
+            if(m_conn->query(QStringLiteral("SELECT ROUTINE_NAME FROM information_schema.ROUTINES "
+                                            "WHERE ROUTINE_SCHEMA='%1' AND ROUTINE_TYPE='%2'")
+                                 .arg(srcSchema, kind),
+                             &rs, nullptr)) {
                 for(const QStringList &row : rs.rows) {
                     QString err;
-                    const QString ddl = retarget(m_conn->showCreate(kind, srcSchema, row.value(0), &err));
+                    const QString ddl =
+                        retarget(m_conn->showCreate(kind, srcSchema, row.value(0), &err));
                     if(!ddl.isEmpty())
                         stmts << ddl;
                 }
@@ -3085,7 +3100,8 @@ bool ConnectionTab::copyDatabaseToPostgres(const QString &srcSchema, const QStri
          * themselves, which reference them by the now-copied name */
         for(const QString &tr : m_conn->listTriggers(srcSchema)) {
             QString err;
-            const QString ddl = retarget(m_conn->showCreate(QStringLiteral("TRIGGER"), srcSchema, tr, &err));
+            const QString ddl =
+                retarget(m_conn->showCreate(QStringLiteral("TRIGGER"), srcSchema, tr, &err));
             if(!ddl.isEmpty())
                 stmts << ddl;
         }
@@ -3102,8 +3118,9 @@ bool ConnectionTab::copyDatabaseToPostgres(const QString &srcSchema, const QStri
         }
     }
     if(withRoutines)
-        m_conn->query(QStringLiteral("SET search_path TO %1")
-                          .arg(m_conn->quoteIdent(savedSearchPath)), nullptr, nullptr);
+        m_conn->query(
+            QStringLiteral("SET search_path TO %1").arg(m_conn->quoteIdent(savedSearchPath)),
+            nullptr, nullptr);
     return ok;
 }
 
@@ -3113,9 +3130,9 @@ void ConnectionTab::promptUserManager()
         return;
     if(m_params.driverType == DriverType::Sqlite) {
         QMessageBox::information(this, QStringLiteral("User Manager"),
-            QStringLiteral("SQLite has no user/permission system — "
-                           "a database file's access is just filesystem "
-                           "permissions on the .sqlite file itself."));
+                                 QStringLiteral("SQLite has no user/permission system — "
+                                                "a database file's access is just filesystem "
+                                                "permissions on the .sqlite file itself."));
         return;
     }
     UserManagerDialog(m_conn, this, m_params.driverType).exec();
@@ -3130,47 +3147,43 @@ void ConnectionTab::tableDiagnostics(const QString &database, const QString &tab
     QDialog dlg(this);
     dlg.setWindowTitle(QStringLiteral("Table Diagnostics — %1").arg(table));
     auto *lay = new QVBoxLayout(&dlg);
-    lay->addWidget(new QLabel(QStringLiteral("Run a maintenance statement on %1:")
-                                  .arg(qualified), &dlg));
+    lay->addWidget(
+        new QLabel(QStringLiteral("Run a maintenance statement on %1:").arg(qualified), &dlg));
 
-    struct Op { QString label, mysqlSql, sqliteSql, pgSql, note, pgNote; };
+    struct Op
+    {
+        QString label, mysqlSql, sqliteSql, pgSql, note, pgNote;
+    };
     const QList<Op> ops = {
-        { QStringLiteral("&Check"),
-          QStringLiteral("CHECK TABLE %1").arg(qualified),
-          QStringLiteral("PRAGMA integrity_check"), QString(),
-          QStringLiteral(" (whole file, not just this table)"),
-          QStringLiteral(" (no built-in SQL equivalent — pg_amcheck is a "
-                         "separate command-line tool)") },
-        { QStringLiteral("&Analyze"),
-          QStringLiteral("ANALYZE TABLE %1").arg(qualified),
-          QStringLiteral("ANALYZE %1").arg(m_conn->quoteIdent(table)),
-          QStringLiteral("ANALYZE %1").arg(qualified), QString(), QString() },
-        { QStringLiteral("&Optimize"),
-          QStringLiteral("OPTIMIZE TABLE %1").arg(qualified),
-          QStringLiteral("VACUUM"),
-          QStringLiteral("VACUUM (ANALYZE) %1").arg(qualified),
-          QStringLiteral(" (whole file, not just this table)"),
-          QString() },
-        { QStringLiteral("&Repair"),
-          QStringLiteral("REPAIR TABLE %1").arg(qualified),
-          QString(), QString(),
-          QStringLiteral(" (no SQLite equivalent)"),
-          QStringLiteral(" (no PostgreSQL equivalent — corruption there means "
-                         "restoring from backup, not a table-level fix)") },
+        {QStringLiteral("&Check"), QStringLiteral("CHECK TABLE %1").arg(qualified),
+         QStringLiteral("PRAGMA integrity_check"), QString(),
+         QStringLiteral(" (whole file, not just this table)"),
+         QStringLiteral(" (no built-in SQL equivalent — pg_amcheck is a "
+                        "separate command-line tool)")},
+        {QStringLiteral("&Analyze"), QStringLiteral("ANALYZE TABLE %1").arg(qualified),
+         QStringLiteral("ANALYZE %1").arg(m_conn->quoteIdent(table)),
+         QStringLiteral("ANALYZE %1").arg(qualified), QString(), QString()},
+        {QStringLiteral("&Optimize"), QStringLiteral("OPTIMIZE TABLE %1").arg(qualified),
+         QStringLiteral("VACUUM"), QStringLiteral("VACUUM (ANALYZE) %1").arg(qualified),
+         QStringLiteral(" (whole file, not just this table)"), QString()},
+        {QStringLiteral("&Repair"), QStringLiteral("REPAIR TABLE %1").arg(qualified), QString(),
+         QString(), QStringLiteral(" (no SQLite equivalent)"),
+         QStringLiteral(" (no PostgreSQL equivalent — corruption there means "
+                        "restoring from backup, not a table-level fix)")},
     };
     for(const Op &op : ops) {
         auto *row = new QHBoxLayout;
         auto *btn = new QPushButton(op.label, &dlg);
-        const QString sql = m_params.driverType == DriverType::Sqlite ? op.sqliteSql
-                           : m_params.driverType == DriverType::Postgres ? op.pgSql
-                                                                        : op.mysqlSql;
-        const QString note = m_params.driverType == DriverType::Sqlite ? op.note
-                            : m_params.driverType == DriverType::Postgres ? op.pgNote
-                                                                         : QString();
+        const QString sql = m_params.driverType == DriverType::Sqlite     ? op.sqliteSql
+                            : m_params.driverType == DriverType::Postgres ? op.pgSql
+                                                                          : op.mysqlSql;
+        const QString note = m_params.driverType == DriverType::Sqlite     ? op.note
+                             : m_params.driverType == DriverType::Postgres ? op.pgNote
+                                                                           : QString();
         btn->setEnabled(!sql.isEmpty());
         connect(btn, &QPushButton::clicked, &dlg, [this, &dlg, sql] {
             dlg.accept();
-            runStatements(QStringList{ sql }, QStringLiteral("Diagnostics"));
+            runStatements(QStringList{sql}, QStringLiteral("Diagnostics"));
         });
         row->addWidget(btn);
         row->addWidget(new QLabel(note, &dlg));
@@ -3188,15 +3201,13 @@ void ConnectionTab::showConnectionInfo()
 {
     if(!m_conn)
         return;
-    const QString msg = QStringLiteral(
-        "Driver: %1\nServer: %2\n%3: %4\nCurrent database: %5")
-        .arg(dbDriverFor(m_params.driverType)->driverName(),
-             m_conn->serverInfo(),
-             m_params.driverType == DriverType::Sqlite
-                 ? QStringLiteral("File") : QStringLiteral("Host"),
-             hostLabel(),
-             m_params.database.isEmpty() ? QStringLiteral("(none)")
-                                         : m_params.database);
+    const QString msg =
+        QStringLiteral("Driver: %1\nServer: %2\n%3: %4\nCurrent database: %5")
+            .arg(dbDriverFor(m_params.driverType)->driverName(), m_conn->serverInfo(),
+                 m_params.driverType == DriverType::Sqlite ? QStringLiteral("File")
+                                                           : QStringLiteral("Host"),
+                 hostLabel(),
+                 m_params.database.isEmpty() ? QStringLiteral("(none)") : m_params.database);
     QMessageBox::information(this, QStringLiteral("Connection Info"), msg);
 }
 
@@ -3210,11 +3221,10 @@ void ConnectionTab::showTableProperties(const QString &database, const QString &
 
     if(m_params.driverType == DriverType::Sqlite) {
         DbResultSet rs;
-        if(m_conn->query(QStringLiteral("SELECT COUNT(*) FROM %1").arg(qualified),
-                         &rs, nullptr) && !rs.rows.isEmpty())
+        if(m_conn->query(QStringLiteral("SELECT COUNT(*) FROM %1").arg(qualified), &rs, nullptr) &&
+           !rs.rows.isEmpty())
             msg += QStringLiteral("Rows: %1\n").arg(rs.rows.first().value(0));
-        msg += QStringLiteral("Columns: %1\n")
-                   .arg(m_conn->listColumns(db, table).rows.size());
+        msg += QStringLiteral("Columns: %1\n").arg(m_conn->listColumns(db, table).rows.size());
         const int idxCount = [&] {
             QSet<QString> names;
             for(const QStringList &row : m_conn->listIndexes(db, table).rows)
@@ -3227,8 +3237,7 @@ void ConnectionTab::showTableProperties(const QString &database, const QString &
             msg += QStringLiteral("Database file size: %1 bytes\n").arg(fi.size());
         }
     } else if(m_params.driverType == DriverType::Postgres) {
-        msg += QStringLiteral("Columns: %1\n")
-                   .arg(m_conn->listColumns(db, table).rows.size());
+        msg += QStringLiteral("Columns: %1\n").arg(m_conn->listColumns(db, table).rows.size());
         {
             QSet<QString> names;
             for(const QStringList &row : m_conn->listIndexes(db, table).rows)
@@ -3240,14 +3249,15 @@ void ConnectionTab::showTableProperties(const QString &database, const QString &
          * same "estimate" caveat SHOW TABLE STATUS's own Rows column has
          * for MySQL; pg_relation_size/pg_indexes_size split table vs index
          * bytes the same way Data_length/Index_length do below. */
-        if(m_conn->query(QStringLiteral(
-               "SELECT c.reltuples::bigint, pg_relation_size(c.oid), "
-               "pg_indexes_size(c.oid) "
-               "FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace "
-               "WHERE n.nspname = '%1' AND c.relname = '%2'")
+        if(m_conn->query(
+               QStringLiteral("SELECT c.reltuples::bigint, pg_relation_size(c.oid), "
+                              "pg_indexes_size(c.oid) "
+                              "FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace "
+                              "WHERE n.nspname = '%1' AND c.relname = '%2'")
                    .arg(QString(db).replace('\'', QStringLiteral("''")),
                         QString(table).replace('\'', QStringLiteral("''"))),
-               &rs, nullptr) && !rs.rows.isEmpty()) {
+               &rs, nullptr) &&
+           !rs.rows.isEmpty()) {
             const QStringList &row = rs.rows.first();
             msg += QStringLiteral("Rows (estimate): %1\n").arg(row.value(0));
             msg += QStringLiteral("Data length: %1 bytes\n").arg(row.value(1));
@@ -3259,9 +3269,9 @@ void ConnectionTab::showTableProperties(const QString &database, const QString &
         DbResultSet rs;
         const QString sb = QString(db).replace('`', QStringLiteral("``"));
         const QString tb = QString(table).replace('`', QStringLiteral("``"));
-        if(m_conn->query(QStringLiteral(
-               "SHOW TABLE STATUS FROM `%1` LIKE '%2'").arg(sb, tb), &rs, nullptr)
-           && !rs.rows.isEmpty()) {
+        if(m_conn->query(QStringLiteral("SHOW TABLE STATUS FROM `%1` LIKE '%2'").arg(sb, tb), &rs,
+                         nullptr) &&
+           !rs.rows.isEmpty()) {
             /* SHOW TABLE STATUS: Name,Engine,Version,Row_format,Rows,
              * Avg_row_length,Data_length,Max_data_length,Index_length,
              * Data_free,Auto_increment,Create_time,... */
@@ -3280,23 +3290,24 @@ void ConnectionTab::showTableProperties(const QString &database, const QString &
 
 QString ConnectionTab::buildSchemaHtml(const QString &db)
 {
-    QString html = QStringLiteral(
-        "<!doctype html><html><head><meta charset=\"utf-8\">"
-        "<title>Schema: %1</title><style>"
-        "body{font-family:sans-serif;margin:24px}"
-        "table{border-collapse:collapse;margin:8px 0 24px}"
-        "th,td{border:1px solid #ccc;padding:4px 10px;font-size:13px;text-align:left}"
-        "th{background:#eef3f8}h2{margin-top:32px;border-bottom:2px solid #3b7dbb}"
-        "h3{margin-bottom:4px;color:#555}</style></head><body>"
-        "<h1>Schema: %1</h1>").arg(db.toHtmlEscaped());
+    QString html =
+        QStringLiteral(
+            "<!doctype html><html><head><meta charset=\"utf-8\">"
+            "<title>Schema: %1</title><style>"
+            "body{font-family:sans-serif;margin:24px}"
+            "table{border-collapse:collapse;margin:8px 0 24px}"
+            "th,td{border:1px solid #ccc;padding:4px 10px;font-size:13px;text-align:left}"
+            "th{background:#eef3f8}h2{margin-top:32px;border-bottom:2px solid #3b7dbb}"
+            "h3{margin-bottom:4px;color:#555}</style></head><body>"
+            "<h1>Schema: %1</h1>")
+            .arg(db.toHtmlEscaped());
 
     const auto section = [&](const QString &heading, const QString &typeFilter) {
         const QStringList names = m_conn->listTables(db, typeFilter);
         for(const QString &name : names) {
             html += QStringLiteral("<h2>%1: %2</h2>").arg(heading, name.toHtmlEscaped());
-            html += QStringLiteral(
-                "<table><tr><th>Column</th><th>Type</th><th>Null</th>"
-                "<th>Key</th><th>Default</th><th>Extra</th></tr>");
+            html += QStringLiteral("<table><tr><th>Column</th><th>Type</th><th>Null</th>"
+                                   "<th>Key</th><th>Default</th><th>Extra</th></tr>");
             for(const QStringList &row : m_conn->listColumns(db, name).rows) {
                 html += QStringLiteral("<tr><td>%1</td><td>%2</td><td>%3</td>"
                                        "<td>%4</td><td>%5</td><td>%6</td></tr>")
@@ -3310,14 +3321,13 @@ QString ConnectionTab::buildSchemaHtml(const QString &db)
                 const DbResultSet ixs = m_conn->listIndexes(db, name);
                 if(!ixs.rows.isEmpty()) {
                     html += QStringLiteral("<h3>Indexes</h3><table>"
-                        "<tr><th>Name</th><th>Unique</th><th>Column</th></tr>");
+                                           "<tr><th>Name</th><th>Unique</th><th>Column</th></tr>");
                     for(const QStringList &row : ixs.rows) {
-                        html += QStringLiteral(
-                            "<tr><td>%1</td><td>%2</td><td>%3</td></tr>")
-                                .arg(row.value(2).toHtmlEscaped(),
-                                     row.value(1) == QStringLiteral("0")
-                                         ? QStringLiteral("yes") : QStringLiteral("no"),
-                                     row.value(4).toHtmlEscaped());
+                        html += QStringLiteral("<tr><td>%1</td><td>%2</td><td>%3</td></tr>")
+                                    .arg(row.value(2).toHtmlEscaped(),
+                                         row.value(1) == QStringLiteral("0") ? QStringLiteral("yes")
+                                                                             : QStringLiteral("no"),
+                                         row.value(4).toHtmlEscaped());
                     }
                     html += QStringLiteral("</table>");
                 }
@@ -3337,7 +3347,7 @@ void ConnectionTab::promptDataSearch(const QString &database)
     const QString db = database.isEmpty() ? defaultDb() : database;
     if(db.isEmpty()) {
         QMessageBox::information(this, QStringLiteral("Data Search"),
-            QStringLiteral("Select a database first."));
+                                 QStringLiteral("Select a database first."));
         return;
     }
     bool ok = false;
@@ -3362,18 +3372,17 @@ void ConnectionTab::promptDataSearch(const QString &database)
             const QString colName = col.value(0);
             const QString qcol = m_conn->quoteIdent(colName);
             unions << QStringLiteral(
-                "SELECT '%1' AS match_table, '%2' AS match_column, %3 AS match_value "
-                "FROM %4 WHERE %5")
-                .arg(table, colName, qcol, m_conn->qualify(db, table), qcol + likeClause);
+                          "SELECT '%1' AS match_table, '%2' AS match_column, %3 AS match_value "
+                          "FROM %4 WHERE %5")
+                          .arg(table, colName, qcol, m_conn->qualify(db, table), qcol + likeClause);
         }
     }
     if(unions.isEmpty()) {
-        m_messages->setPlainText(QStringLiteral("No text columns found in %1 to search.")
-                                     .arg(db));
+        m_messages->setPlainText(QStringLiteral("No text columns found in %1 to search.").arg(db));
         m_resultTabs->setCurrentWidget(m_messages);
         return;
     }
-    runStatements(QStringList{ unions.join(QStringLiteral(" UNION ALL ")) },
+    runStatements(QStringList{unions.join(QStringLiteral(" UNION ALL "))},
                   QStringLiteral("Search"));
 }
 
@@ -3384,12 +3393,12 @@ void ConnectionTab::promptSchemaHtml(const QString &database)
     const QString db = database.isEmpty() ? defaultDb() : database;
     if(db.isEmpty()) {
         QMessageBox::information(this, QStringLiteral("Create Schema HTML"),
-            QStringLiteral("Select a database first."));
+                                 QStringLiteral("Select a database first."));
         return;
     }
-    const QString file = QFileDialog::getSaveFileName(
-        this, QStringLiteral("Create Schema For Database In HTML"),
-        db + QStringLiteral(".html"), QStringLiteral("HTML (*.html)"));
+    const QString file =
+        QFileDialog::getSaveFileName(this, QStringLiteral("Create Schema For Database In HTML"),
+                                     db + QStringLiteral(".html"), QStringLiteral("HTML (*.html)"));
     if(file.isEmpty())
         return;
 
@@ -3397,18 +3406,17 @@ void ConnectionTab::promptSchemaHtml(const QString &database)
     QFile f(file);
     if(!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
         QMessageBox::warning(this, QStringLiteral("Create Schema HTML"),
-            QStringLiteral("Could not write %1").arg(file));
+                             QStringLiteral("Could not write %1").arg(file));
         return;
     }
     f.write(html.toUtf8());
     QMessageBox::information(this, QStringLiteral("Create Schema HTML"),
-        QStringLiteral("Saved to %1").arg(file));
+                             QStringLiteral("Saved to %1").arg(file));
 }
 
 void ConnectionTab::exportCurrent()
 {
-    if(m_resultTabs->currentWidget() == m_tableData
-       && !m_tableData->loadedTable().isEmpty())
+    if(m_resultTabs->currentWidget() == m_tableData && !m_tableData->loadedTable().isEmpty())
         exportTableData(m_tableData->loadedDb(), m_tableData->loadedTable());
     else
         exportResult();
@@ -3436,8 +3444,7 @@ void ConnectionTab::exportTableData(const QString &database, const QString &tabl
         [&](const QVector<QByteArray> &fields, const QVector<bool> &isNull) {
             QStringList r;
             for(int i = 0; i < fields.size(); ++i)
-                r << (isNull[i] ? QStringLiteral("NULL")
-                                : QString::fromUtf8(fields[i]));
+                r << (isNull[i] ? QStringLiteral("NULL") : QString::fromUtf8(fields[i]));
             rows << r;
             return rows.size() < kCap;
         });
@@ -3446,8 +3453,7 @@ void ConnectionTab::exportTableData(const QString &database, const QString &tabl
         return;
     }
     if(rows.size() >= kCap)
-        m_messages->appendPlainText(
-            QStringLiteral("note: export capped at %1 rows").arg(kCap));
+        m_messages->appendPlainText(QStringLiteral("note: export capped at %1 rows").arg(kCap));
 
     ExportDialog dlg(table, table, rows.size(), false, this);
     if(dlg.exec() != QDialog::Accepted || dlg.path().isEmpty())
@@ -3459,10 +3465,11 @@ void ConnectionTab::exportTableData(const QString &database, const QString &tabl
     opt.driver = m_params.driverType;
     const auto cell = [&](int r, int c) { return rows.at(r).at(c); };
     QString err;
-    if(ResultExport::write(dlg.path(), dlg.format(), headers, cell,
-                           rows.size(), headers.size(), opt, &err))
+    if(ResultExport::write(dlg.path(), dlg.format(), headers, cell, rows.size(), headers.size(),
+                           opt, &err))
         m_messages->appendPlainText(QStringLiteral("Exported %1 row(s) of `%2` → %3")
-                                        .arg(rows.size()).arg(table, dlg.path()));
+                                        .arg(rows.size())
+                                        .arg(table, dlg.path()));
     else
         m_messages->appendPlainText(QStringLiteral("Export failed: ") + err);
     m_resultTabs->setCurrentWidget(m_messages);
@@ -3474,16 +3481,16 @@ void ConnectionTab::promptImportXml(const QString &database, const QString &tabl
         return;
     if(m_params.driverType != DriverType::Mysql) {
         QMessageBox::information(this, QStringLiteral("Import XML"),
-            QStringLiteral("XML import needs LOAD XML LOCAL INFILE, which is "
-                           "MySQL-only — not available on this connection. "
-                           "Use Import CSV instead."));
+                                 QStringLiteral("XML import needs LOAD XML LOCAL INFILE, which is "
+                                                "MySQL-only — not available on this connection. "
+                                                "Use Import CSV instead."));
         return;
     }
     const QString db = database.isEmpty() ? defaultDb() : database;
 
-    const QString file = QFileDialog::getOpenFileName(
-        this, QStringLiteral("Import XML — pick a file"), QString(),
-        QStringLiteral("XML (*.xml);;All files (*)"));
+    const QString file =
+        QFileDialog::getOpenFileName(this, QStringLiteral("Import XML — pick a file"), QString(),
+                                     QStringLiteral("XML (*.xml);;All files (*)"));
     if(file.isEmpty())
         return;
 
@@ -3505,8 +3512,7 @@ void ConnectionTab::promptImportXml(const QString &database, const QString &tabl
     form->addRow(QStringLiteral("Rows identified by  <tag>"), rowTag);
     form->addRow(QStringLiteral("On duplicate key"), onDup);
     form->addRow(QString(), truncate);
-    auto *buttons = new QDialogButtonBox(
-        QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
+    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
     buttons->button(QDialogButtonBox::Ok)->setText(QStringLiteral("Import"));
     connect(buttons, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
     connect(buttons, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
@@ -3514,37 +3520,35 @@ void ConnectionTab::promptImportXml(const QString &database, const QString &tabl
     lay->addLayout(form);
     lay->addWidget(new QLabel(QStringLiteral("File preview:"), &dlg));
     lay->addWidget(importFilePreview(&dlg, file));
-    lay->addWidget(new QLabel(QStringLiteral(
-        "Uses LOAD XML LOCAL INFILE — the server must allow local-infile."),
-        &dlg));
+    lay->addWidget(new QLabel(
+        QStringLiteral("Uses LOAD XML LOCAL INFILE — the server must allow local-infile."), &dlg));
     lay->addWidget(buttons);
     if(dlg.exec() != QDialog::Accepted || tbl->currentText().isEmpty())
         return;
 
     const QString target = tbl->currentText();
     const auto esc = [](QString s) {
-        return s.replace('\\', QStringLiteral("\\\\"))
-                .replace('\'', QStringLiteral("\\'"));
+        return s.replace('\\', QStringLiteral("\\\\")).replace('\'', QStringLiteral("\\'"));
     };
-    const QString tag = rowTag->text().trimmed().isEmpty()
-        ? QStringLiteral("row") : rowTag->text().trimmed();
+    const QString tag =
+        rowTag->text().trimmed().isEmpty() ? QStringLiteral("row") : rowTag->text().trimmed();
     if(truncate->isChecked())
         execDdl(m_conn->sqlTruncateTable(db, target));
 
-    const QString sql = QStringLiteral(
-        "LOAD XML LOCAL INFILE '%1' %2 INTO TABLE `%3`.`%4` "
-        "CHARACTER SET %5 ROWS IDENTIFIED BY '<%6>'")
-        .arg(esc(file), onDup->currentData().toString(),
-             db, target, charset->currentText().trimmed(), esc(tag));
+    const QString sql = QStringLiteral("LOAD XML LOCAL INFILE '%1' %2 INTO TABLE `%3`.`%4` "
+                                       "CHARACTER SET %5 ROWS IDENTIFIED BY '<%6>'")
+                            .arg(esc(file), onDup->currentData().toString(), db, target,
+                                 charset->currentText().trimmed(), esc(tag));
     QString xmlError;
     if(!m_conn->query(sql, nullptr, &xmlError)) {
         m_messages->setPlainText(QStringLiteral("XML import failed: %1").arg(xmlError));
     } else {
         const QString info = m_conn->info();
-        m_messages->setPlainText(QStringLiteral("Imported into `%1`.`%2` — %3")
-            .arg(db, target,
-                 !info.isEmpty() ? info
-                      : QStringLiteral("%1 row(s)").arg(m_conn->affectedRows())));
+        m_messages->setPlainText(
+            QStringLiteral("Imported into `%1`.`%2` — %3")
+                .arg(db, target,
+                     !info.isEmpty() ? info
+                                     : QStringLiteral("%1 row(s)").arg(m_conn->affectedRows())));
         if(m_tableData->loadedTable() == target)
             m_tableData->load(m_conn, db, target);
     }
@@ -3576,11 +3580,10 @@ void ConnectionTab::promptImportCsv(const QString &database, const QString &tabl
     auto *fieldSep = new QLineEdit(QStringLiteral(","), &dlg);
     auto *enclosure = new QLineEdit(QStringLiteral("\""), &dlg);
     auto *escChar = new QLineEdit(QStringLiteral("\\"), &dlg);
-    auto *optEnclose = new QCheckBox(QStringLiteral("Quote character is optional"),
-                                     &dlg);
+    auto *optEnclose = new QCheckBox(QStringLiteral("Quote character is optional"), &dlg);
     optEnclose->setChecked(true);
     auto *lineSep = new QComboBox(&dlg);
-    lineSep->addItems({ QStringLiteral("\\n  (Unix)"), QStringLiteral("\\r\\n  (Windows)") });
+    lineSep->addItems({QStringLiteral("\\n  (Unix)"), QStringLiteral("\\r\\n  (Windows)")});
     auto *charset = importCharsetCombo(&dlg);
     auto *header = new QCheckBox(QStringLiteral("First line holds column names"), &dlg);
     header->setChecked(true);
@@ -3604,8 +3607,7 @@ void ConnectionTab::promptImportCsv(const QString &database, const QString &tabl
     form->addRow(QStringLiteral("On duplicate key"), onDup);
     form->addRow(QString(), header);
     form->addRow(QString(), truncate);
-    auto *buttons = new QDialogButtonBox(
-        QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
+    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
     buttons->button(QDialogButtonBox::Ok)->setText(QStringLiteral("Import"));
     connect(buttons, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
     connect(buttons, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
@@ -3614,23 +3616,21 @@ void ConnectionTab::promptImportCsv(const QString &database, const QString &tabl
     lay->addWidget(new QLabel(QStringLiteral("File preview:"), &dlg));
     lay->addWidget(importFilePreview(&dlg, file));
     const bool noBulkLoader = m_params.driverType != DriverType::Mysql;
-    lay->addWidget(new QLabel(noBulkLoader
-        ? QStringLiteral("Parsed and inserted row by row inside one transaction "
-                         "(no server-side bulk loader on this backend).")
-        : QStringLiteral(
-        "Uses LOAD DATA LOCAL INFILE — the server must allow local-infile."),
+    lay->addWidget(new QLabel(
+        noBulkLoader
+            ? QStringLiteral("Parsed and inserted row by row inside one transaction "
+                             "(no server-side bulk loader on this backend).")
+            : QStringLiteral("Uses LOAD DATA LOCAL INFILE — the server must allow local-infile."),
         &dlg));
     lay->addWidget(buttons);
     if(dlg.exec() != QDialog::Accepted || tbl->currentText().isEmpty())
         return;
 
     const QString target = tbl->currentText();
-    const QString sep = fieldSep->text().isEmpty() ? QStringLiteral(",")
-                                                   : fieldSep->text();
+    const QString sep = fieldSep->text().isEmpty() ? QStringLiteral(",") : fieldSep->text();
     const QString quote = enclosure->text();
     const auto esc = [](QString s) {
-        return s.replace('\\', QStringLiteral("\\\\"))
-                .replace('\'', QStringLiteral("\\'"));
+        return s.replace('\\', QStringLiteral("\\\\")).replace('\'', QStringLiteral("\\'"));
     };
     const int skip = (header->isChecked() ? 1 : 0) + skipLines->value();
 
@@ -3638,13 +3638,12 @@ void ConnectionTab::promptImportCsv(const QString &database, const QString &tabl
         int rows = 0;
         QString err;
         const bool ok = importCsvBatched(
-            db, target, file, sep, quote, escChar->text(), header->isChecked(),
-            skipLines->value(), truncate->isChecked(),
-            onDup->currentData().toString(), &rows, &err);
-        m_messages->setPlainText(ok
-            ? QStringLiteral("Imported %1 row(s) into %2")
-                  .arg(rows).arg(m_conn->qualify(db, target))
-            : QStringLiteral("Import failed: %1").arg(err));
+            db, target, file, sep, quote, escChar->text(), header->isChecked(), skipLines->value(),
+            truncate->isChecked(), onDup->currentData().toString(), &rows, &err);
+        m_messages->setPlainText(ok ? QStringLiteral("Imported %1 row(s) into %2")
+                                          .arg(rows)
+                                          .arg(m_conn->qualify(db, target))
+                                    : QStringLiteral("Import failed: %1").arg(err));
         m_resultTabs->setCurrentWidget(m_messages);
         if(ok && m_tableData->loadedTable() == target)
             m_tableData->load(m_conn, db, target);
@@ -3674,38 +3673,36 @@ void ConnectionTab::promptImportCsv(const QString &database, const QString &tabl
     if(truncate->isChecked())
         execDdl(m_conn->sqlTruncateTable(db, target));
 
-    const QString enclosedClause = quote.isEmpty()
-        ? QString()
-        : QStringLiteral(" %1ENCLOSED BY '%2'")
-              .arg(optEnclose->isChecked() ? QStringLiteral("OPTIONALLY ") : QString(),
-                   esc(quote));
+    const QString enclosedClause =
+        quote.isEmpty()
+            ? QString()
+            : QStringLiteral(" %1ENCLOSED BY '%2'")
+                  .arg(optEnclose->isChecked() ? QStringLiteral("OPTIONALLY ") : QString(),
+                       esc(quote));
     const QString escClause = escChar->text().isEmpty()
-        ? QString()
-        : QStringLiteral(" ESCAPED BY '%1'").arg(esc(escChar->text()));
+                                  ? QString()
+                                  : QStringLiteral(" ESCAPED BY '%1'").arg(esc(escChar->text()));
 
-    QString sql = QStringLiteral(
-        "LOAD DATA LOCAL INFILE '%1' %2 INTO TABLE `%3`.`%4` "
-        "CHARACTER SET %5 "
-        "FIELDS TERMINATED BY '%6'%7%8 "
-        "LINES TERMINATED BY '%9'%10%11")
-        .arg(esc(file),
-             onDup->currentData().toString(),
-             db, target, charset->currentText().trimmed(),
-             esc(sep), enclosedClause, escClause,
-             lineSep->currentIndex() == 1 ? QStringLiteral("\\r\\n")
-                                          : QStringLiteral("\\n"),
-             skip > 0 ? QStringLiteral(" IGNORE %1 LINES").arg(skip) : QString(),
-             colList);
+    QString sql =
+        QStringLiteral("LOAD DATA LOCAL INFILE '%1' %2 INTO TABLE `%3`.`%4` "
+                       "CHARACTER SET %5 "
+                       "FIELDS TERMINATED BY '%6'%7%8 "
+                       "LINES TERMINATED BY '%9'%10%11")
+            .arg(esc(file), onDup->currentData().toString(), db, target,
+                 charset->currentText().trimmed(), esc(sep), enclosedClause, escClause,
+                 lineSep->currentIndex() == 1 ? QStringLiteral("\\r\\n") : QStringLiteral("\\n"),
+                 skip > 0 ? QStringLiteral(" IGNORE %1 LINES").arg(skip) : QString(), colList);
 
     QString csvError;
     if(!m_conn->query(sql, nullptr, &csvError)) {
         m_messages->setPlainText(QStringLiteral("Import failed: %1").arg(csvError));
     } else {
         const QString info = m_conn->info();
-        m_messages->setPlainText(QStringLiteral("Imported into `%1`.`%2` — %3")
-            .arg(db, target,
-                 !info.isEmpty() ? info
-                      : QStringLiteral("%1 row(s)").arg(m_conn->affectedRows())));
+        m_messages->setPlainText(
+            QStringLiteral("Imported into `%1`.`%2` — %3")
+                .arg(db, target,
+                     !info.isEmpty() ? info
+                                     : QStringLiteral("%1 row(s)").arg(m_conn->affectedRows())));
         if(m_tableData->loadedTable() == target)
             m_tableData->load(m_conn, db, target);
     }
@@ -3713,8 +3710,7 @@ void ConnectionTab::promptImportCsv(const QString &database, const QString &tabl
     refreshBrowser();
 }
 
-void ConnectionTab::promptManageForeignKeys(const QString &database,
-                                            const QString &table)
+void ConnectionTab::promptManageForeignKeys(const QString &database, const QString &table)
 {
     if(!m_conn || table.isEmpty())
         return;
@@ -3736,10 +3732,10 @@ void ConnectionTab::promptManageForeignKeys(const QString &database,
             ForeignKeyDialog::FkDef nf;
             nf.name = name;
             nf.refTable = row.value(2);
-            nf.onDelete = row.value(5) == QStringLiteral("NULL")
-                ? QStringLiteral("RESTRICT") : row.value(5);
-            nf.onUpdate = row.value(4) == QStringLiteral("NULL")
-                ? QStringLiteral("RESTRICT") : row.value(4);
+            nf.onDelete =
+                row.value(5) == QStringLiteral("NULL") ? QStringLiteral("RESTRICT") : row.value(5);
+            nf.onUpdate =
+                row.value(4) == QStringLiteral("NULL") ? QStringLiteral("RESTRICT") : row.value(4);
             fks << nf;
             f = &fks.last();
         }
@@ -3759,7 +3755,8 @@ void ConnectionTab::promptManageForeignKeys(const QString &database,
     const QString limitation = dlg.limitation();
     if(sql.isEmpty()) {
         QMessageBox::information(this, QStringLiteral("Foreign Keys"),
-            limitation.isEmpty() ? QStringLiteral("No changes to apply.") : limitation);
+                                 limitation.isEmpty() ? QStringLiteral("No changes to apply.")
+                                                      : limitation);
         return;
     }
     if(!limitation.isEmpty())
@@ -3767,8 +3764,7 @@ void ConnectionTab::promptManageForeignKeys(const QString &database,
     execDdl(sql);
 }
 
-void ConnectionTab::promptAlterTable(const QString &database,
-                                     const QString &table)
+void ConnectionTab::promptAlterTable(const QString &database, const QString &table)
 {
     if(!m_conn || table.isEmpty())
         return;
@@ -3782,8 +3778,7 @@ void ConnectionTab::promptAlterTable(const QString &database,
     const DbResultSet colRs = m_conn->listColumns(db, table);
     if(colRs.rows.isEmpty()) {
         QMessageBox::warning(this, QStringLiteral("Alter Table"),
-                             QStringLiteral("Could not read columns of `%1`.`%2`.")
-                                 .arg(db, table));
+                             QStringLiteral("Could not read columns of `%1`.`%2`.").arg(db, table));
         return;
     }
     QList<CreateTableDialog::ColumnDef> cols;
@@ -3791,8 +3786,7 @@ void ConnectionTab::promptAlterTable(const QString &database,
         CreateTableDialog::ColumnDef c;
         c.name = row.value(0);
         QString type = row.value(1).trimmed();
-        c.isUnsigned = type.contains(QStringLiteral(" unsigned"),
-                                     Qt::CaseInsensitive);
+        c.isUnsigned = type.contains(QStringLiteral(" unsigned"), Qt::CaseInsensitive);
         type.remove(QStringLiteral(" unsigned"), Qt::CaseInsensitive);
         type.remove(QStringLiteral(" zerofill"), Qt::CaseInsensitive);
         const int lp = type.indexOf('(');
@@ -3805,8 +3799,7 @@ void ConnectionTab::promptAlterTable(const QString &database,
         c.notNull = row.value(2) == QStringLiteral("NO");
         c.pk = row.value(3) == QStringLiteral("PRI");
         c.def = orEmpty(row.value(4));
-        c.autoInc = row.value(5).contains(QStringLiteral("auto_increment"),
-                                          Qt::CaseInsensitive);
+        c.autoInc = row.value(5).contains(QStringLiteral("auto_increment"), Qt::CaseInsensitive);
         c.comment = orEmpty(row.value(6));
         cols << c;
     }
@@ -3820,12 +3813,13 @@ void ConnectionTab::promptAlterTable(const QString &database,
          * engines, no per-table charset), so this stays MySQL-only rather
          * than sending a query guaranteed to fail there */
         DbResultSet rs;
-        if(m_conn->query(QStringLiteral(
-               "SELECT ENGINE, SUBSTRING_INDEX(TABLE_COLLATION,'_',1) "
-               "FROM information_schema.TABLES "
-               "WHERE TABLE_SCHEMA='%1' AND TABLE_NAME='%2'").arg(db, table),
-               &rs, nullptr) && !rs.rows.isEmpty()) {
-            engine  = orEmpty(rs.rows.first().value(0));
+        if(m_conn->query(QStringLiteral("SELECT ENGINE, SUBSTRING_INDEX(TABLE_COLLATION,'_',1) "
+                                        "FROM information_schema.TABLES "
+                                        "WHERE TABLE_SCHEMA='%1' AND TABLE_NAME='%2'")
+                             .arg(db, table),
+                         &rs, nullptr) &&
+           !rs.rows.isEmpty()) {
+            engine = orEmpty(rs.rows.first().value(0));
             charset = orEmpty(rs.rows.first().value(1));
         }
     }
@@ -3837,7 +3831,8 @@ void ConnectionTab::promptAlterTable(const QString &database,
     const QString limitation = dlg.alterLimitation();
     if(sql.isEmpty()) {
         QMessageBox::information(this, QStringLiteral("Alter Table"),
-            limitation.isEmpty() ? QStringLiteral("No changes to apply.") : limitation);
+                                 limitation.isEmpty() ? QStringLiteral("No changes to apply.")
+                                                      : limitation);
         return;
     }
     if(!limitation.isEmpty())
@@ -3854,7 +3849,7 @@ void ConnectionTab::promptDumpDatabase(const QString &database)
     const QString db = database.isEmpty() ? defaultDb() : database;
     if(db.isEmpty()) {
         QMessageBox::information(this, QStringLiteral("Backup As SQL Dump"),
-            QStringLiteral("Select a database first."));
+                                 QStringLiteral("Select a database first."));
         return;
     }
     /* table list for the "which tables" selector */
@@ -3866,12 +3861,10 @@ void ConnectionTab::promptDumpDatabase(const QString &database)
     structure->setChecked(true);
     auto *data = new QCheckBox(QStringLiteral("Data (INSERT statements)"), &dlg);
     data->setChecked(true);
-    auto *drops = new QCheckBox(QStringLiteral("Add DROP TABLE before each CREATE"),
-                                &dlg);
+    auto *drops = new QCheckBox(QStringLiteral("Add DROP TABLE before each CREATE"), &dlg);
     drops->setChecked(true);
     auto *routines = new QCheckBox(
-        QStringLiteral("Also views / procedures / functions / triggers / events"),
-        &dlg);
+        QStringLiteral("Also views / procedures / functions / triggers / events"), &dlg);
     auto *rowsPer = new QSpinBox(&dlg);
     rowsPer->setRange(1, 100000);
     rowsPer->setValue(100);
@@ -3891,23 +3884,21 @@ void ConnectionTab::promptDumpDatabase(const QString &database)
     form->addRow(QString(), drops);
     form->addRow(QString(), routines);
     form->addRow(QStringLiteral("Rows per INSERT"), rowsPer);
-    auto *bb = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel,
-                                    &dlg);
+    auto *bb = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
     bb->button(QDialogButtonBox::Ok)->setText(QStringLiteral("Choose file…"));
     connect(bb, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
     connect(bb, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
     auto *lay = new QVBoxLayout(&dlg);
     lay->addLayout(form);
-    lay->addWidget(new QLabel(QStringLiteral("Tables (all, when none checked):"),
-                              &dlg));
+    lay->addWidget(new QLabel(QStringLiteral("Tables (all, when none checked):"), &dlg));
     lay->addWidget(tableList);
     lay->addWidget(bb);
     if(dlg.exec() != QDialog::Accepted)
         return;
 
     const QString path = QFileDialog::getSaveFileName(
-        this, QStringLiteral("Backup `%1` as SQL dump").arg(db),
-        db + QStringLiteral(".sql"), QStringLiteral("SQL (*.sql);;All (*)"));
+        this, QStringLiteral("Backup `%1` as SQL dump").arg(db), db + QStringLiteral(".sql"),
+        QStringLiteral("SQL (*.sql);;All (*)"));
     if(path.isEmpty())
         return;
 
@@ -3916,7 +3907,7 @@ void ConnectionTab::promptDumpDatabase(const QString &database)
         if(tableList->item(i)->checkState() == Qt::Checked)
             picked << tableList->item(i)->text();
     if(picked.size() == tableList->count())
-        picked.clear();               /* all → let SqlDump enumerate */
+        picked.clear(); /* all → let SqlDump enumerate */
 
     SqlDump::Options opt;
     opt.structure = structure->isChecked();
@@ -3930,32 +3921,32 @@ void ConnectionTab::promptDumpDatabase(const QString &database)
     const bool ok = dumpDatabaseToFile(db, path, picked, opt, &err);
     QApplication::restoreOverrideCursor();
 
-    m_messages->setPlainText(ok
-        ? QStringLiteral("Dumped `%1` → %2  (%3 KB)")
-              .arg(db, path).arg((QFileInfo(path).size() + 1023) / 1024)
-        : QStringLiteral("Dump failed: %1").arg(err));
+    m_messages->setPlainText(ok ? QStringLiteral("Dumped `%1` → %2  (%3 KB)")
+                                      .arg(db, path)
+                                      .arg((QFileInfo(path).size() + 1023) / 1024)
+                                : QStringLiteral("Dump failed: %1").arg(err));
     m_resultTabs->setCurrentWidget(m_messages);
 }
 
-bool ConnectionTab::dumpDatabaseToFile(const QString &database,
-                                      const QString &path, QString *error)
+bool ConnectionTab::dumpDatabaseToFile(const QString &database, const QString &path, QString *error)
 {
     return dumpDatabaseToFile(database, path, {}, SqlDump::Options{}, error);
 }
 
-bool ConnectionTab::dumpDatabaseToFile(const QString &database,
-                                      const QString &path,
-                                      const QStringList &tables,
-                                      const SqlDump::Options &opt, QString *error)
+bool ConnectionTab::dumpDatabaseToFile(const QString &database, const QString &path,
+                                       const QStringList &tables, const SqlDump::Options &opt,
+                                       QString *error)
 {
     if(!m_conn) {
-        if(error) *error = QStringLiteral("not connected");
+        if(error)
+            *error = QStringLiteral("not connected");
         return false;
     }
     const QString db = database.isEmpty() ? defaultDb() : database;
     QFile f(path);
     if(!f.open(QIODevice::WriteOnly | QIODevice::Text)) {
-        if(error) *error = QStringLiteral("cannot write %1").arg(path);
+        if(error)
+            *error = QStringLiteral("cannot write %1").arg(path);
         return false;
     }
     const bool ok = SqlDump::write(m_conn, db, tables, opt, &f, error);
@@ -3996,8 +3987,8 @@ bool ConnectionTab::execDdl(const QString &sql)
             }
         }
         if(multi)
-            m_conn->query(ok ? QStringLiteral("COMMIT") : QStringLiteral("ROLLBACK"),
-                          nullptr, nullptr);
+            m_conn->query(ok ? QStringLiteral("COMMIT") : QStringLiteral("ROLLBACK"), nullptr,
+                          nullptr);
     } else {
         ok = m_conn->query(sql, nullptr, &error);
     }
@@ -4044,27 +4035,26 @@ void ConnectionTab::pasteSqlTemplate(int kind)
     const QString tbl = qi(db) + QLatin1Char('.') + qi(table);
     QString stmt;
     switch(kind) {
-    case 0: {
-        QStringList marks;
-        for(int i = 0; i < cols.size(); ++i)
-            marks << QStringLiteral("?");
-        stmt = QStringLiteral("INSERT INTO %1 (%2)\nVALUES (%3);")
-                   .arg(tbl, colsB, marks.join(", "));
-        break;
-    }
-    case 1: {
-        QStringList sets;
-        for(const QString &c : qCols)
-            sets << QStringLiteral("%1 = '?'").arg(c);
-        stmt = QStringLiteral("UPDATE %1 SET %2\nWHERE <condition>;")
-                   .arg(tbl, sets.join(", "));
-        break;
-    }
-    case 2:
-        stmt = QStringLiteral("DELETE FROM %1\nWHERE <condition>;").arg(tbl);
-        break;
-    default:
-        stmt = QStringLiteral("SELECT %1\nFROM %2;").arg(colsB, tbl);
+        case 0: {
+            QStringList marks;
+            for(int i = 0; i < cols.size(); ++i)
+                marks << QStringLiteral("?");
+            stmt = QStringLiteral("INSERT INTO %1 (%2)\nVALUES (%3);")
+                       .arg(tbl, colsB, marks.join(", "));
+            break;
+        }
+        case 1: {
+            QStringList sets;
+            for(const QString &c : qCols)
+                sets << QStringLiteral("%1 = '?'").arg(c);
+            stmt = QStringLiteral("UPDATE %1 SET %2\nWHERE <condition>;").arg(tbl, sets.join(", "));
+            break;
+        }
+        case 2:
+            stmt = QStringLiteral("DELETE FROM %1\nWHERE <condition>;").arg(tbl);
+            break;
+        default:
+            stmt = QStringLiteral("SELECT %1\nFROM %2;").arg(colsB, tbl);
     }
     if(auto *ed = currentEditor())
         ed->setPlainText(stmt);
@@ -4103,14 +4093,15 @@ void ConnectionTab::useDatabase(const QString &db)
      * combo can be stale (e.g. blank after switchDatabase()) even though
      * this schema was picked before; also keeps the click+double-click
      * pair on one tree node from issuing the same SET/USE twice */
-    const QString alreadyCurrent = m_params.driverType == DriverType::Postgres
-        ? m_currentSchema : m_params.database;
+    const QString alreadyCurrent =
+        m_params.driverType == DriverType::Postgres ? m_currentSchema : m_params.database;
     if(db != alreadyCurrent) {
         QString error;
-        const bool ok = m_params.driverType == DriverType::Postgres
-            ? m_conn->query(QStringLiteral("SET search_path TO %1")
-                                .arg(m_conn->quoteIdent(db)), nullptr, &error)
-            : m_conn->query(QStringLiteral("USE `%1`").arg(db), nullptr, &error);
+        const bool ok =
+            m_params.driverType == DriverType::Postgres
+                ? m_conn->query(QStringLiteral("SET search_path TO %1").arg(m_conn->quoteIdent(db)),
+                                nullptr, &error)
+                : m_conn->query(QStringLiteral("USE `%1`").arg(db), nullptr, &error);
         if(!ok) {
             m_messages->setPlainText(error);
             m_resultTabs->setCurrentWidget(m_messages);
@@ -4121,8 +4112,8 @@ void ConnectionTab::useDatabase(const QString &db)
         else
             m_params.database = db;
         m_messages->setPlainText(m_params.driverType == DriverType::Postgres
-            ? QStringLiteral("Schema changed to %1").arg(db)
-            : QStringLiteral("Database changed to %1").arg(db));
+                                     ? QStringLiteral("Schema changed to %1").arg(db)
+                                     : QStringLiteral("Database changed to %1").arg(db));
         m_resultTabs->setCurrentWidget(m_messages);
         updateCompletions();
     }

@@ -13,19 +13,68 @@
 namespace {
 /* SQL keywords always offered by the completer */
 const QStringList kKeywordWords = {
-    "SELECT","FROM","WHERE","GROUP BY","ORDER BY","HAVING","LIMIT","OFFSET",
-    "INNER JOIN","LEFT JOIN","RIGHT JOIN","JOIN","ON","AS","AND","OR","NOT",
-    "IN","IS NULL","IS NOT NULL","LIKE","BETWEEN","EXISTS","UNION","UNION ALL",
-    "DISTINCT","INSERT INTO","VALUES","UPDATE","SET","DELETE FROM","CREATE TABLE",
-    "ALTER TABLE","DROP TABLE","TRUNCATE TABLE","CREATE VIEW","CREATE INDEX",
-    "PRIMARY KEY","FOREIGN KEY","REFERENCES","DEFAULT","AUTO_INCREMENT",
-    "CASE","WHEN","THEN","ELSE","END","ASC","DESC","COUNT(","SUM(","AVG(",
-    "MIN(","MAX(","COALESCE(","IFNULL(","NOW()","CURRENT_TIMESTAMP",
+    "SELECT",
+    "FROM",
+    "WHERE",
+    "GROUP BY",
+    "ORDER BY",
+    "HAVING",
+    "LIMIT",
+    "OFFSET",
+    "INNER JOIN",
+    "LEFT JOIN",
+    "RIGHT JOIN",
+    "JOIN",
+    "ON",
+    "AS",
+    "AND",
+    "OR",
+    "NOT",
+    "IN",
+    "IS NULL",
+    "IS NOT NULL",
+    "LIKE",
+    "BETWEEN",
+    "EXISTS",
+    "UNION",
+    "UNION ALL",
+    "DISTINCT",
+    "INSERT INTO",
+    "VALUES",
+    "UPDATE",
+    "SET",
+    "DELETE FROM",
+    "CREATE TABLE",
+    "ALTER TABLE",
+    "DROP TABLE",
+    "TRUNCATE TABLE",
+    "CREATE VIEW",
+    "CREATE INDEX",
+    "PRIMARY KEY",
+    "FOREIGN KEY",
+    "REFERENCES",
+    "DEFAULT",
+    "AUTO_INCREMENT",
+    "CASE",
+    "WHEN",
+    "THEN",
+    "ELSE",
+    "END",
+    "ASC",
+    "DESC",
+    "COUNT(",
+    "SUM(",
+    "AVG(",
+    "MIN(",
+    "MAX(",
+    "COALESCE(",
+    "IFNULL(",
+    "NOW()",
+    "CURRENT_TIMESTAMP",
 };
 } // namespace
 
-SqlEditor::SqlEditor(QWidget *parent)
-    : QsciScintilla(parent)
+SqlEditor::SqlEditor(QWidget *parent) : QsciScintilla(parent)
 {
     setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
     setLexer(new QsciLexerSQL(this));
@@ -55,43 +104,44 @@ void SqlEditor::reskin()
     const QColor text = pal.color(QPalette::Text);
     const bool dark = base.lightness() < 128;
 
-    setPaper(base);                       /* -1 = every style */
+    setPaper(base); /* -1 = every style */
     setColor(text);
     setCaretForegroundColor(text);
-    setCaretLineBackgroundColor(dark ? base.lighter(115)
-                                     : QColor(0xF5, 0xF9, 0xFD));
-    setMarginsBackgroundColor(dark ? base.lighter(108)
-                                   : QColor(0xF0, 0xF0, 0xF0));
+    setCaretLineBackgroundColor(dark ? base.lighter(115) : QColor(0xF5, 0xF9, 0xFD));
+    setMarginsBackgroundColor(dark ? base.lighter(108) : QColor(0xF0, 0xF0, 0xF0));
     setMarginsForegroundColor(dark ? QColor(0x8A, 0x8A, 0x8A) : QColor(Qt::gray));
     setMarginsFont(font());
-    setMatchedBraceBackgroundColor(dark ? QColor(0x3A, 0x52, 0x78)
-                                        : QColor(0xC9, 0xE0, 0xF7));
+    setMatchedBraceBackgroundColor(dark ? QColor(0x3A, 0x52, 0x78) : QColor(0xC9, 0xE0, 0xF7));
     setMatchedBraceForegroundColor(text);
-    setUnmatchedBraceForegroundColor(dark ? QColor(0xE0, 0x7A, 0x7A)
-                                          : QColor(0xB0, 0x3A, 0x3A));
+    setUnmatchedBraceForegroundColor(dark ? QColor(0xE0, 0x7A, 0x7A) : QColor(0xB0, 0x3A, 0x3A));
 
     if(auto *lx = qobject_cast<QsciLexerSQL *>(lexer())) {
         /* light colors are the ones the old SqlHighlighter used; dark picks
          * the same hues lightened enough to read on the dark base */
-        const QColor kw  = dark ? QColor(0x7F, 0xB3, 0xE8) : QColor(0x2A, 0x5D, 0x9F);
+        const QColor kw = dark ? QColor(0x7F, 0xB3, 0xE8) : QColor(0x2A, 0x5D, 0x9F);
         const QColor str = dark ? QColor(0xE0, 0x9E, 0x5A) : QColor(0xB3, 0x50, 0x00);
-        const QColor com(0x6A, 0x99, 0x55);            /* readable on both */
+        const QColor com(0x6A, 0x99, 0x55); /* readable on both */
         const QColor num = dark ? QColor(0xC3, 0xA6, 0xFF) : QColor(0x7A, 0x5A, 0xC0);
         QFont kwf = font();
         kwf.setBold(true);
 
-        struct { int style; const QColor *color; const QFont *f; } defs[] = {
-            { QsciLexerSQL::Default,             &text, nullptr },
-            { QsciLexerSQL::Comment,             &com,  nullptr },
-            { QsciLexerSQL::CommentLine,         &com,  nullptr },
-            { QsciLexerSQL::CommentLineHash,     &com,  nullptr },
-            { QsciLexerSQL::Number,              &num,  nullptr },
-            { QsciLexerSQL::Keyword,             &kw,   &kwf },
-            { QsciLexerSQL::DoubleQuotedString,  &str,  nullptr },
-            { QsciLexerSQL::SingleQuotedString,  &str,  nullptr },
-            { QsciLexerSQL::Operator,            &text, nullptr },
-            { QsciLexerSQL::Identifier,          &text, nullptr },
-            { QsciLexerSQL::QuotedIdentifier,    &str,  nullptr },
+        struct
+        {
+            int style;
+            const QColor *color;
+            const QFont *f;
+        } defs[] = {
+            {QsciLexerSQL::Default, &text, nullptr},
+            {QsciLexerSQL::Comment, &com, nullptr},
+            {QsciLexerSQL::CommentLine, &com, nullptr},
+            {QsciLexerSQL::CommentLineHash, &com, nullptr},
+            {QsciLexerSQL::Number, &num, nullptr},
+            {QsciLexerSQL::Keyword, &kw, &kwf},
+            {QsciLexerSQL::DoubleQuotedString, &str, nullptr},
+            {QsciLexerSQL::SingleQuotedString, &str, nullptr},
+            {QsciLexerSQL::Operator, &text, nullptr},
+            {QsciLexerSQL::Identifier, &text, nullptr},
+            {QsciLexerSQL::QuotedIdentifier, &str, nullptr},
         };
         for(const auto &d : defs) {
             lx->setColor(*d.color, d.style);
@@ -139,7 +189,7 @@ void SqlEditor::getLineIndex(int pos, int *line, int *index) const
             *index = rest;
             return;
         }
-        rest -= len + 1;                        /* + the '\n' */
+        rest -= len + 1; /* + the '\n' */
     }
     *line = n - 1;
     *index = lineTextNoEol(n - 1).length();
@@ -187,8 +237,7 @@ SqlEditor::ClauseCtx SqlEditor::clauseContextAtCursor() const
     if(k > 0 && head[k - 1] == QLatin1Char('.'))
         return CtxColumn;
 
-    static const QRegularExpression tok(
-        QStringLiteral("[A-Za-z_][A-Za-z0-9_]*|,|\\(|\\)"));
+    static const QRegularExpression tok(QStringLiteral("[A-Za-z_][A-Za-z0-9_]*|,|\\(|\\)"));
     QStringList toks;
     auto it = tok.globalMatch(head);
     while(it.hasNext())
@@ -196,15 +245,14 @@ SqlEditor::ClauseCtx SqlEditor::clauseContextAtCursor() const
 
     for(int i = toks.size() - 1; i >= 0; --i) {
         const QString u = toks[i].toUpper();
-        if(u == QLatin1String("FROM") || u == QLatin1String("JOIN")
-           || u == QLatin1String("INTO") || u == QLatin1String("UPDATE")
-           || u == QLatin1String("TABLE") || u == QLatin1String("DESCRIBE"))
+        if(u == QLatin1String("FROM") || u == QLatin1String("JOIN") || u == QLatin1String("INTO") ||
+           u == QLatin1String("UPDATE") || u == QLatin1String("TABLE") ||
+           u == QLatin1String("DESCRIBE"))
             return CtxTable;
-        if(u == QLatin1String("SELECT") || u == QLatin1String("WHERE")
-           || u == QLatin1String("ON") || u == QLatin1String("SET")
-           || u == QLatin1String("HAVING") || u == QLatin1String("BY")
-           || u == QLatin1String("USING") || u == QLatin1String("VALUES")
-           || u == QLatin1String("RETURNING"))
+        if(u == QLatin1String("SELECT") || u == QLatin1String("WHERE") ||
+           u == QLatin1String("ON") || u == QLatin1String("SET") || u == QLatin1String("HAVING") ||
+           u == QLatin1String("BY") || u == QLatin1String("USING") ||
+           u == QLatin1String("VALUES") || u == QLatin1String("RETURNING"))
             return CtxColumn;
         /* AND / OR / NOT / commas / parens are transparent — keep scanning */
     }
@@ -215,18 +263,18 @@ QStringList SqlEditor::candidatesForContext() const
 {
     QStringList list = kKeywordWords;
     switch(clauseContextAtCursor()) {
-    case CtxTable:
-        list += m_tables.isEmpty() ? m_generic : m_tables;
-        break;
-    case CtxColumn:
-        list += m_columns.isEmpty() ? m_generic : m_columns;
-        break;
-    case CtxAll:
-    default:
-        list += m_generic;
-        list += m_tables;
-        list += m_columns;
-        break;
+        case CtxTable:
+            list += m_tables.isEmpty() ? m_generic : m_tables;
+            break;
+        case CtxColumn:
+            list += m_columns.isEmpty() ? m_generic : m_columns;
+            break;
+        case CtxAll:
+        default:
+            list += m_generic;
+            list += m_tables;
+            list += m_columns;
+            break;
     }
     list.removeDuplicates();
     list.sort(Qt::CaseInsensitive);
@@ -265,9 +313,8 @@ void SqlEditor::popupCompleter(bool force)
     for(const QString &w : list)
         if(w.startsWith(prefix, Qt::CaseInsensitive))
             hits << w;
-    if(hits.isEmpty()
-       || (hits.size() == 1
-           && hits.first().compare(prefix, Qt::CaseInsensitive) == 0)) {
+    if(hits.isEmpty() ||
+       (hits.size() == 1 && hits.first().compare(prefix, Qt::CaseInsensitive) == 0)) {
         m_lastCompletionCount = 0;
         cancelList();
         return;
@@ -295,7 +342,7 @@ void SqlEditor::insertCompletion(const QString &word)
     int line = 0, index = 0;
     getCursorPosition(&line, &index);
     if(line != m_ctxLine)
-        return;                             /* stale popup */
+        return; /* stale popup */
     const QString t = lineTextNoEol(line);
     int s = index;
     while(s > 0 && (t[s - 1].isLetterOrNumber() || t[s - 1] == QLatin1Char('_')))
@@ -308,8 +355,8 @@ void SqlEditor::insertCompletion(const QString &word)
 
 void SqlEditor::keyPressEvent(QKeyEvent *event)
 {
-    const bool ctrlSpace = event->key() == Qt::Key_Space
-                           && (event->modifiers() & Qt::ControlModifier);
+    const bool ctrlSpace =
+        event->key() == Qt::Key_Space && (event->modifiers() & Qt::ControlModifier);
     if(ctrlSpace) {
         popupCompleter(true);
         return;
@@ -317,8 +364,7 @@ void SqlEditor::keyPressEvent(QKeyEvent *event)
 
     QsciScintilla::keyPressEvent(event);
 
-    if(event->text().isEmpty()
-       || (event->modifiers() & ~Qt::ShiftModifier))   /* Ctrl/Alt combos */
+    if(event->text().isEmpty() || (event->modifiers() & ~Qt::ShiftModifier)) /* Ctrl/Alt combos */
         return;
     const QChar ch = event->text().at(0);
     const bool wordChar = ch.isLetterOrNumber() || ch == QLatin1Char('_');
@@ -334,24 +380,21 @@ void SqlEditor::keyPressEvent(QKeyEvent *event)
 
 void SqlEditor::changeEvent(QEvent *event)
 {
-    if(event->type() == QEvent::ApplicationPaletteChange
-       || event->type() == QEvent::PaletteChange)
+    if(event->type() == QEvent::ApplicationPaletteChange || event->type() == QEvent::PaletteChange)
         reskin();
     QsciScintilla::changeEvent(event);
 }
 
 /* ---- Edit-menu ops ----------------------------------------------------- */
 
-bool SqlEditor::findText(const QString &needle, bool caseSensitive,
-                         bool backward)
+bool SqlEditor::findText(const QString &needle, bool caseSensitive, bool backward)
 {
     if(needle.isEmpty())
         return false;
     int line = 0, index = 0;
     getCursorPosition(&line, &index);
     /* wrap=true covers the old "search, jump to the other end, retry" loop */
-    return findFirst(needle, false, caseSensitive, false, true,
-                     !backward, line, index);
+    return findFirst(needle, false, caseSensitive, false, true, !backward, line, index);
 }
 
 void SqlEditor::copyWithNormalizedWhitespace()
@@ -365,9 +408,9 @@ void SqlEditor::copyWithNormalizedWhitespace()
 
 void SqlEditor::insertFromFile()
 {
-    const QString path = QFileDialog::getOpenFileName(
-        this, QStringLiteral("Insert file contents"), QString(),
-        QStringLiteral("SQL / text (*.sql *.txt);;All files (*)"));
+    const QString path =
+        QFileDialog::getOpenFileName(this, QStringLiteral("Insert file contents"), QString(),
+                                     QStringLiteral("SQL / text (*.sql *.txt);;All files (*)"));
     if(path.isEmpty())
         return;
     QFile f(path);

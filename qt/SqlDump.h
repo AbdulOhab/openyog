@@ -19,17 +19,17 @@ namespace SqlDump {
 struct Options
 {
     bool addDropTable = true;
-    bool structure    = true;
-    bool data         = true;
-    bool routines     = false;   /* forEachStatement: also views/procs/funcs/
-                                  * triggers/events (DEFINER stripped) */
-    int  rowsPerInsert = 100;
+    bool structure = true;
+    bool data = true;
+    bool routines = false; /* forEachStatement: also views/procs/funcs/
+                            * triggers/events (DEFINER stripped) */
+    int rowsPerInsert = 100;
 };
 
 /* Dump `tables` (or every base table in `db` when empty) into `out`.
  * Returns true on success; on failure returns false and sets *error. */
-bool write(IDbConnection *conn, const QString &db, const QStringList &tables,
-           const Options &opt, QIODevice *out, QString *error);
+bool write(IDbConnection *conn, const QString &db, const QStringList &tables, const Options &opt,
+           QIODevice *out, QString *error);
 
 /* The database as one statement at a time (no trailing ';', no comments):
  * base tables (CREATE from SHOW CREATE TABLE, so constraints/FKs survive) +
@@ -39,8 +39,7 @@ bool write(IDbConnection *conn, const QString &db, const QStringList &tables,
  * Stops and returns false if `exec` returns false (then *error is whatever
  * exec left, or unset). */
 bool forEachStatement(IDbConnection *conn, const QString &db, const QStringList &tables,
-                      const Options &opt,
-                      const std::function<bool(const QString &stmt)> &exec,
+                      const Options &opt, const std::function<bool(const QString &stmt)> &exec,
                       QString *error);
 
 } // namespace SqlDump

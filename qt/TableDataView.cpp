@@ -71,15 +71,14 @@ class TableDataModel : public QAbstractTableModel
 public:
     enum RowState { Normal, Inserted, Deleted };
 
-    explicit TableDataModel(QObject *parent = nullptr)
-        : QAbstractTableModel(parent) {}
+    explicit TableDataModel(QObject *parent = nullptr) : QAbstractTableModel(parent) {}
 
     void setGrid(const QStringList &cols, const QVector<QStringList> &rows)
     {
         beginResetModel();
         m_cols = cols;
         m_rows = rows;
-        m_orig = rows;                 /* baseline for dirty tracking */
+        m_orig = rows; /* baseline for dirty tracking */
         m_state = QVector<RowState>(rows.size(), Normal);
         m_expr.clear();
         endResetModel();
@@ -110,7 +109,7 @@ public:
             m_rows.removeAt(row);
             m_orig.removeAt(row);
             m_state.removeAt(row);
-            m_expr.clear();               /* row indices shifted — drop raw exprs */
+            m_expr.clear(); /* row indices shifted — drop raw exprs */
             endRemoveRows();
         } else {
             m_state[row] = (m_state[row] == Deleted) ? Normal : Deleted;
@@ -138,10 +137,13 @@ public:
 
     bool dirty(int r, int c) const
     {
-        return r < m_orig.size() && c < m_orig[r].size()
-               && m_state.value(r) == Normal && m_orig[r][c] != m_rows[r][c];
+        return r < m_orig.size() && c < m_orig[r].size() && m_state.value(r) == Normal &&
+               m_orig[r][c] != m_rows[r][c];
     }
-    RowState rowState(int r) const { return m_state.value(r, Normal); }
+    RowState rowState(int r) const
+    {
+        return m_state.value(r, Normal);
+    }
 
     QList<int> rowsWithState(RowState st) const
     {
@@ -151,12 +153,15 @@ public:
                 out << r;
         return out;
     }
-    QList<int> dirtyRows() const                 /* Normal rows with edits only */
+    QList<int> dirtyRows() const /* Normal rows with edits only */
     {
         QList<int> out;
         for(int r = 0; r < m_rows.size(); ++r)
             for(int c = 0; c < m_cols.size(); ++c)
-                if(dirty(r, c)) { out << r; break; }
+                if(dirty(r, c)) {
+                    out << r;
+                    break;
+                }
         return out;
     }
     int pendingCells() const
@@ -164,28 +169,36 @@ public:
         int n = 0;
         for(int r = 0; r < m_rows.size(); ++r)
             for(int c = 0; c < m_cols.size(); ++c)
-                if(dirty(r, c)) ++n;
+                if(dirty(r, c))
+                    ++n;
         return n;
     }
     /* total staged operations (edits by row + inserts + deletes) */
     int pendingOps() const
     {
-        return dirtyRows().size() + rowsWithState(Inserted).size()
-             + rowsWithState(Deleted).size();
+        return dirtyRows().size() + rowsWithState(Inserted).size() + rowsWithState(Deleted).size();
     }
-    QString cur(int r, int c) const  { return m_rows.value(r).value(c); }
-    QString orig(int r, int c) const { return m_orig.value(r).value(c); }
-    QStringList columns() const { return m_cols; }
+    QString cur(int r, int c) const
+    {
+        return m_rows.value(r).value(c);
+    }
+    QString orig(int r, int c) const
+    {
+        return m_orig.value(r).value(c);
+    }
+    QStringList columns() const
+    {
+        return m_cols;
+    }
 
     void stage(int row, int col, const QString &value)
     {
         if(row < 0 || row >= m_rows.size() || col < 0 || col >= m_cols.size())
             return;
         m_rows[row][col] = value;
-        m_expr.remove({row, col});        /* plain text edit clears any raw expr */
+        m_expr.remove({row, col}); /* plain text edit clears any raw expr */
         emit dataChanged(index(row, col), index(row, col),
-                         { Qt::DisplayRole, Qt::EditRole, Qt::BackgroundRole,
-                           Qt::ForegroundRole });
+                         {Qt::DisplayRole, Qt::EditRole, Qt::BackgroundRole, Qt::ForegroundRole});
         emit pendingChanged();
     }
 
@@ -198,14 +211,23 @@ public:
         m_rows[row][col] = display;
         m_expr.insert({row, col}, sqlExpr);
         emit dataChanged(index(row, col), index(row, col),
-                         { Qt::DisplayRole, Qt::EditRole, Qt::BackgroundRole });
+                         {Qt::DisplayRole, Qt::EditRole, Qt::BackgroundRole});
         emit pendingChanged();
     }
     /* raw SQL expression staged for (r,c), or empty if it's a plain value */
-    QString exprAt(int r, int c) const { return m_expr.value({r, c}); }
+    QString exprAt(int r, int c) const
+    {
+        return m_expr.value({r, c});
+    }
 
-    int rowCount(const QModelIndex & = {}) const override { return m_rows.size(); }
-    int columnCount(const QModelIndex & = {}) const override { return m_cols.size(); }
+    int rowCount(const QModelIndex & = {}) const override
+    {
+        return m_rows.size();
+    }
+    int columnCount(const QModelIndex & = {}) const override
+    {
+        return m_cols.size();
+    }
 
     QVariant data(const QModelIndex &idx, int role) const override
     {
@@ -215,9 +237,12 @@ public:
         if(role == Qt::DisplayRole || role == Qt::EditRole)
             return m_rows[r][c];
         if(role == Qt::BackgroundRole) {
-            if(m_state[r] == Inserted) return QColor(0xE6, 0xF4, 0xEA); /* green */
-            if(m_state[r] == Deleted)  return QColor(0xFD, 0xE7, 0xE9); /* red   */
-            if(dirty(r, c))            return QColor(0xFF, 0xF3, 0xC4); /* amber */
+            if(m_state[r] == Inserted)
+                return QColor(0xE6, 0xF4, 0xEA); /* green */
+            if(m_state[r] == Deleted)
+                return QColor(0xFD, 0xE7, 0xE9); /* red   */
+            if(dirty(r, c))
+                return QColor(0xFF, 0xF3, 0xC4); /* amber */
         }
         if(role == Qt::FontRole && m_state[r] == Deleted) {
             QFont f;
@@ -236,8 +261,10 @@ public:
         if(role != Qt::DisplayRole)
             return {};
         if(o == Qt::Vertical) {
-            if(m_state.value(s) == Inserted) return QStringLiteral("＋");
-            if(m_state.value(s) == Deleted)  return QStringLiteral("✕");
+            if(m_state.value(s) == Inserted)
+                return QStringLiteral("＋");
+            if(m_state.value(s) == Deleted)
+                return QStringLiteral("✕");
             return s + 1;
         }
         return m_cols.value(s);
@@ -263,11 +290,11 @@ signals:
     void pendingChanged();
 
 private:
-    QStringList          m_cols;
+    QStringList m_cols;
     QVector<QStringList> m_rows;
     QVector<QStringList> m_orig;
-    QVector<RowState>    m_state;
-    QMap<QPair<int, int>, QString> m_expr;   /* (r,c) → verbatim SQL expr */
+    QVector<RowState> m_state;
+    QMap<QPair<int, int>, QString> m_expr; /* (r,c) → verbatim SQL expr */
 };
 
 /* ---------------- row-select checkbox column ----------------------------- *
@@ -280,8 +307,7 @@ class RowCheckHeader : public QHeaderView
 {
     Q_OBJECT
 public:
-    explicit RowCheckHeader(QWidget *parent = nullptr)
-        : QHeaderView(Qt::Vertical, parent)
+    explicit RowCheckHeader(QWidget *parent = nullptr) : QHeaderView(Qt::Vertical, parent)
     {
         setSectionsClickable(true);
         setSectionResizeMode(QHeaderView::Fixed);
@@ -315,10 +341,12 @@ public:
         emit checkedChanged();
     }
 
-    void setRowChecked(int row, bool on)          /* selftest helper */
+    void setRowChecked(int row, bool on) /* selftest helper */
     {
-        if(on) m_checked.insert(row);
-        else   m_checked.remove(row);
+        if(on)
+            m_checked.insert(row);
+        else
+            m_checked.remove(row);
         viewport()->update();
         emit checkedChanged();
     }
@@ -340,8 +368,7 @@ public:
         m_corner = b;
         b->setText(QString());
         b->installEventFilter(this);
-        connect(this, &RowCheckHeader::checkedChanged,
-                b, qOverload<>(&QWidget::update));
+        connect(this, &RowCheckHeader::checkedChanged, b, qOverload<>(&QWidget::update));
     }
 
 signals:
@@ -352,38 +379,37 @@ protected:
     {
         if(o == m_corner) {
             switch(e->type()) {
-            case QEvent::Paint: {
-                QPainter p(m_corner);
-                const QRect br = m_corner->rect();
-                /* same themed grey as the header sections, + hairline right/bottom */
-                QStyleOptionHeader ho;
-                ho.initFrom(m_corner);
-                ho.rect = br;
-                ho.position = QStyleOptionHeader::OnlyOneSection;
-                m_corner->style()->drawControl(QStyle::CE_Header, &ho, &p, m_corner);
-                p.setPen(m_corner->palette().color(QPalette::Mid));
-                p.drawLine(br.topRight(), br.bottomRight());
-                p.drawLine(br.bottomLeft(), br.bottomRight());
+                case QEvent::Paint: {
+                    QPainter p(m_corner);
+                    const QRect br = m_corner->rect();
+                    /* same themed grey as the header sections, + hairline right/bottom */
+                    QStyleOptionHeader ho;
+                    ho.initFrom(m_corner);
+                    ho.rect = br;
+                    ho.position = QStyleOptionHeader::OnlyOneSection;
+                    m_corner->style()->drawControl(QStyle::CE_Header, &ho, &p, m_corner);
+                    p.setPen(m_corner->palette().color(QPalette::Mid));
+                    p.drawLine(br.topRight(), br.bottomRight());
+                    p.drawLine(br.bottomLeft(), br.bottomRight());
 
-                const int sz = 14;
-                QStyleOptionButton co;
-                co.state = QStyle::State_Enabled
-                         | (allState() == Qt::Checked ? QStyle::State_On
-                                                      : QStyle::State_Off);
-                co.rect = QRect(br.center().x() - sz / 2 + 1,
-                                br.center().y() - sz / 2 + 1, sz, sz);
-                m_corner->style()->drawPrimitive(QStyle::PE_IndicatorCheckBox,
-                                                 &co, &p, m_corner);
-                return true;                 /* swallow the default corner paint */
-            }
-            case QEvent::MouseButtonRelease:
-                setAllChecked(allState() != Qt::Checked);   /* all → none, else all */
-                return true;                 /* swallow "select all cells" */
-            case QEvent::MouseButtonPress:
-            case QEvent::MouseButtonDblClick:
-                return true;
-            default:
-                break;
+                    const int sz = 14;
+                    QStyleOptionButton co;
+                    co.state = QStyle::State_Enabled |
+                               (allState() == Qt::Checked ? QStyle::State_On : QStyle::State_Off);
+                    co.rect =
+                        QRect(br.center().x() - sz / 2 + 1, br.center().y() - sz / 2 + 1, sz, sz);
+                    m_corner->style()->drawPrimitive(QStyle::PE_IndicatorCheckBox, &co, &p,
+                                                     m_corner);
+                    return true; /* swallow the default corner paint */
+                }
+                case QEvent::MouseButtonRelease:
+                    setAllChecked(allState() != Qt::Checked); /* all → none, else all */
+                    return true;                              /* swallow "select all cells" */
+                case QEvent::MouseButtonPress:
+                case QEvent::MouseButtonDblClick:
+                    return true;
+                default:
+                    break;
             }
         }
         return QHeaderView::eventFilter(o, e);
@@ -408,9 +434,8 @@ protected:
         QStyleOptionButton co;
         co.initFrom(this);
         co.rect = checkboxRect(rect);
-        co.state = QStyle::State_Enabled
-                 | (m_checked.contains(logical) ? QStyle::State_On
-                                                : QStyle::State_Off);
+        co.state = QStyle::State_Enabled |
+                   (m_checked.contains(logical) ? QStyle::State_On : QStyle::State_Off);
         style()->drawPrimitive(QStyle::PE_IndicatorCheckBox, &co, p, this);
 
         /* subtle rule down the right edge, to set the column off from the grid */
@@ -431,7 +456,7 @@ protected:
                     m_checked.insert(logical);
                 viewport()->update();
                 emit checkedChanged();
-                return;                        /* don't start a row selection */
+                return; /* don't start a row selection */
             }
         }
         QHeaderView::mousePressEvent(e);
@@ -444,23 +469,23 @@ private:
         return QRect(sec.center().x() - sz / 2, sec.center().y() - sz / 2, sz, sz);
     }
 
-    QSet<int>        m_checked;
+    QSet<int> m_checked;
     QAbstractButton *m_corner = nullptr;
 };
 
 /* ---------------- the view ---------------- */
 
-TableDataView::TableDataView(QWidget *parent)
-    : QWidget(parent)
+TableDataView::TableDataView(QWidget *parent) : QWidget(parent)
 {
-    m_label = new QLabel(
-        QStringLiteral("Double-click a table in the Object Browser to open it."),
-        this);
-    m_label->setStyleSheet(QStringLiteral(
-        "color: palette(mid); padding: 3px 6px;"));
+    m_label =
+        new QLabel(QStringLiteral("Double-click a table in the Object Browser to open it."), this);
+    m_label->setStyleSheet(QStringLiteral("color: palette(mid); padding: 3px 6px;"));
     m_label->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
-    { QFont f = m_label->font(); f.setPointSizeF(f.pointSizeF() - 0.5);
-      m_label->setFont(f); }
+    {
+        QFont f = m_label->font();
+        f.setPointSizeF(f.pointSizeF() - 0.5);
+        m_label->setFont(f);
+    }
 
     /* Apply / Revert bar — hidden until there are staged edits */
     m_applyBar = new QWidget(this);
@@ -474,25 +499,23 @@ TableDataView::TableDataView(QWidget *parent)
     barL->addWidget(m_pendingLabel);
     barL->addStretch(1);
     m_applyBar->hide();
-    connect(m_applyBtn, &QPushButton::clicked, this,
-            &TableDataView::applyPendingEdits);
-    connect(m_revertBtn, &QPushButton::clicked, this,
-            &TableDataView::revertPendingEdits);
+    connect(m_applyBtn, &QPushButton::clicked, this, &TableDataView::applyPendingEdits);
+    connect(m_revertBtn, &QPushButton::clicked, this, &TableDataView::revertPendingEdits);
 
     /* ---- toolbar strip, laid out like SQLyog's "2 Table Data" pane ------
      * SQLyog's strip is near-frameless: flat 22 px buttons packed tight on
      * the plain window ground, one hairline rule under it. */
     auto *tools = new QWidget(this);
     tools->setObjectName(QStringLiteral("tdvTools"));
-    tools->setStyleSheet(QStringLiteral(
-        "#tdvTools QToolButton { border: none; padding: 2px; border-radius: 3px; }"
-        "#tdvTools QToolButton:hover { background: palette(midlight); }"
-        "#tdvTools QToolButton:pressed,"
-        "#tdvTools QToolButton:checked { background: palette(highlight); }"
-        /* the container QSS otherwise renders the plain line edit shorter than
-         * the native spin boxes beside it — give it a matching box */
-        "#tdvTools QLineEdit { border: 1px solid palette(mid); border-radius: 3px; "
-        "padding: 3px 22px 3px 6px; background: palette(base); }"));
+    tools->setStyleSheet(
+        QStringLiteral("#tdvTools QToolButton { border: none; padding: 2px; border-radius: 3px; }"
+                       "#tdvTools QToolButton:hover { background: palette(midlight); }"
+                       "#tdvTools QToolButton:pressed,"
+                       "#tdvTools QToolButton:checked { background: palette(highlight); }"
+                       /* the container QSS otherwise renders the plain line edit shorter than
+                        * the native spin boxes beside it — give it a matching box */
+                       "#tdvTools QLineEdit { border: 1px solid palette(mid); border-radius: 3px; "
+                       "padding: 3px 22px 3px 6px; background: palette(base); }"));
 
     /* helpers: authentic SQLyog bitmap (include/bitmaps) with a QStyle fallback,
      * and a flat tool button */
@@ -513,8 +536,7 @@ TableDataView::TableDataView(QWidget *parent)
      * command2[]):
      *   [export] [copy ▾] │ [insert] [duplicate] [save] [delete] [revert]
      *                     │ [grid] [form] [text]                            */
-    auto *btnExport = mkTool(ico(QStringLiteral("export_data.ico"),
-                                 QStyle::SP_DialogSaveButton),
+    auto *btnExport = mkTool(ico(QStringLiteral("export_data.ico"), QStyle::SP_DialogSaveButton),
                              QStringLiteral("Export table data…  (CSV / TSV / "
                                             "HTML / JSON / XML / SQL / Excel)"));
     connect(btnExport, &QToolButton::clicked, this, [this] { exportRows(); });
@@ -526,42 +548,35 @@ TableDataView::TableDataView(QWidget *parent)
     btnCopy->setPopupMode(QToolButton::InstantPopup);
     {
         auto *m = new QMenu(btnCopy);
-        m->addAction(QStringLiteral("Copy rows (tab-separated)"),
-                     this, [this] { copyRows(false); });
-        m->addAction(QStringLiteral("Copy rows with column names"),
-                     this, [this] { copyRows(true); });
+        m->addAction(QStringLiteral("Copy rows (tab-separated)"), this,
+                     [this] { copyRows(false); });
+        m->addAction(QStringLiteral("Copy rows with column names"), this,
+                     [this] { copyRows(true); });
         btnCopy->setMenu(m);
     }
 
     /* insert is a plain button upstream (TBSTYLE_BUTTON); "insert with values"
      * lives in the right-click menu, like SQLyog */
-    auto *btnAdd = mkTool(ico(QStringLiteral("result_insert.ico"),
-                              QStyle::SP_FileDialogNewFolder),
+    auto *btnAdd = mkTool(ico(QStringLiteral("result_insert.ico"), QStyle::SP_FileDialogNewFolder),
                           QStringLiteral("Insert row"));
     connect(btnAdd, &QToolButton::clicked, this, &TableDataView::addRow);
 
-    auto *btnDup = mkTool(ico(QStringLiteral("duplicaterow.ico"),
-                              QStyle::SP_FileDialogDetailedView),
-                          QStringLiteral("Duplicate current row"));
+    auto *btnDup =
+        mkTool(ico(QStringLiteral("duplicaterow.ico"), QStyle::SP_FileDialogDetailedView),
+               QStringLiteral("Duplicate current row"));
     connect(btnDup, &QToolButton::clicked, this, &TableDataView::duplicateRow);
 
-    m_tbApply = mkTool(ico(QStringLiteral("result_save.ico"),
-                           QStyle::SP_DialogSaveButton),
+    m_tbApply = mkTool(ico(QStringLiteral("result_save.ico"), QStyle::SP_DialogSaveButton),
                        QStringLiteral("Save staged changes (Apply)"));
-    connect(m_tbApply, &QToolButton::clicked, this,
-            &TableDataView::applyPendingEdits);
+    connect(m_tbApply, &QToolButton::clicked, this, &TableDataView::applyPendingEdits);
 
-    m_tbDelRow = mkTool(ico(QStringLiteral("result_delete.ico"),
-                            QStyle::SP_TrashIcon),
+    m_tbDelRow = mkTool(ico(QStringLiteral("result_delete.ico"), QStyle::SP_TrashIcon),
                         QStringLiteral("Mark current row for deletion"));
-    connect(m_tbDelRow, &QToolButton::clicked, this,
-            &TableDataView::deleteSelectedRow);
+    connect(m_tbDelRow, &QToolButton::clicked, this, &TableDataView::deleteSelectedRow);
 
-    m_tbRevert = mkTool(ico(QStringLiteral("result_cancel.ico"),
-                            QStyle::SP_DialogResetButton),
+    m_tbRevert = mkTool(ico(QStringLiteral("result_cancel.ico"), QStyle::SP_DialogResetButton),
                         QStringLiteral("Discard staged changes (Revert)"));
-    connect(m_tbRevert, &QToolButton::clicked, this,
-            &TableDataView::revertPendingEdits);
+    connect(m_tbRevert, &QToolButton::clicked, this, &TableDataView::revertPendingEdits);
 
     m_tbApply->setEnabled(false);
     m_tbRevert->setEnabled(false);
@@ -571,21 +586,18 @@ TableDataView::TableDataView(QWidget *parent)
      * disabled (Community merely pops the upgrade dialog on it). */
     auto *viewGrp = new QButtonGroup(this);
     viewGrp->setExclusive(true);
-    const auto mkView = [&](const QString &file, QStyle::StandardPixmap fb,
-                            const QString &tip, int mode) {
+    const auto mkView = [&](const QString &file, QStyle::StandardPixmap fb, const QString &tip,
+                            int mode) {
         QToolButton *b = mkTool(ico(file, fb), tip);
         b->setCheckable(true);
         viewGrp->addButton(b, mode);
         return b;
     };
-    m_tbGrid = mkView(QStringLiteral("grid_view.ico"),
-                      QStyle::SP_FileDialogListView,
+    m_tbGrid = mkView(QStringLiteral("grid_view.ico"), QStyle::SP_FileDialogListView,
                       QStringLiteral("Grid view"), 0);
-    m_tbForm = mkView(QStringLiteral("form_view.ico"),
-                      QStyle::SP_FileDialogInfoView,
+    m_tbForm = mkView(QStringLiteral("form_view.ico"), QStyle::SP_FileDialogInfoView,
                       QStringLiteral("Form view — a SQLyog Ultimate feature"), 1);
-    m_tbText = mkView(QStringLiteral("text_View.ico"),
-                      QStyle::SP_FileDialogContentsView,
+    m_tbText = mkView(QStringLiteral("text_View.ico"), QStyle::SP_FileDialogContentsView,
                       QStringLiteral("Text view — column-aligned dump"), 2);
     m_tbGrid->setChecked(true);
     m_tbForm->setEnabled(false);
@@ -600,8 +612,7 @@ TableDataView::TableDataView(QWidget *parent)
             fn = QIcon::fromTheme(QStringLiteral("view-filter"));
         if(!fn.isNull()) {
             btnFilter = mkTool(fn, QStringLiteral("Custom Filter…"));
-            connect(btnFilter, &QToolButton::clicked, this,
-                    &TableDataView::openCustomFilter);
+            connect(btnFilter, &QToolButton::clicked, this, &TableDataView::openCustomFilter);
         }
     }
     /* upstream's own toolbar layout is {…, ID_RESETFILTER, IDC_REFRESH} —
@@ -613,8 +624,7 @@ TableDataView::TableDataView(QWidget *parent)
                               QStringLiteral("Reset Filter"));
     connect(m_btnResetFilter, &QToolButton::clicked, this, &TableDataView::resetFilter);
 
-    auto *btnRefresh = mkTool(ico(QStringLiteral("refresh.ico"),
-                                  QStyle::SP_BrowserReload),
+    auto *btnRefresh = mkTool(ico(QStringLiteral("refresh.ico"), QStyle::SP_BrowserReload),
                               QStringLiteral("Refresh data"));
     connect(btnRefresh, &QToolButton::clicked, this, &TableDataView::refresh);
 
@@ -631,8 +641,7 @@ TableDataView::TableDataView(QWidget *parent)
     /* SQLyog right group: [x] Limit rows   First row [0] ▶   # of rows [1000] */
     m_limitChk = new QCheckBox(QStringLiteral("Limit rows"), tools);
     m_limitChk->setChecked(true);
-    m_limitChk->setToolTip(
-        QStringLiteral("Off: fetch every matching row (may be slow)"));
+    m_limitChk->setToolTip(QStringLiteral("Off: fetch every matching row (may be slow)"));
 
     m_firstRow = new QSpinBox(tools);
     m_firstRow->setRange(0, 2000000000);
@@ -644,8 +653,7 @@ TableDataView::TableDataView(QWidget *parent)
      * (e.g. bn_BD's ০১২…) while every other number in the UI stays
      * Latin — same fix as ConnectionDialog's/Copy Table's port fields */
     m_firstRow->setLocale(QLocale::c());
-    m_firstRow->setToolTip(
-        QStringLiteral("First row — 0-based OFFSET; press Enter to apply"));
+    m_firstRow->setToolTip(QStringLiteral("First row — 0-based OFFSET; press Enter to apply"));
     connect(m_firstRow, &QSpinBox::editingFinished, this, [this] {
         if(m_valid && discardStagedEdits(QStringLiteral("Re-query")))
             reload();
@@ -724,7 +732,7 @@ TableDataView::TableDataView(QWidget *parent)
     m_tools = tools;
 
     m_model = new TableDataModel(this);
-    m_grid  = new QTableView(this);
+    m_grid = new QTableView(this);
     m_grid->setModel(m_model);
     m_grid->horizontalHeader()->setStretchLastSection(true);
     m_grid->setAlternatingRowColors(true);
@@ -741,7 +749,7 @@ TableDataView::TableDataView(QWidget *parent)
     m_grid->setVerticalHeader(m_checkHeader);
     m_grid->setCornerButtonEnabled(true);
     if(auto *corner = m_grid->findChild<QAbstractButton *>())
-        m_checkHeader->attachCornerButton(corner);   /* select-all checkbox */
+        m_checkHeader->attachCornerButton(corner); /* select-all checkbox */
     connect(m_checkHeader, &RowCheckHeader::checkedChanged, this, [this] {
         const int n = m_checkHeader->checkedRows().size();
         emit statusMessage(n ? QStringLiteral("%1 row(s) checked").arg(n)
@@ -755,30 +763,27 @@ TableDataView::TableDataView(QWidget *parent)
     m_textView->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
 
     m_viewStack = new QStackedWidget(this);
-    m_viewStack->addWidget(m_grid);       /* index 0 — grid */
-    m_viewStack->addWidget(m_textView);   /* index 1 — text */
+    m_viewStack->addWidget(m_grid);     /* index 0 — grid */
+    m_viewStack->addWidget(m_textView); /* index 1 — text */
 
     auto *layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
-    layout->setSpacing(0);        /* bars sit flush against the grid, no gap band */
+    layout->setSpacing(0); /* bars sit flush against the grid, no gap band */
     layout->addWidget(m_tools);
     layout->addWidget(m_applyBar);
     layout->addWidget(m_viewStack, 1);
-    layout->addWidget(m_label);   /* row-count caption sits under the grid, SQLyog-style */
+    layout->addWidget(m_label); /* row-count caption sits under the grid, SQLyog-style */
 
-    connect(m_model, &TableDataModel::pendingChanged, this,
-            &TableDataView::updateApplyBar);
-    connect(m_grid, &QTableView::customContextMenuRequested, this,
-            [this](const QPoint &pos) {
+    connect(m_model, &TableDataModel::pendingChanged, this, &TableDataView::updateApplyBar);
+    connect(m_grid, &QTableView::customContextMenuRequested, this, [this](const QPoint &pos) {
         if(!m_valid || !m_grid->indexAt(pos).isValid())
             return;
         const int ops = m_model->pendingOps();
         const int row = m_grid->currentIndex().row();
-        const bool del = row >= 0
-            && m_model->rowState(row) == TableDataModel::Deleted;
+        const bool del = row >= 0 && m_model->rowState(row) == TableDataModel::Deleted;
         QMenu menu(this);
-        QAction *setNull = menu.addAction(QStringLiteral("Set Cell Value to &NULL"),
-                                          this, &TableDataView::setCellNull);
+        QAction *setNull = menu.addAction(QStringLiteral("Set Cell Value to &NULL"), this,
+                                          &TableDataView::setCellNull);
         setNull->setEnabled(m_grid->currentIndex().isValid() && !del);
         menu.addSeparator();
         QAction *apply = menu.addAction(QStringLiteral("A&pply Changes"), this,
@@ -787,15 +792,13 @@ TableDataView::TableDataView(QWidget *parent)
                                          &TableDataView::revertPendingEdits);
         apply->setEnabled(ops > 0);
         revert->setEnabled(ops > 0);
-        QAction *bigEdit = menu.addAction(
-            QStringLiteral("&Edit Cell in Text Editor…"), this,
-            &TableDataView::editCellInTextEditor);
+        QAction *bigEdit = menu.addAction(QStringLiteral("&Edit Cell in Text Editor…"), this,
+                                          &TableDataView::editCellInTextEditor);
         bigEdit->setEnabled(m_grid->currentIndex().isValid() && !del);
         menu.addSeparator();
         const int nchecked = checkedRows().size();
         menu.addAction(nchecked > 0
-                           ? QStringLiteral("Mark %1 Checked Row(s) for &Deletion")
-                                 .arg(nchecked)
+                           ? QStringLiteral("Mark %1 Checked Row(s) for &Deletion").arg(nchecked)
                            : (del ? QStringLiteral("&Undelete Row")
                                   : QStringLiteral("Mark Row for &Deletion")),
                        this, &TableDataView::deleteSelectedRow);
@@ -803,8 +806,7 @@ TableDataView::TableDataView(QWidget *parent)
         menu.addAction(QStringLiteral("Add Row (with &values…)"), this,
                        &TableDataView::insertRowWithValues);
         menu.addSeparator();
-        menu.addAction(QStringLiteral("&Check All Rows"), this,
-                       [this] { checkAllRows(true); });
+        menu.addAction(QStringLiteral("&Check All Rows"), this, [this] { checkAllRows(true); });
         QAction *uncheck = menu.addAction(QStringLiteral("&Uncheck All Rows"), this,
                                           [this] { checkAllRows(false); });
         uncheck->setEnabled(nchecked > 0);
@@ -823,7 +825,10 @@ void TableDataView::load(IDbConnection *conn, const QString &db, const QString &
      * ("Limit rows" and "# of rows" stay as the user left them, like SQLyog) */
     m_where.clear();
     m_filterRows.clear();
-    if(m_filterLabel) { m_filterLabel->clear(); m_filterLabel->setToolTip(QString()); }
+    if(m_filterLabel) {
+        m_filterLabel->clear();
+        m_filterLabel->setToolTip(QString());
+    }
     m_orderBy.clear();
     m_sortColumn = -1;
     m_sortDesc = false;
@@ -842,8 +847,9 @@ bool TableDataView::discardStagedEdits(const QString &action)
     if(m_model->pendingOps() == 0)
         return true;
     if(QMessageBox::question(this, QStringLiteral("Staged edits"),
-           QStringLiteral("There are unsaved staged edits. %1 anyway and "
-                          "discard them?").arg(action)) != QMessageBox::Yes)
+                             QStringLiteral("There are unsaved staged edits. %1 anyway and "
+                                            "discard them?")
+                                 .arg(action)) != QMessageBox::Yes)
         return false;
     m_model->revertAll();
     return true;
@@ -885,15 +891,13 @@ void TableDataView::resetFilter()
 void TableDataView::applyFilterWhere(const QString &where)
 {
     m_where = where;
-    const QString full = m_where.isEmpty() ? QString()
-                                           : QStringLiteral("WHERE %1").arg(m_where);
-    m_filterLabel->setText(
-        m_filterLabel->fontMetrics().elidedText(full, Qt::ElideRight,
-                                                m_filterLabel->maximumWidth()));
+    const QString full = m_where.isEmpty() ? QString() : QStringLiteral("WHERE %1").arg(m_where);
+    m_filterLabel->setText(m_filterLabel->fontMetrics().elidedText(full, Qt::ElideRight,
+                                                                   m_filterLabel->maximumWidth()));
     m_filterLabel->setToolTip(full);
     if(m_firstRow) {
         m_firstRow->blockSignals(true);
-        m_firstRow->setValue(0);          /* new filter → back to the top */
+        m_firstRow->setValue(0); /* new filter → back to the top */
         m_firstRow->blockSignals(false);
     }
     reload();
@@ -908,11 +912,11 @@ void TableDataView::sortByColumn(int section)
         return;
     m_sortDesc = (section == m_sortColumn) ? !m_sortDesc : false;
     m_sortColumn = section;
-    m_orderBy = QStringLiteral("%1 %2")
-        .arg(m_conn ? m_conn->quoteIdent(m_columns[section]) : m_columns[section],
-             m_sortDesc ? QStringLiteral("DESC") : QStringLiteral("ASC"));
-    m_grid->horizontalHeader()->setSortIndicator(
-        section, m_sortDesc ? Qt::DescendingOrder : Qt::AscendingOrder);
+    m_orderBy = QStringLiteral("%1 %2").arg(
+        m_conn ? m_conn->quoteIdent(m_columns[section]) : m_columns[section],
+        m_sortDesc ? QStringLiteral("DESC") : QStringLiteral("ASC"));
+    m_grid->horizontalHeader()->setSortIndicator(section, m_sortDesc ? Qt::DescendingOrder
+                                                                     : Qt::AscendingOrder);
     if(m_firstRow) {
         m_firstRow->blockSignals(true);
         m_firstRow->setValue(0);
@@ -923,15 +927,14 @@ void TableDataView::sortByColumn(int section)
 
 void TableDataView::pageStep(int delta)
 {
-    if(!m_valid || !m_firstRow
-       || !discardStagedEdits(QStringLiteral("Re-query")))
+    if(!m_valid || !m_firstRow || !discardStagedEdits(QStringLiteral("Re-query")))
         return;
     const long long rc = m_rowCount ? m_rowCount->value() : 1000;
     long long want = (long long)m_firstRow->value() + (long long)delta * rc;
     if(want < 0)
         want = 0;
     if(delta > 0 && m_totalRows > 0 && want >= m_totalRows)
-        return;                           /* already showing the last window */
+        return; /* already showing the last window */
     m_firstRow->blockSignals(true);
     m_firstRow->setValue(int(qMin<long long>(want, m_firstRow->maximum())));
     m_firstRow->blockSignals(false);
@@ -947,16 +950,16 @@ void TableDataView::editCell(int row, int col, const QString &value)
 
 void TableDataView::stageCellOnly(int row, int col, const QString &value)
 {
-    m_model->stage(row, col, value);   /* selftest: leave it pending */
+    m_model->stage(row, col, value); /* selftest: leave it pending */
 }
 
 void TableDataView::clear()
 {
     m_valid = false;
     m_model->setGrid({}, {});
-    if(m_checkHeader) m_checkHeader->clearChecks();
-    m_label->setText(
-        QStringLiteral("Double-click a table in the Object Browser to open it."));
+    if(m_checkHeader)
+        m_checkHeader->clearChecks();
+    m_label->setText(QStringLiteral("Double-click a table in the Object Browser to open it."));
 }
 
 void TableDataView::updateApplyBar()
@@ -968,12 +971,17 @@ void TableDataView::updateApplyBar()
     m_applyBar->setVisible(ops > 0);
     m_applyBtn->setEnabled(ops > 0);
     m_revertBtn->setEnabled(ops > 0);
-    if(m_tbApply)  m_tbApply->setEnabled(ops > 0);
-    if(m_tbRevert) m_tbRevert->setEnabled(ops > 0);
+    if(m_tbApply)
+        m_tbApply->setEnabled(ops > 0);
+    if(m_tbRevert)
+        m_tbRevert->setEnabled(ops > 0);
     QStringList parts;
-    if(edits) parts << QStringLiteral("%1 edited row(s)").arg(edits);
-    if(ins)   parts << QStringLiteral("%1 new").arg(ins);
-    if(del)   parts << QStringLiteral("%1 to delete").arg(del);
+    if(edits)
+        parts << QStringLiteral("%1 edited row(s)").arg(edits);
+    if(ins)
+        parts << QStringLiteral("%1 new").arg(ins);
+    if(del)
+        parts << QStringLiteral("%1 to delete").arg(del);
     m_pendingLabel->setText(parts.join(QStringLiteral(", ")));
 }
 
@@ -981,7 +989,7 @@ void TableDataView::updateApplyBar()
 
 void TableDataView::setViewMode(int mode)
 {
-    if(mode == 1)                       /* Form — Ultimate only; ignore */
+    if(mode == 1) /* Form — Ultimate only; ignore */
         return;
     m_viewMode = mode;
     if(mode == 2) {
@@ -990,8 +998,10 @@ void TableDataView::setViewMode(int mode)
     } else {
         m_viewStack->setCurrentWidget(m_grid);
     }
-    if(m_tbGrid) m_tbGrid->setChecked(mode == 0);
-    if(m_tbText) m_tbText->setChecked(mode == 2);
+    if(m_tbGrid)
+        m_tbGrid->setChecked(mode == 0);
+    if(m_tbText)
+        m_tbText->setChecked(mode == 2);
 }
 
 void TableDataView::refreshTextViewIfShown()
@@ -1092,8 +1102,8 @@ void TableDataView::copyRows(bool withHeader)
     /* checkbox column wins; then the QTableView selection; then every row */
     QList<int> rows = checkedRows();
     if(rows.isEmpty()) {
-        const auto sel = m_grid->selectionModel()
-                         ? m_grid->selectionModel()->selectedRows() : QModelIndexList();
+        const auto sel =
+            m_grid->selectionModel() ? m_grid->selectionModel()->selectedRows() : QModelIndexList();
         for(const QModelIndex &idx : sel)
             rows << idx.row();
     }
@@ -1112,8 +1122,7 @@ void TableDataView::copyRows(bool withHeader)
         lines << vals.join(QLatin1Char('\t'));
     }
     QApplication::clipboard()->setText(lines.join(QLatin1Char('\n')));
-    emit statusMessage(QStringLiteral("Copied %1 row(s) to the clipboard")
-                           .arg(rows.size()));
+    emit statusMessage(QStringLiteral("Copied %1 row(s) to the clipboard").arg(rows.size()));
 }
 
 /* dump every loaded row to a CSV file (SQLyog's IDM_IMEX_EXPORTDATA, minus
@@ -1125,8 +1134,8 @@ void TableDataView::exportRows()
     const QStringList cols = m_model->columns();
     const QList<int> checked = checkedRows();
 
-    ExportDialog dlg(m_table.isEmpty() ? QStringLiteral("table_data") : m_table,
-                     m_table, m_model->rowCount(), !checked.isEmpty(), this);
+    ExportDialog dlg(m_table.isEmpty() ? QStringLiteral("table_data") : m_table, m_table,
+                     m_model->rowCount(), !checked.isEmpty(), this);
     if(dlg.exec() != QDialog::Accepted || dlg.path().isEmpty())
         return;
 
@@ -1142,12 +1151,13 @@ void TableDataView::exportRows()
      * already tells us which dialect it is, without adding new API surface
      * just for this */
     opt.driver = m_conn && m_conn->quoteIdent(QStringLiteral("x")).startsWith(QLatin1Char('"'))
-        ? DriverType::Postgres : DriverType::Mysql;
+                     ? DriverType::Postgres
+                     : DriverType::Mysql;
     QString err;
-    if(ResultExport::write(dlg.path(), dlg.format(), cols, cell,
-                           rows.size(), cols.size(), opt, &err))
-        emit statusMessage(QStringLiteral("Exported %1 row(s) → %2")
-                               .arg(rows.size()).arg(dlg.path()));
+    if(ResultExport::write(dlg.path(), dlg.format(), cols, cell, rows.size(), cols.size(), opt,
+                           &err))
+        emit statusMessage(
+            QStringLiteral("Exported %1 row(s) → %2").arg(rows.size()).arg(dlg.path()));
     else
         emit statusMessage(QStringLiteral("Export failed: ") + err);
 }
@@ -1160,8 +1170,7 @@ void TableDataView::reload()
     if(m_conn) {
         const DbResultSet keys = m_conn->listIndexes(m_db, m_table);
         for(const QStringList &row : keys.rows) {
-            if(row.value(1) == QStringLiteral("0")
-               && row.value(2) == QStringLiteral("PRIMARY"))
+            if(row.value(1) == QStringLiteral("0") && row.value(2) == QStringLiteral("PRIMARY"))
                 pkeys << row.value(4);
         }
     }
@@ -1174,13 +1183,12 @@ void TableDataView::reload()
         ColumnInfo ci;
         ci.name = m_columns.last();
         ci.nullable = row.value(2) != QStringLiteral("NO");
-        ci.autoInc  = row.value(5).contains(QStringLiteral("auto_increment"));
+        ci.autoInc = row.value(5).contains(QStringLiteral("auto_increment"));
         m_colInfo << ci;
     }
     if(m_columns.isEmpty()) {
         clear();
-        emit statusMessage(QStringLiteral("cannot read columns of %1.%2")
-                               .arg(m_db, m_table));
+        emit statusMessage(QStringLiteral("cannot read columns of %1.%2").arg(m_db, m_table));
         return;
     }
 
@@ -1188,26 +1196,24 @@ void TableDataView::reload()
     for(int i = 0; i < m_columns.size(); ++i)
         if(pkeys.contains(m_columns[i]))
             m_pkColumns << i;
-    m_hasPrimary = !m_pkColumns.isEmpty();   /* upstream: PK only, else all-cols */
+    m_hasPrimary = !m_pkColumns.isEmpty(); /* upstream: PK only, else all-cols */
 
-    const QString qualified = m_conn
-        ? m_conn->qualify(m_db, m_table)
-        : QStringLiteral("`%1`.`%2`").arg(m_db, m_table);
-    const QString whereSql = m_where.isEmpty()
-        ? QString() : QStringLiteral(" WHERE ") + m_where;
+    const QString qualified =
+        m_conn ? m_conn->qualify(m_db, m_table) : QStringLiteral("`%1`.`%2`").arg(m_db, m_table);
+    const QString whereSql = m_where.isEmpty() ? QString() : QStringLiteral(" WHERE ") + m_where;
 
     /* total matching rows, for the pager */
     m_totalRows = 0;
     {
         DbResultSet cnt;
         QString error;
-        if(m_conn && m_conn->query(QStringLiteral("SELECT COUNT(*) FROM ")
-                                        + qualified + whereSql, &cnt, &error)) {
+        if(m_conn && m_conn->query(QStringLiteral("SELECT COUNT(*) FROM ") + qualified + whereSql,
+                                   &cnt, &error)) {
             if(!cnt.rows.isEmpty())
                 m_totalRows = cnt.rows.first().value(0).toLongLong();
         } else if(!m_where.isEmpty()) {
             emit statusMessage(QStringLiteral("filter rejected: %1").arg(error));
-            return;                                  /* keep the current grid */
+            return; /* keep the current grid */
         }
     }
 
@@ -1244,13 +1250,13 @@ void TableDataView::reload()
         rows = rs.rows;
     }
     m_model->setGrid(header, rows);
-    if(m_checkHeader) m_checkHeader->clearChecks();
+    if(m_checkHeader)
+        m_checkHeader->clearChecks();
     m_valid = true;
 
     /* keep the header's sort arrow in sync after the model reset */
-    m_grid->horizontalHeader()->setSortIndicator(
-        m_sortColumn,
-        m_sortDesc ? Qt::DescendingOrder : Qt::AscendingOrder);
+    m_grid->horizontalHeader()->setSortIndicator(m_sortColumn, m_sortDesc ? Qt::DescendingOrder
+                                                                          : Qt::AscendingOrder);
 
     const long long from = rows.isEmpty() ? 0 : offset + 1;
     const long long to = offset + rows.size();
@@ -1258,14 +1264,17 @@ void TableDataView::reload()
         m_nextBtn->setEnabled(limited && to < m_totalRows);
 
     m_label->setText(QStringLiteral("%1.%2  —  rows %3–%4 of %5%6%7")
-        .arg(m_db, m_table).arg(from).arg(to).arg(m_totalRows)
-        .arg(m_where.isEmpty() ? QString()
-                               : QStringLiteral("   [filtered]"))
-        .arg(m_hasPrimary ? QString()
-                          : QStringLiteral("   ⚠ no primary key")));
-    emit statusMessage(
-        QStringLiteral("%1.%2 — rows %3–%4 of %5")
-            .arg(m_db, m_table).arg(from).arg(to).arg(m_totalRows));
+                         .arg(m_db, m_table)
+                         .arg(from)
+                         .arg(to)
+                         .arg(m_totalRows)
+                         .arg(m_where.isEmpty() ? QString() : QStringLiteral("   [filtered]"))
+                         .arg(m_hasPrimary ? QString() : QStringLiteral("   ⚠ no primary key")));
+    emit statusMessage(QStringLiteral("%1.%2 — rows %3–%4 of %5")
+                           .arg(m_db, m_table)
+                           .arg(from)
+                           .arg(to)
+                           .arg(m_totalRows));
 
     refreshTextViewIfShown();
 }
@@ -1276,9 +1285,7 @@ QString TableDataView::quoteValue(const QString &v) const
         return QStringLiteral("NULL");
     if(!m_conn)
         return QLatin1Char('\'') + v + QLatin1Char('\'');
-    return QLatin1Char('\'')
-         + QString::fromUtf8(m_conn->escape(v.toUtf8()))
-         + QLatin1Char('\'');
+    return QLatin1Char('\'') + QString::fromUtf8(m_conn->escape(v.toUtf8())) + QLatin1Char('\'');
 }
 
 QString TableDataView::whereFromOrigRow(int row) const
@@ -1316,15 +1323,11 @@ void TableDataView::applyPendingEdits()
     QString lastError;
     const auto fail = [&](const QString &what) {
         m_conn->query(QStringLiteral("ROLLBACK"), nullptr, nullptr);
-        emit statusMessage(QStringLiteral("Apply failed on %1 (rolled back): %2")
-                               .arg(what, lastError));
+        emit statusMessage(
+            QStringLiteral("Apply failed on %1 (rolled back): %2").arg(what, lastError));
     };
-    const auto exec = [&](const QString &sql) {
-        return m_conn->query(sql, nullptr, &lastError);
-    };
-    const auto qi = [&](const QString &ident) {
-        return m_conn->quoteIdent(ident);
-    };
+    const auto exec = [&](const QString &sql) { return m_conn->query(sql, nullptr, &lastError); };
+    const auto qi = [&](const QString &ident) { return m_conn->quoteIdent(ident); };
     const QString qualified = m_conn->qualify(m_db, m_table);
     const bool dmlLimit = m_conn->supportsLimitOnUpdateDelete();
 
@@ -1333,9 +1336,8 @@ void TableDataView::applyPendingEdits()
     /* 1. deletes (WHERE from the row's original values) */
     for(int r : deleted) {
         const QString q = QStringLiteral("DELETE FROM %1 WHERE %2%3")
-                               .arg(qualified, whereFromOrigRow(r),
-                                    dmlLimit ? QStringLiteral(" LIMIT 1")
-                                             : QString());
+                              .arg(qualified, whereFromOrigRow(r),
+                                   dmlLimit ? QStringLiteral(" LIMIT 1") : QString());
         if(!exec(q))
             return fail(QStringLiteral("DELETE"));
     }
@@ -1349,15 +1351,14 @@ void TableDataView::applyPendingEdits()
             if(v.isEmpty() && ex.isEmpty())
                 continue;
             names << qi(m_columns[c]);
-            vals  << (!ex.isEmpty()                ? ex
-                    : v == QStringLiteral("NULL")  ? QStringLiteral("NULL")
+            vals << (!ex.isEmpty()                 ? ex
+                     : v == QStringLiteral("NULL") ? QStringLiteral("NULL")
                                                    : quoteValue(v));
         }
-        const QString q = names.isEmpty()
-            ? m_conn->sqlInsertDefaults(m_db, m_table)
-            : QStringLiteral("INSERT INTO %1 (%2) VALUES (%3)")
-                  .arg(qualified, names.join(QStringLiteral(", ")),
-                       vals.join(QStringLiteral(", ")));
+        const QString q = names.isEmpty() ? m_conn->sqlInsertDefaults(m_db, m_table)
+                                          : QStringLiteral("INSERT INTO %1 (%2) VALUES (%3)")
+                                                .arg(qualified, names.join(QStringLiteral(", ")),
+                                                     vals.join(QStringLiteral(", ")));
         if(!exec(q))
             return fail(QStringLiteral("INSERT"));
     }
@@ -1370,29 +1371,27 @@ void TableDataView::applyPendingEdits()
                 continue;
             const QString v = m_model->cur(r, c);
             const QString ex = m_model->exprAt(r, c);
-            setParts << QStringLiteral("%1 = %2")
-                            .arg(qi(m_columns[c]),
-                                 !ex.isEmpty()                ? ex
-                               : v == QStringLiteral("NULL")  ? QStringLiteral("NULL")
-                                                              : quoteValue(v));
+            setParts << QStringLiteral("%1 = %2").arg(
+                qi(m_columns[c]), !ex.isEmpty()                 ? ex
+                                  : v == QStringLiteral("NULL") ? QStringLiteral("NULL")
+                                                                : quoteValue(v));
         }
         const QString where = whereFromOrigRow(r);
         if(setParts.isEmpty() || where.isEmpty())
             continue;
         const QString q = QStringLiteral("UPDATE %1 SET %2 WHERE %3%4")
-                               .arg(qualified, setParts.join(QStringLiteral(", ")),
-                                    where,
-                                    dmlLimit ? QStringLiteral(" LIMIT 1")
-                                             : QString());
+                              .arg(qualified, setParts.join(QStringLiteral(", ")), where,
+                                   dmlLimit ? QStringLiteral(" LIMIT 1") : QString());
         if(!exec(q))
             return fail(QStringLiteral("UPDATE"));
     }
 
     exec(QStringLiteral("COMMIT"));
-    emit statusMessage(QStringLiteral(
-        "Applied: %1 updated, %2 inserted, %3 deleted")
-        .arg(edited.size()).arg(inserted.size()).arg(deleted.size()));
-    reload();   /* refresh — picks up AUTO_INCREMENT / trigger effects */
+    emit statusMessage(QStringLiteral("Applied: %1 updated, %2 inserted, %3 deleted")
+                           .arg(edited.size())
+                           .arg(inserted.size())
+                           .arg(deleted.size()));
+    reload(); /* refresh — picks up AUTO_INCREMENT / trigger effects */
 }
 
 void TableDataView::revertPendingEdits()
@@ -1413,13 +1412,13 @@ void TableDataView::deleteSelectedRow()
         for(int r : chk)
             m_model->toggleDeleted(r);
         if(m_checkHeader)
-            m_checkHeader->clearChecks();   /* indices may have shifted */
+            m_checkHeader->clearChecks(); /* indices may have shifted */
         return;
     }
     const QModelIndex idx = m_grid->currentIndex();
     if(!idx.isValid())
         return;
-    m_model->toggleDeleted(idx.row());   /* staged — commit with Apply */
+    m_model->toggleDeleted(idx.row()); /* staged — commit with Apply */
 }
 
 void TableDataView::addRow()
@@ -1428,7 +1427,7 @@ void TableDataView::addRow()
         return;
     const int r = m_model->stageNewRow();
     m_grid->setCurrentIndex(m_model->index(r, 0));
-    m_grid->edit(m_model->index(r, 0));   /* jump straight into editing */
+    m_grid->edit(m_model->index(r, 0)); /* jump straight into editing */
 }
 
 /* SQLyog "duplicate row": stage a new row pre-filled from the current one
@@ -1447,8 +1446,7 @@ void TableDataView::duplicateRow()
     }
     m_grid->setCurrentIndex(m_model->index(r, 0));
     emit statusMessage(
-        QStringLiteral("Row %1 copied to a new staged row — Apply to insert")
-            .arg(src + 1));
+        QStringLiteral("Row %1 copied to a new staged row — Apply to insert").arg(src + 1));
 }
 
 void TableDataView::setCellNull()
@@ -1467,18 +1465,17 @@ QByteArray TableDataView::fetchCellBytes(int row, int col) const
     const QString where = whereFromOrigRow(row);
     if(where.isEmpty())
         return out;
-    const QString sql = QStringLiteral("SELECT %1 FROM %2 WHERE %3 LIMIT 1")
-                             .arg(m_conn->quoteIdent(m_columns[col]),
-                                  m_conn->qualify(m_db, m_table),
-                                  where);
+    const QString sql =
+        QStringLiteral("SELECT %1 FROM %2 WHERE %3 LIMIT 1")
+            .arg(m_conn->quoteIdent(m_columns[col]), m_conn->qualify(m_db, m_table), where);
     /* streamed (raw bytes), not query(), so binary/BLOB content survives
      * unmodified — query()'s DbResultSet rows go through QString::fromUtf8 */
     m_conn->streamQuery(sql, nullptr, nullptr,
-        [&](const QVector<QByteArray> &fields, const QVector<bool> &isNull) {
-            if(!isNull.value(0))
-                out = fields.value(0);
-            return false;   /* one row is enough */
-        });
+                        [&](const QVector<QByteArray> &fields, const QVector<bool> &isNull) {
+                            if(!isNull.value(0))
+                                out = fields.value(0);
+                            return false; /* one row is enough */
+                        });
     return out;
 }
 
@@ -1511,9 +1508,8 @@ void TableDataView::editCellInTextEditor()
     hexDump->setLineWrapMode(QPlainTextEdit::NoWrap);
     auto *hexEdit = new QPlainTextEdit(hexPage);
     hexEdit->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
-    hexEdit->setPlaceholderText(
-        QStringLiteral("raw hex, e.g. 48656c6c6f — even number of 0-9 a-f "
-                       "(whitespace ignored); OK writes it as x'…'"));
+    hexEdit->setPlaceholderText(QStringLiteral("raw hex, e.g. 48656c6c6f — even number of 0-9 a-f "
+                                               "(whitespace ignored); OK writes it as x'…'"));
     hexLay->addWidget(new QLabel(QStringLiteral("Bytes:"), hexPage));
     hexLay->addWidget(hexDump, 2);
     hexLay->addWidget(new QLabel(QStringLiteral("Edit as hex:"), hexPage));
@@ -1526,8 +1522,8 @@ void TableDataView::editCellInTextEditor()
             return;
         hexLoaded = true;
         const QByteArray b = m_model->rowState(row) == TableDataModel::Inserted
-            ? edit->toPlainText().toUtf8()
-            : fetchCellBytes(row, c);
+                                 ? edit->toPlainText().toUtf8()
+                                 : fetchCellBytes(row, c);
         QString dump, raw;
         for(int off = 0; off < b.size(); off += 16) {
             QString h, a;
@@ -1540,8 +1536,7 @@ void TableDataView::editCellInTextEditor()
                     h += QStringLiteral("   ");
                 }
             }
-            dump += QStringLiteral("%1  %2 %3\n")
-                        .arg(off, 8, 16, QLatin1Char('0')).arg(h, a);
+            dump += QStringLiteral("%1  %2 %3\n").arg(off, 8, 16, QLatin1Char('0')).arg(h, a);
         }
         raw = QString::fromLatin1(b.toHex());
         hexDump->setPlainText(b.isEmpty() ? QStringLiteral("(empty / NULL)") : dump);
@@ -1549,14 +1544,15 @@ void TableDataView::editCellInTextEditor()
         hexEdit->setPlainText(raw);
     });
 
-    auto *buttons = new QDialogButtonBox(
-        QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
-    auto *nullBtn = buttons->addButton(QStringLiteral("Set &NULL"),
-                                       QDialogButtonBox::ActionRole);
+    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
+    auto *nullBtn = buttons->addButton(QStringLiteral("Set &NULL"), QDialogButtonBox::ActionRole);
     connect(buttons, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
     connect(buttons, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
     bool toNull = false;
-    connect(nullBtn, &QPushButton::clicked, &dlg, [&] { toNull = true; dlg.accept(); });
+    connect(nullBtn, &QPushButton::clicked, &dlg, [&] {
+        toNull = true;
+        dlg.accept();
+    });
 
     auto *lay = new QVBoxLayout(&dlg);
     lay->addWidget(tabs, 1);
@@ -1567,22 +1563,19 @@ void TableDataView::editCellInTextEditor()
         m_model->stage(row, c, QStringLiteral("NULL"));
         return;
     }
-    if(tabs->currentIndex() == 1) {                    /* Hex tab is authoritative */
-        QString h = hexEdit->toPlainText()
-                        .remove(QRegularExpression(QStringLiteral("\\s")))
-                        .toLower();
-        if(h.contains(QRegularExpression(QStringLiteral("[^0-9a-f]")))
-           || (h.size() % 2) != 0) {
+    if(tabs->currentIndex() == 1) { /* Hex tab is authoritative */
+        QString h =
+            hexEdit->toPlainText().remove(QRegularExpression(QStringLiteral("\\s"))).toLower();
+        if(h.contains(QRegularExpression(QStringLiteral("[^0-9a-f]"))) || (h.size() % 2) != 0) {
             QMessageBox::warning(this, QStringLiteral("Hex"),
-                QStringLiteral("Enter an even number of hex digits (0-9, a-f)."));
+                                 QStringLiteral("Enter an even number of hex digits (0-9, a-f)."));
             return;
         }
         const DriverType drv = m_conn ? m_conn->driverType() : DriverType::Mysql;
         const QString expr = hexLiteral(drv, h);
-        const QString disp = h.size() > 32
-            ? hexLiteral(drv, h.left(32) + QStringLiteral("…"))
-                  + QStringLiteral(" (%1 bytes)").arg(h.size() / 2)
-            : expr;
+        const QString disp = h.size() > 32 ? hexLiteral(drv, h.left(32) + QStringLiteral("…")) +
+                                                 QStringLiteral(" (%1 bytes)").arg(h.size() / 2)
+                                           : expr;
         m_model->stageExpr(row, c, disp, expr);
         return;
     }
@@ -1604,18 +1597,21 @@ void TableDataView::insertRowWithValues()
     QDialog dlg(this);
     dlg.setWindowTitle(QStringLiteral("Add Row — %1.%2").arg(m_db, m_table));
     auto *form = new QFormLayout(&dlg);
-    struct Field { QLineEdit *edit; const ColumnInfo *col; };
+    struct Field
+    {
+        QLineEdit *edit;
+        const ColumnInfo *col;
+    };
     QVector<Field> fields;
     for(const ColumnInfo &c : std::as_const(m_colInfo)) {
         if(c.autoInc)
-            continue;                       /* let the server number it */
+            continue; /* let the server number it */
         auto *edit = new QLineEdit(&dlg);
         edit->setPlaceholderText(c.nullable ? QStringLiteral("NULL") : QString());
         form->addRow(c.name + (c.nullable ? QString() : QStringLiteral(" *")), edit);
         fields.append({edit, &c});
     }
-    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok
-                                         | QDialogButtonBox::Cancel, &dlg);
+    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
     connect(buttons, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
     connect(buttons, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
     auto *layout = new QVBoxLayout(&dlg);
@@ -1628,19 +1624,18 @@ void TableDataView::insertRowWithValues()
     for(const Field &f : fields) {
         const QString v = f.edit->text();
         if(v.isEmpty())
-            continue;                       /* not provided */
+            continue; /* not provided */
         names << m_conn->quoteIdent(f.col->name);
         values << quoteValue(v);
     }
     if(names.isEmpty()) {
-        addRow();                           /* all defaults */
+        addRow(); /* all defaults */
         return;
     }
 
     const QString q = QStringLiteral("INSERT INTO %1 (%2) VALUES (%3)")
-                           .arg(m_conn->qualify(m_db, m_table),
-                                names.join(QStringLiteral(", ")),
-                                values.join(QStringLiteral(", ")));
+                          .arg(m_conn->qualify(m_db, m_table), names.join(QStringLiteral(", ")),
+                               values.join(QStringLiteral(", ")));
     QString error;
     if(!m_conn->query(q, nullptr, &error)) {
         emit statusMessage(QStringLiteral("INSERT failed: ") + error);

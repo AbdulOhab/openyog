@@ -2,7 +2,7 @@
 #include "Icons.h"
 #include "db/IDbConnection.h"
 
-#include "CommonHelper.h"   /* port shim: wyString */
+#include "CommonHelper.h" /* port shim: wyString */
 #include "wyIni.h"
 
 #include <QApplication>
@@ -27,8 +27,7 @@ QString settingsIniPath()
 QColor ObjectBrowserColor::load()
 {
     wyString value;
-    wyIni::IniGetString("UserInterface", "browsercolor", "", &value,
-                        settingsIniPath().toUtf8());
+    wyIni::IniGetString("UserInterface", "browsercolor", "", &value, settingsIniPath().toUtf8());
     const QString v = QString::fromUtf8(value.GetString());
     return v.isEmpty() ? QColor() : QColor(v);
 }
@@ -42,10 +41,10 @@ void ObjectBrowserColor::save(const QColor &c)
 
 namespace {
 constexpr int KConnection = 1001;
-constexpr int KDatabase   = 1002;
-constexpr int KFolder     = 1003;
-constexpr int KTable      = 1004;
-constexpr int KLeaf       = 1005;   /* view / proc / func / trigger / event / column */
+constexpr int KDatabase = 1002;
+constexpr int KFolder = 1003;
+constexpr int KTable = 1004;
+constexpr int KLeaf = 1005; /* view / proc / func / trigger / event / column */
 /* PostgreSQL only: a physical database on the server (parent of KDatabase,
  * which for Postgres means a *schema* — see PostgresConnection.h). Never
  * created for MySQL/SQLite, where KDatabase already means a real database
@@ -64,11 +63,16 @@ constexpr int RolePhysDb = Qt::UserRole + 3;
  * empty if the folder isn't a routine/view/trigger/event folder */
 QString folderObjType(const QString &folder)
 {
-    if(folder == QStringLiteral("Views"))       return QStringLiteral("VIEW");
-    if(folder == QStringLiteral("Stored Procs")) return QStringLiteral("PROCEDURE");
-    if(folder == QStringLiteral("Functions"))   return QStringLiteral("FUNCTION");
-    if(folder == QStringLiteral("Triggers"))    return QStringLiteral("TRIGGER");
-    if(folder == QStringLiteral("Events"))      return QStringLiteral("EVENT");
+    if(folder == QStringLiteral("Views"))
+        return QStringLiteral("VIEW");
+    if(folder == QStringLiteral("Stored Procs"))
+        return QStringLiteral("PROCEDURE");
+    if(folder == QStringLiteral("Functions"))
+        return QStringLiteral("FUNCTION");
+    if(folder == QStringLiteral("Triggers"))
+        return QStringLiteral("TRIGGER");
+    if(folder == QStringLiteral("Events"))
+        return QStringLiteral("EVENT");
     return {};
 }
 
@@ -101,8 +105,7 @@ void fillLeaves(QTreeWidgetItem *parent, const QStringList &names, const QString
 }
 } // namespace
 
-ObjectBrowser::ObjectBrowser(QWidget *parent)
-    : QWidget(parent)
+ObjectBrowser::ObjectBrowser(QWidget *parent) : QWidget(parent)
 {
     m_filterLabel = new QLabel(this);
     m_filterLabel->setObjectName(QStringLiteral("obFilterLabel"));
@@ -113,16 +116,15 @@ ObjectBrowser::ObjectBrowser(QWidget *parent)
 
     m_tree = new QTreeWidget(this);
     m_tree->setHeaderHidden(true);
-    m_tree->setIndentation(14);            /* spec §4 */
-    m_tree->setIconSize(QSize(16, 16));    /* spec §4: 16x16 image list */
+    m_tree->setIndentation(14);         /* spec §4 */
+    m_tree->setIconSize(QSize(16, 16)); /* spec §4: 16x16 image list */
     m_tree->setUniformRowHeights(true);
     m_tree->setContextMenuPolicy(Qt::CustomContextMenu);
     if(const QColor c = ObjectBrowserColor::load(); c.isValid())
         m_tree->setStyleSheet(
             QStringLiteral("QTreeWidget::item:selected{background:%1}").arg(c.name()));
     connect(m_tree, &QTreeWidget::itemExpanded, this, &ObjectBrowser::onItemExpanded);
-    connect(m_tree, &QTreeWidget::customContextMenuRequested, this,
-            [this](const QPoint &pos) {
+    connect(m_tree, &QTreeWidget::customContextMenuRequested, this, [this](const QPoint &pos) {
         QTreeWidgetItem *item = m_tree->itemAt(pos);
         if(!item)
             return;
@@ -141,48 +143,44 @@ ObjectBrowser::ObjectBrowser(QWidget *parent)
      * from this tab's connection — expanding it via its side connection
      * is browsing only) and for SQLite, whose single "main" node has
      * nothing switchable and would just surface a USE syntax error. */
-    connect(m_tree, &QTreeWidget::itemClicked, this,
-            [this](QTreeWidgetItem *item, int) {
-                if(item->data(0, Qt::UserRole).toInt() != KDatabase
-                   || m_conn->driverType() == DriverType::Sqlite)
-                    return;
-                const QString physDb = item->data(0, RolePhysDb).toString();
-                if(!physDb.isEmpty() && physDb != m_primaryDatabase)
-                    return;
-                emit databaseActivated(item->data(0, Qt::UserRole + 1).toString());
-            });
-    connect(m_tree, &QTreeWidget::itemDoubleClicked, this,
-            [this](QTreeWidgetItem *item, int) {
-                const int kind = item->data(0, Qt::UserRole).toInt();
-                const QString physDb = item->data(0, RolePhysDb).toString();
-                const bool foreign = !physDb.isEmpty() && physDb != m_primaryDatabase;
-                /* the database node itself is the switch gesture (double-
-                 * click = make this tab's connection that database) */
-                if(kind == KPgDatabase)
-                    emit switchDatabaseRequested(item->text(0));
-                else if(kind == KTable)
-                    /* open the clicked table's data — on EITHER database.
-                     * The table under a non-primary database used to route
-                     * here too and switch the whole connection instead,
-                     * throwing away the user's tree state (the reported
-                     * "clicked a table in half26, everything collapsed"
-                     * bug); it now opens through that database's side
-                     * connection, like the context menu's Open Table Data.
-                     * physDb routes the data grid to the right connection
-                     * (empty on MySQL/SQLite → m_conn). */
-                    emit tableActivated(item->data(0, Qt::UserRole + 1).toString(),
-                                        item->text(0), physDb);
-                else if(foreign)
-                    return;   /* other foreign items: double-click just
-                                 expands in place — browsing, not switching */
-                else if(kind == KDatabase)
-                    emit databaseActivated(item->data(0, Qt::UserRole + 1).toString());
-                else if(kind == KLeaf && item->parent()
-                        && !folderObjType(item->parent()->text(0)).isEmpty())
-                    emit alterObjectRequested(
-                        item->parent()->data(0, Qt::UserRole + 1).toString(),
-                        folderObjType(item->parent()->text(0)), item->text(0));
-            });
+    connect(m_tree, &QTreeWidget::itemClicked, this, [this](QTreeWidgetItem *item, int) {
+        if(item->data(0, Qt::UserRole).toInt() != KDatabase ||
+           m_conn->driverType() == DriverType::Sqlite)
+            return;
+        const QString physDb = item->data(0, RolePhysDb).toString();
+        if(!physDb.isEmpty() && physDb != m_primaryDatabase)
+            return;
+        emit databaseActivated(item->data(0, Qt::UserRole + 1).toString());
+    });
+    connect(m_tree, &QTreeWidget::itemDoubleClicked, this, [this](QTreeWidgetItem *item, int) {
+        const int kind = item->data(0, Qt::UserRole).toInt();
+        const QString physDb = item->data(0, RolePhysDb).toString();
+        const bool foreign = !physDb.isEmpty() && physDb != m_primaryDatabase;
+        /* the database node itself is the switch gesture (double-
+         * click = make this tab's connection that database) */
+        if(kind == KPgDatabase)
+            emit switchDatabaseRequested(item->text(0));
+        else if(kind == KTable)
+            /* open the clicked table's data — on EITHER database.
+             * The table under a non-primary database used to route
+             * here too and switch the whole connection instead,
+             * throwing away the user's tree state (the reported
+             * "clicked a table in half26, everything collapsed"
+             * bug); it now opens through that database's side
+             * connection, like the context menu's Open Table Data.
+             * physDb routes the data grid to the right connection
+             * (empty on MySQL/SQLite → m_conn). */
+            emit tableActivated(item->data(0, Qt::UserRole + 1).toString(), item->text(0), physDb);
+        else if(foreign)
+            return; /* other foreign items: double-click just
+                       expands in place — browsing, not switching */
+        else if(kind == KDatabase)
+            emit databaseActivated(item->data(0, Qt::UserRole + 1).toString());
+        else if(kind == KLeaf && item->parent() &&
+                !folderObjType(item->parent()->text(0)).isEmpty())
+            emit alterObjectRequested(item->parent()->data(0, Qt::UserRole + 1).toString(),
+                                      folderObjType(item->parent()->text(0)), item->text(0));
+    });
 
     auto *layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
@@ -228,20 +226,19 @@ void ObjectBrowser::populateContextMenu(QMenu &menu, QTreeWidgetItem *item)
             QString schema = QStringLiteral("public");
             bool hasPublic = false;
             for(int i = 0; i < item->childCount(); ++i)
-                if(item->child(i)->text(0) == schema) { hasPublic = true; break; }
+                if(item->child(i)->text(0) == schema) {
+                    hasPublic = true;
+                    break;
+                }
             if(!hasPublic && item->childCount() > 0)
                 schema = item->child(0)->text(0);
             populateDatabaseMenu(menu, schema);
             menu.addSeparator();
         }
-        menu.addAction(QStringLiteral("&Switch to `%1`").arg(database),
-                       this, [this, database] {
-            emit switchDatabaseRequested(database);
-        });
-        menu.addAction(QStringLiteral("Connect to `%1` in New &Tab…").arg(database),
-                       this, [this, database] {
-            emit openDatabaseInNewTabRequested(database);
-        });
+        menu.addAction(QStringLiteral("&Switch to `%1`").arg(database), this,
+                       [this, database] { emit switchDatabaseRequested(database); });
+        menu.addAction(QStringLiteral("Connect to `%1` in New &Tab…").arg(database), this,
+                       [this, database] { emit openDatabaseInNewTabRequested(database); });
         menu.addAction(QStringLiteral("Re&fresh Node"), this, [this, item] {
             item->takeChildren();
             onItemExpanded(item);
@@ -253,23 +250,17 @@ void ObjectBrowser::populateContextMenu(QMenu &menu, QTreeWidgetItem *item)
          * but no action below this point is safe to route through
          * m_conn, so only offer what doesn't need it — Switch fixes
          * that by making `physDb` the primary connection instead */
-        menu.addAction(QStringLiteral("&Switch to `%1`").arg(physDb),
-                       this, [this, physDb] {
-            emit switchDatabaseRequested(physDb);
-        });
-        menu.addAction(QStringLiteral("Connect to `%1` in New &Tab…").arg(physDb),
-                       this, [this, physDb] {
-            emit openDatabaseInNewTabRequested(physDb);
-        });
+        menu.addAction(QStringLiteral("&Switch to `%1`").arg(physDb), this,
+                       [this, physDb] { emit switchDatabaseRequested(physDb); });
+        menu.addAction(QStringLiteral("Connect to `%1` in New &Tab…").arg(physDb), this,
+                       [this, physDb] { emit openDatabaseInNewTabRequested(physDb); });
         if(kind == KTable)
             /* viewing data is safe on a foreign table — the data grid
              * gets that database's own side connection (tableActivated
              * carries physDb), unlike the Alter/Index/FK actions that
              * stay primary-only below */
-            menu.addAction(QStringLiteral("Open Table &Data"), this,
-                           [this, item] {
-                emit tableActivated(item->data(0, Qt::UserRole + 1).toString(),
-                                    item->text(0),
+            menu.addAction(QStringLiteral("Open Table &Data"), this, [this, item] {
+                emit tableActivated(item->data(0, Qt::UserRole + 1).toString(), item->text(0),
                                     item->data(0, RolePhysDb).toString());
             });
         if(kind == KDatabase || kind == KFolder || kind == KTable)
@@ -280,19 +271,17 @@ void ObjectBrowser::populateContextMenu(QMenu &menu, QTreeWidgetItem *item)
             });
     } else if(kind == KDatabase) {
         populateDatabaseMenu(menu, item->text(0));
-    } else if(kind == KFolder
-              && item->text(0) == QStringLiteral("Tables")) {
+    } else if(kind == KFolder && item->text(0) == QStringLiteral("Tables")) {
         const QString db = item->data(0, Qt::UserRole + 1).toString();
         menu.addAction(QStringLiteral("Create &Table…"), this,
                        [this, db] { emit createTableRequested(db); });
     } else if(kind == KFolder && !folderObjType(item->text(0)).isEmpty()) {
         const QString db = item->data(0, Qt::UserRole + 1).toString();
         const QString t = folderObjType(item->text(0));
-        menu.addAction(QStringLiteral("&Create %1…").arg(
-                           t.at(0) + t.mid(1).toLower()),
-                       this, [this, db, t] { emit createObjectRequested(db, t); });
-    } else if(kind == KLeaf && item->parent()
-              && !folderObjType(item->parent()->text(0)).isEmpty()) {
+        menu.addAction(QStringLiteral("&Create %1…").arg(t.at(0) + t.mid(1).toLower()), this,
+                       [this, db, t] { emit createObjectRequested(db, t); });
+    } else if(kind == KLeaf && item->parent() &&
+              !folderObjType(item->parent()->text(0)).isEmpty()) {
         const QString db = item->parent()->data(0, Qt::UserRole + 1).toString();
         const QString t = folderObjType(item->parent()->text(0));
         const QString name = item->text(0);
@@ -305,9 +294,7 @@ void ObjectBrowser::populateContextMenu(QMenu &menu, QTreeWidgetItem *item)
         const QString db = item->data(0, Qt::UserRole + 1).toString();
         const QString table = item->text(0);
         menu.addAction(QStringLiteral("Open Table &Data"), this,
-                       [this, db, table, physDb] {
-                           emit tableActivated(db, table, physDb);
-                       });
+                       [this, db, table, physDb] { emit tableActivated(db, table, physDb); });
         menu.addAction(QStringLiteral("&Alter Table…"), this,
                        [this, db, table] { emit alterTableRequested(db, table); });
         menu.addAction(QStringLiteral("&Manage Indexes…"), this,
@@ -336,19 +323,17 @@ void ObjectBrowser::populateContextMenu(QMenu &menu, QTreeWidgetItem *item)
                        [this, db, table, physDb] { copyCreateTable(db, table, physDb); });
         menu.addAction(QStringLiteral("Copy Column &Names"), this,
                        [this, item] { copyColumnNames(item); });
-        menu.addAction(QStringLiteral("Re&fresh Node"), this,
-                       [this, item] {
+        menu.addAction(QStringLiteral("Re&fresh Node"), this, [this, item] {
             item->takeChildren();
             onItemExpanded(item);
             item->setExpanded(true);
         });
-    } else if(kind == KLeaf && item->parent()
-              && item->parent()->data(0, Qt::UserRole).toInt() == KFolder
-              && item->parent()->text(0) == QStringLiteral("Columns")) {
+    } else if(kind == KLeaf && item->parent() &&
+              item->parent()->data(0, Qt::UserRole).toInt() == KFolder &&
+              item->parent()->text(0) == QStringLiteral("Columns")) {
         const QString col = item->text(0).section(QStringLiteral("  :  "), 0, 0);
-        menu.addAction(QStringLiteral("&Copy Column Name"), this, [col] {
-            QApplication::clipboard()->setText(col);
-        });
+        menu.addAction(QStringLiteral("&Copy Column Name"), this,
+                       [col] { QApplication::clipboard()->setText(col); });
     }
 }
 
@@ -357,12 +342,12 @@ void ObjectBrowser::populateDatabaseMenu(QMenu &menu, const QString &db)
     menu.addAction(QStringLiteral("Create &Table…"), this,
                    [this, db] { emit createTableRequested(db); });
     QMenu *create = menu.addMenu(QStringLiteral("&Create Object"));
-    for(const auto &kw : { QStringLiteral("VIEW"), QStringLiteral("PROCEDURE"),
-                           QStringLiteral("FUNCTION"), QStringLiteral("TRIGGER"),
-                           QStringLiteral("EVENT") }) {
+    for(const auto &kw :
+        {QStringLiteral("VIEW"), QStringLiteral("PROCEDURE"), QStringLiteral("FUNCTION"),
+         QStringLiteral("TRIGGER"), QStringLiteral("EVENT")}) {
         const QString t = kw;
-        create->addAction(t.at(0) + t.mid(1).toLower() + QStringLiteral("…"),
-                          this, [this, db, t] { emit createObjectRequested(db, t); });
+        create->addAction(t.at(0) + t.mid(1).toLower() + QStringLiteral("…"), this,
+                          [this, db, t] { emit createObjectRequested(db, t); });
     }
     menu.addAction(QStringLiteral("&Copy Database…"), this,
                    [this, db] { emit copyDatabaseRequested(db); });
@@ -372,10 +357,10 @@ void ObjectBrowser::populateDatabaseMenu(QMenu &menu, const QString &db)
     menu.addAction(QStringLiteral("&Backup Database As SQL Dump…"), this,
                    [this, db] { emit dumpDatabaseRequested(db); });
     menu.addSeparator();
-    menu.addAction(QStringLiteral("&Empty Database (truncate all tables)…"),
-                   this, [this, db] { emit emptyDatabaseRequested(db); });
-    menu.addAction(QStringLiteral("&Truncate Database (drop all objects)…"),
-                   this, [this, db] { emit truncateDatabaseRequested(db); });
+    menu.addAction(QStringLiteral("&Empty Database (truncate all tables)…"), this,
+                   [this, db] { emit emptyDatabaseRequested(db); });
+    menu.addAction(QStringLiteral("&Truncate Database (drop all objects)…"), this,
+                   [this, db] { emit truncateDatabaseRequested(db); });
     menu.addAction(QStringLiteral("&Drop Database…"), this,
                    [this, db] { emit dropDatabaseRequested(db); });
 }
@@ -408,8 +393,7 @@ void ObjectBrowser::loadDatabases(IDbConnection *conn, const QString &currentDb,
     m_conn = conn;
     m_primaryDatabase = primaryDb;
     m_filterLabel->setText(QStringLiteral("Filter tables in %1")
-                               .arg(currentDb.isEmpty() ? QStringLiteral("*")
-                                                        : currentDb));
+                               .arg(currentDb.isEmpty() ? QStringLiteral("*") : currentDb));
     QTreeWidgetItem *root = m_tree->topLevelItem(0);
     if(!root || !m_conn)
         return;
@@ -463,7 +447,7 @@ void ObjectBrowser::loadDatabases(IDbConnection *conn, const QString &currentDb,
         }
     } else {
         for(const QString &dbName : m_conn->listDatabases()) {
-            auto *db = makeItem(KDatabase, dbName, dbName);  /* carry db name */
+            auto *db = makeItem(KDatabase, dbName, dbName); /* carry db name */
             db->setIcon(0, Icons::get(QStringLiteral("database.ico")));
             root->addChild(db);
             populateSchema(db, dbName, {});
@@ -484,14 +468,14 @@ QStringList ObjectBrowser::currentTableInfo() const
     const QString physDb = item->data(0, RolePhysDb).toString();
     if(!physDb.isEmpty() && physDb != m_primaryDatabase)
         return {};
-    return { item->data(0, Qt::UserRole + 1).toString(), item->text(0) };
+    return {item->data(0, Qt::UserRole + 1).toString(), item->text(0)};
 }
 
 void ObjectBrowser::onItemExpanded(QTreeWidgetItem *item)
 {
     const int kind = item->data(0, Qt::UserRole).toInt();
     if(!m_conn || item->childCount() > 0)
-        return;                       /* already populated, or not connected */
+        return; /* already populated, or not connected */
 
     const QString db = item->data(0, Qt::UserRole + 1).toString();
     const QString physDb = item->data(0, RolePhysDb).toString();
@@ -513,8 +497,7 @@ void ObjectBrowser::onItemExpanded(QTreeWidgetItem *item)
         IDbConnection *c = connFor(physDb, &error);
         QApplication::restoreOverrideCursor();
         if(!c) {
-            auto *l = makeItem(KLeaf, QStringLiteral("(connection failed: %1)")
-                                          .arg(error));
+            auto *l = makeItem(KLeaf, QStringLiteral("(connection failed: %1)").arg(error));
             l->setDisabled(true);
             item->addChild(l);
             return;
@@ -536,12 +519,12 @@ void ObjectBrowser::onItemExpanded(QTreeWidgetItem *item)
         /* SQLyog shows these six folders under every database, each with
          * its own icon (not a generic folder glyph) */
         static const QList<QPair<QString, QString>> kFolders = {
-            { QStringLiteral("Tables"),       QStringLiteral("table.ico") },
-            { QStringLiteral("Views"),        QStringLiteral("view.ico") },
-            { QStringLiteral("Stored Procs"), QStringLiteral("process.ico") },
-            { QStringLiteral("Functions"),    QStringLiteral("function.ico") },
-            { QStringLiteral("Triggers"),     QStringLiteral("trigger.ico") },
-            { QStringLiteral("Events"),       QStringLiteral("event.ico") },
+            {QStringLiteral("Tables"), QStringLiteral("table.ico")},
+            {QStringLiteral("Views"), QStringLiteral("view.ico")},
+            {QStringLiteral("Stored Procs"), QStringLiteral("process.ico")},
+            {QStringLiteral("Functions"), QStringLiteral("function.ico")},
+            {QStringLiteral("Triggers"), QStringLiteral("trigger.ico")},
+            {QStringLiteral("Events"), QStringLiteral("event.ico")},
         };
         for(const auto &[f, icon] : kFolders) {
             auto *folder = makeItem(KFolder, f, db, physDb);
@@ -560,8 +543,8 @@ void ObjectBrowser::onItemExpanded(QTreeWidgetItem *item)
          * table's FKs/triggers stays a dialog (F7/F10) or the
          * database-level Triggers folder, not a redundant per-table copy. */
         static const QList<QPair<QString, QString>> kSubFolders = {
-            { QStringLiteral("Columns"), QStringLiteral("column.ico") },
-            { QStringLiteral("Indexes"), QStringLiteral("index.ico") },
+            {QStringLiteral("Columns"), QStringLiteral("column.ico")},
+            {QStringLiteral("Indexes"), QStringLiteral("index.ico")},
         };
         for(const auto &[sub, icon] : kSubFolders) {
             auto *f = makeItem(KFolder, sub, db, physDb);
@@ -578,8 +561,7 @@ void ObjectBrowser::onItemExpanded(QTreeWidgetItem *item)
     QString connError;
     IDbConnection *c = connFor(physDb, &connError);
     if(!c) {
-        auto *l = makeItem(KLeaf, QStringLiteral("(connection failed: %1)")
-                                      .arg(connError));
+        auto *l = makeItem(KLeaf, QStringLiteral("(connection failed: %1)").arg(connError));
         l->setDisabled(true);
         item->addChild(l);
         return;
@@ -588,8 +570,7 @@ void ObjectBrowser::onItemExpanded(QTreeWidgetItem *item)
     const QString folder = item->text(0);
 
     /* table-scoped Columns / Indexes folder */
-    if(const QString tbl = item->data(0, Qt::UserRole + 2).toString();
-       !tbl.isEmpty()) {
+    if(const QString tbl = item->data(0, Qt::UserRole + 2).toString(); !tbl.isEmpty()) {
         const auto add = [&](const QString &text, const QString &icon) {
             auto *l = makeItem(KLeaf, text, {}, physDb);
             l->setIcon(0, Icons::get(icon));
@@ -605,17 +586,23 @@ void ObjectBrowser::onItemExpanded(QTreeWidgetItem *item)
             QStringList curCols;
             bool curUnique = false;
             const auto flush = [&] {
-                if(curName.isEmpty()) return;
-                add(QStringLiteral("%1  %2(%3)").arg(curName,
-                        curUnique ? QStringLiteral("UNIQUE ") : QString(),
-                        curCols.join(QStringLiteral(", "))),
+                if(curName.isEmpty())
+                    return;
+                add(QStringLiteral("%1  %2(%3)")
+                        .arg(curName, curUnique ? QStringLiteral("UNIQUE ") : QString(),
+                             curCols.join(QStringLiteral(", "))),
                     QStringLiteral("altertable.ico"));
             };
             for(const QStringList &row : rs.rows) {
                 const QString name = row.value(2);
-                if(name != curName) { flush(); curName = name; curCols.clear();
-                    curUnique = row.value(1) == QStringLiteral("0"); }
-                if(!row.value(4).isEmpty()) curCols << row.value(4);
+                if(name != curName) {
+                    flush();
+                    curName = name;
+                    curCols.clear();
+                    curUnique = row.value(1) == QStringLiteral("0");
+                }
+                if(!row.value(4).isEmpty())
+                    curCols << row.value(4);
             }
             flush();
         }
@@ -633,8 +620,8 @@ void ObjectBrowser::onItemExpanded(QTreeWidgetItem *item)
             item->addChild(ti);
         }
     } else if(folder == QStringLiteral("Views")) {
-        fillLeaves(item, c->listTables(db, QStringLiteral("VIEW")),
-                   QStringLiteral("alterview.ico"), physDb);
+        fillLeaves(item, c->listTables(db, QStringLiteral("VIEW")), QStringLiteral("alterview.ico"),
+                   physDb);
     } else if(folder == QStringLiteral("Stored Procs")) {
         QStringList names;
         for(const QStringList &row : c->listRoutines(db).rows)
@@ -648,11 +635,9 @@ void ObjectBrowser::onItemExpanded(QTreeWidgetItem *item)
                 names << row.value(0);
         fillLeaves(item, names, QStringLiteral("alterfunction.ico"), physDb);
     } else if(folder == QStringLiteral("Triggers")) {
-        fillLeaves(item, c->listTriggers(db),
-                   QStringLiteral("altertrigger.ico"), physDb);
+        fillLeaves(item, c->listTriggers(db), QStringLiteral("altertrigger.ico"), physDb);
     } else if(folder == QStringLiteral("Events")) {
-        fillLeaves(item, c->listEvents(db),
-                   QStringLiteral("alterevent.ico"), physDb);
+        fillLeaves(item, c->listEvents(db), QStringLiteral("alterevent.ico"), physDb);
     }
 }
 
@@ -660,7 +645,7 @@ void ObjectBrowser::collapseTree()
 {
     m_tree->collapseAll();
     if(QTreeWidgetItem *root = m_tree->topLevelItem(0))
-        root->setExpanded(true);   /* keep the connection node open */
+        root->setExpanded(true); /* keep the connection node open */
 }
 
 void ObjectBrowser::expandTopLevelDatabase(const QString &name)
@@ -686,7 +671,10 @@ void ObjectBrowser::selectTreeItem(const QString &path)
     for(const QString &part : parts) {
         QTreeWidgetItem *next = nullptr;
         for(int i = 0; i < cur->childCount(); ++i)
-            if(cur->child(i)->text(0) == part) { next = cur->child(i); break; }
+            if(cur->child(i)->text(0) == part) {
+                next = cur->child(i);
+                break;
+            }
         if(!next)
             return;
         cur = next;
@@ -704,7 +692,10 @@ void ObjectBrowser::clickTreeItem(const QString &path)
     for(const QString &part : parts) {
         QTreeWidgetItem *next = nullptr;
         for(int i = 0; i < cur->childCount(); ++i)
-            if(cur->child(i)->text(0) == part) { next = cur->child(i); break; }
+            if(cur->child(i)->text(0) == part) {
+                next = cur->child(i);
+                break;
+            }
         if(!next)
             return;
         cur = next;
@@ -717,10 +708,10 @@ void ObjectBrowser::clickTreeItem(const QString &path)
     const QRect r = m_tree->visualItemRect(cur);
     const QPoint p = r.center();
     const QPoint global = m_tree->viewport()->mapToGlobal(p);
-    QMouseEvent press(QEvent::MouseButtonPress, p, global,
-                      Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
-    QMouseEvent release(QEvent::MouseButtonRelease, p, global,
-                        Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
+    QMouseEvent press(QEvent::MouseButtonPress, p, global, Qt::LeftButton, Qt::LeftButton,
+                      Qt::NoModifier);
+    QMouseEvent release(QEvent::MouseButtonRelease, p, global, Qt::LeftButton, Qt::NoButton,
+                        Qt::NoModifier);
     QApplication::sendEvent(m_tree->viewport(), &press);
     QApplication::sendEvent(m_tree->viewport(), &release);
 }
@@ -734,7 +725,10 @@ void ObjectBrowser::collapseTreeItem(const QString &path)
     for(const QString &part : parts) {
         QTreeWidgetItem *next = nullptr;
         for(int i = 0; i < cur->childCount(); ++i)
-            if(cur->child(i)->text(0) == part) { next = cur->child(i); break; }
+            if(cur->child(i)->text(0) == part) {
+                next = cur->child(i);
+                break;
+            }
         if(!next)
             return;
         cur = next;
@@ -751,7 +745,10 @@ void ObjectBrowser::doubleClickTreeItem(const QString &path)
     for(const QString &part : parts) {
         QTreeWidgetItem *next = nullptr;
         for(int i = 0; i < cur->childCount(); ++i)
-            if(cur->child(i)->text(0) == part) { next = cur->child(i); break; }
+            if(cur->child(i)->text(0) == part) {
+                next = cur->child(i);
+                break;
+            }
         if(!next)
             return;
         cur = next;
@@ -761,14 +758,14 @@ void ObjectBrowser::doubleClickTreeItem(const QString &path)
     const QRect r = m_tree->visualItemRect(cur);
     const QPoint p = r.center();
     const QPoint global = m_tree->viewport()->mapToGlobal(p);
-    QMouseEvent press1(QEvent::MouseButtonPress, p, global,
-                       Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
-    QMouseEvent release1(QEvent::MouseButtonRelease, p, global,
-                         Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
-    QMouseEvent dblClick(QEvent::MouseButtonDblClick, p, global,
-                         Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
-    QMouseEvent release2(QEvent::MouseButtonRelease, p, global,
-                         Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
+    QMouseEvent press1(QEvent::MouseButtonPress, p, global, Qt::LeftButton, Qt::LeftButton,
+                       Qt::NoModifier);
+    QMouseEvent release1(QEvent::MouseButtonRelease, p, global, Qt::LeftButton, Qt::NoButton,
+                         Qt::NoModifier);
+    QMouseEvent dblClick(QEvent::MouseButtonDblClick, p, global, Qt::LeftButton, Qt::LeftButton,
+                         Qt::NoModifier);
+    QMouseEvent release2(QEvent::MouseButtonRelease, p, global, Qt::LeftButton, Qt::NoButton,
+                         Qt::NoModifier);
     QApplication::sendEvent(m_tree->viewport(), &press1);
     QApplication::sendEvent(m_tree->viewport(), &release1);
     QApplication::sendEvent(m_tree->viewport(), &dblClick);
@@ -784,7 +781,10 @@ void ObjectBrowser::expandTreeItem(const QString &path)
     for(const QString &part : parts) {
         QTreeWidgetItem *next = nullptr;
         for(int i = 0; i < cur->childCount(); ++i)
-            if(cur->child(i)->text(0) == part) { next = cur->child(i); break; }
+            if(cur->child(i)->text(0) == part) {
+                next = cur->child(i);
+                break;
+            }
         if(!next)
             return;
         cur = next;
@@ -801,19 +801,20 @@ QStringList ObjectBrowser::dumpSubtree(const QString &path) const
     for(const QString &part : parts) {
         QTreeWidgetItem *next = nullptr;
         for(int i = 0; i < cur->childCount(); ++i)
-            if(cur->child(i)->text(0) == part) { next = cur->child(i); break; }
+            if(cur->child(i)->text(0) == part) {
+                next = cur->child(i);
+                break;
+            }
         if(!next)
-            return {};   /* unresolved path — same silence as the walkers */
+            return {}; /* unresolved path — same silence as the walkers */
         cur = next;
     }
     QStringList out;
-    const std::function<void(QTreeWidgetItem *, int)> walk =
-        [&](QTreeWidgetItem *item, int depth) {
-            out << QStringLiteral("%1%2").arg(QString(depth * 2, QLatin1Char(' ')),
-                                              item->text(0));
-            for(int i = 0; i < item->childCount(); ++i)
-                walk(item->child(i), depth + 1);
-        };
+    const std::function<void(QTreeWidgetItem *, int)> walk = [&](QTreeWidgetItem *item, int depth) {
+        out << QStringLiteral("%1%2").arg(QString(depth * 2, QLatin1Char(' ')), item->text(0));
+        for(int i = 0; i < item->childCount(); ++i)
+            walk(item->child(i), depth + 1);
+    };
     walk(cur, 0);
     return out;
 }
@@ -827,9 +828,12 @@ QStringList ObjectBrowser::contextMenuItemsForTest(const QString &path)
     for(const QString &part : parts) {
         QTreeWidgetItem *next = nullptr;
         for(int i = 0; i < cur->childCount(); ++i)
-            if(cur->child(i)->text(0) == part) { next = cur->child(i); break; }
+            if(cur->child(i)->text(0) == part) {
+                next = cur->child(i);
+                break;
+            }
         if(!next)
-            return {};   /* unresolved path — same silence as the walkers */
+            return {}; /* unresolved path — same silence as the walkers */
         cur = next;
     }
     QMenu menu;
@@ -850,8 +854,7 @@ QStringList ObjectBrowser::contextMenuItemsForTest(const QString &path)
     return out;
 }
 
-void ObjectBrowser::copyCreateTable(const QString &db, const QString &table,
-                                    const QString &physDb)
+void ObjectBrowser::copyCreateTable(const QString &db, const QString &table, const QString &physDb)
 {
     QString error;
     IDbConnection *c = connFor(physDb, &error);
@@ -866,8 +869,7 @@ void ObjectBrowser::copyCreateTable(const QString &db, const QString &table,
         return;
     }
     QApplication::clipboard()->setText(ddl + QLatin1Char(';'));
-    emit statusMessage(QStringLiteral("CREATE statement for `%1` copied")
-                           .arg(table));
+    emit statusMessage(QStringLiteral("CREATE statement for `%1` copied").arg(table));
 }
 
 void ObjectBrowser::copyColumnNames(QTreeWidgetItem *tableItem)
@@ -880,8 +882,7 @@ void ObjectBrowser::copyColumnNames(QTreeWidgetItem *tableItem)
     QTreeWidgetItem *columnsFolder = nullptr;
     for(int i = 0; i < tableItem->childCount(); ++i) {
         QTreeWidgetItem *c = tableItem->child(i);
-        if(c->data(0, Qt::UserRole).toInt() == KFolder
-           && c->text(0) == QStringLiteral("Columns")) {
+        if(c->data(0, Qt::UserRole).toInt() == KFolder && c->text(0) == QStringLiteral("Columns")) {
             columnsFolder = c;
             break;
         }
@@ -899,8 +900,7 @@ void ObjectBrowser::copyColumnNames(QTreeWidgetItem *tableItem)
     }
     if(!names.isEmpty()) {
         QApplication::clipboard()->setText(names.join(QStringLiteral(", ")));
-        emit statusMessage(QStringLiteral("%1 column name(s) copied")
-                               .arg(names.size()));
+        emit statusMessage(QStringLiteral("%1 column name(s) copied").arg(names.size()));
     }
 }
 
@@ -908,8 +908,7 @@ void ObjectBrowser::applyFilter(const QString &text)
 {
     /* filter the whole tree, matching SQLyog's "Filter tables" box */
     std::function<void(QTreeWidgetItem *)> walk = [&](QTreeWidgetItem *item) {
-        bool visible = text.isEmpty()
-                       || item->text(0).contains(text, Qt::CaseInsensitive);
+        bool visible = text.isEmpty() || item->text(0).contains(text, Qt::CaseInsensitive);
         for(int i = 0; i < item->childCount(); ++i) {
             walk(item->child(i));
             if(!item->child(i)->isHidden())

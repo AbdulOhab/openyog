@@ -12,38 +12,35 @@
 
 namespace {
 const QStringList kActions = {
-    QStringLiteral("RESTRICT"), QStringLiteral("CASCADE"),
-    QStringLiteral("SET NULL"), QStringLiteral("NO ACTION"),
+    QStringLiteral("RESTRICT"),
+    QStringLiteral("CASCADE"),
+    QStringLiteral("SET NULL"),
+    QStringLiteral("NO ACTION"),
 };
 
 QString qi(DriverType driver, const QString &ident)
 {
     if(driver == DriverType::Postgres)
-        return QLatin1Char('"') + QString(ident).replace(QLatin1Char('"'),
-                                                          QStringLiteral("\"\""))
-             + QLatin1Char('"');
-    return QLatin1Char('`') + QString(ident).replace(QLatin1Char('`'),
-                                                      QStringLiteral("``"))
-         + QLatin1Char('`');
+        return QLatin1Char('"') + QString(ident).replace(QLatin1Char('"'), QStringLiteral("\"\"")) +
+               QLatin1Char('"');
+    return QLatin1Char('`') + QString(ident).replace(QLatin1Char('`'), QStringLiteral("``")) +
+           QLatin1Char('`');
 }
-}
+} // namespace
 
-ForeignKeyDialog::ForeignKeyDialog(QString database, QString table,
-                                   const QList<FkDef> &fks,
-                                   QStringList tableColumns, QStringList dbTables,
-                                   QWidget *parent, DriverType driver)
-    : QDialog(parent), m_driver(driver), m_database(std::move(database)),
-      m_table(std::move(table)), m_columns(std::move(tableColumns)),
-      m_dbTables(std::move(dbTables))
+ForeignKeyDialog::ForeignKeyDialog(QString database, QString table, const QList<FkDef> &fks,
+                                   QStringList tableColumns, QStringList dbTables, QWidget *parent,
+                                   DriverType driver)
+    : QDialog(parent), m_driver(driver), m_database(std::move(database)), m_table(std::move(table)),
+      m_columns(std::move(tableColumns)), m_dbTables(std::move(dbTables))
 {
     setWindowTitle(QStringLiteral("Foreign Keys — `%1`").arg(m_table));
     resize(640, 460);
 
     m_grid = new QTableWidget(0, 5, this);
-    m_grid->setHorizontalHeaderLabels(
-        { QStringLiteral("Name"), QStringLiteral("Column(s)"),
-          QStringLiteral("References"), QStringLiteral("On Delete"),
-          QStringLiteral("On Update") });
+    m_grid->setHorizontalHeaderLabels({QStringLiteral("Name"), QStringLiteral("Column(s)"),
+                                       QStringLiteral("References"), QStringLiteral("On Delete"),
+                                       QStringLiteral("On Update")});
     m_grid->horizontalHeader()->setStretchLastSection(true);
     m_grid->setSelectionBehavior(QAbstractItemView::SelectRows);
     m_grid->setEditTriggers(QAbstractItemView::NoEditTriggers);
@@ -54,29 +51,27 @@ ForeignKeyDialog::ForeignKeyDialog(QString database, QString table,
     }
 
     auto *removeBtn = new QPushButton(QStringLiteral("&Remove Selected"), this);
-    connect(removeBtn, &QPushButton::clicked, this,
-            &ForeignKeyDialog::removeSelected);
+    connect(removeBtn, &QPushButton::clicked, this, &ForeignKeyDialog::removeSelected);
 
     m_name = new QLineEdit(this);
     m_name->setPlaceholderText(QStringLiteral("constraint name (optional)"));
     m_localCol = new QComboBox(this);
-    m_localCol->setObjectName(QStringLiteral("localCol"));   /* test discoverability */
-    m_localCol->setEditable(true);   /* type "a, b" for a composite FK */
+    m_localCol->setObjectName(QStringLiteral("localCol")); /* test discoverability */
+    m_localCol->setEditable(true);                         /* type "a, b" for a composite FK */
     m_localCol->addItems(m_columns);
     m_localCol->setCurrentText(QString());
     m_refTable = new QComboBox(this);
-    m_refTable->setObjectName(QStringLiteral("refTable"));   /* test discoverability */
+    m_refTable->setObjectName(QStringLiteral("refTable")); /* test discoverability */
     m_refTable->addItems(m_dbTables);
     m_refCol = new QLineEdit(this);
-    m_refCol->setObjectName(QStringLiteral("refCol"));   /* test discoverability */
-    m_refCol->setPlaceholderText(
-        QStringLiteral("referenced column(s), comma-separated to match"));
+    m_refCol->setObjectName(QStringLiteral("refCol")); /* test discoverability */
+    m_refCol->setPlaceholderText(QStringLiteral("referenced column(s), comma-separated to match"));
     m_onDelete = new QComboBox(this);
     m_onDelete->addItems(kActions);
     m_onUpdate = new QComboBox(this);
     m_onUpdate->addItems(kActions);
     auto *addBtn = new QPushButton(QStringLiteral("&Add Foreign Key"), this);
-    addBtn->setObjectName(QStringLiteral("addFkBtn"));   /* test discoverability */
+    addBtn->setObjectName(QStringLiteral("addFkBtn")); /* test discoverability */
     connect(addBtn, &QPushButton::clicked, this, &ForeignKeyDialog::addPending);
 
     auto *form = new QFormLayout;
@@ -91,15 +86,14 @@ ForeignKeyDialog::ForeignKeyDialog(QString database, QString table,
     m_preview->setReadOnly(true);
     m_preview->setStyleSheet(QStringLiteral("color:#3B7DBB;"));
 
-    auto *buttons = new QDialogButtonBox(
-        QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
+    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
     buttons->button(QDialogButtonBox::Ok)->setText(QStringLiteral("Apply"));
     connect(buttons, &QDialogButtonBox::accepted, this, &QDialog::accept);
     connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
 
     auto *lay = new QVBoxLayout(this);
-    lay->addWidget(new QLabel(QStringLiteral("Foreign keys on `%1`.`%2`")
-                                  .arg(m_database, m_table), this));
+    lay->addWidget(
+        new QLabel(QStringLiteral("Foreign keys on `%1`.`%2`").arg(m_database, m_table), this));
     lay->addWidget(m_grid, 1);
     lay->addWidget(removeBtn, 0, Qt::AlignLeft);
     lay->addLayout(form);
@@ -123,9 +117,9 @@ void ForeignKeyDialog::addRow(const FkDef &fk, bool isNew)
     n->setData(Qt::UserRole + 5, fk.onUpdate);
     m_grid->setItem(r, 0, n);
     m_grid->setItem(r, 1, new QTableWidgetItem(fk.columns.join(QStringLiteral(", "))));
-    m_grid->setItem(r, 2, new QTableWidgetItem(
-        QStringLiteral("%1 (%2)").arg(fk.refTable,
-                                      fk.refColumns.join(QStringLiteral(", ")))));
+    m_grid->setItem(r, 2,
+                    new QTableWidgetItem(QStringLiteral("%1 (%2)").arg(
+                        fk.refTable, fk.refColumns.join(QStringLiteral(", ")))));
     m_grid->setItem(r, 3, new QTableWidgetItem(fk.onDelete));
     m_grid->setItem(r, 4, new QTableWidgetItem(fk.onUpdate));
 }
@@ -139,21 +133,18 @@ void ForeignKeyDialog::addPending()
         return out;
     };
     FkDef fk;
-    fk.columns    = split(m_localCol->currentText());
+    fk.columns = split(m_localCol->currentText());
     fk.refColumns = split(m_refCol->text());
-    fk.refTable   = m_refTable->currentText();
-    if(fk.columns.isEmpty() || fk.refTable.isEmpty()
-       || fk.columns.size() != fk.refColumns.size()) {
-        m_preview->setText(QStringLiteral(
-            "— local and referenced column counts must match —"));
+    fk.refTable = m_refTable->currentText();
+    if(fk.columns.isEmpty() || fk.refTable.isEmpty() || fk.columns.size() != fk.refColumns.size()) {
+        m_preview->setText(QStringLiteral("— local and referenced column counts must match —"));
         return;
     }
     fk.onDelete = m_onDelete->currentText();
     fk.onUpdate = m_onUpdate->currentText();
     fk.name = m_name->text().trimmed();
     if(fk.name.isEmpty())
-        fk.name = QStringLiteral("fk_%1_%2")
-                      .arg(m_table, fk.columns.join(QStringLiteral("_")));
+        fk.name = QStringLiteral("fk_%1_%2").arg(m_table, fk.columns.join(QStringLiteral("_")));
     addRow(fk, true);
 
     m_name->clear();
@@ -182,21 +173,22 @@ QString ForeignKeyDialog::buildSql() const
         for(int r = 0; r < m_grid->rowCount(); ++r) {
             QTableWidgetItem *n = m_grid->item(r, 0);
             if(n->data(Qt::UserRole).toBool())
-                changed << (n->text().isEmpty()
-                                ? QStringLiteral("(new foreign key)") : n->text());
+                changed << (n->text().isEmpty() ? QStringLiteral("(new foreign key)") : n->text());
         }
         for(const QString &orig : m_originalNames) {
             bool stillPresent = false;
             for(int r = 0; r < m_grid->rowCount(); ++r)
-                if(m_grid->item(r, 0)->text() == orig) { stillPresent = true; break; }
+                if(m_grid->item(r, 0)->text() == orig) {
+                    stillPresent = true;
+                    break;
+                }
             if(!stillPresent)
                 changed << orig;
         }
         if(!changed.isEmpty())
-            m_limitation = QStringLiteral(
-                "SQLite can't add or drop a foreign key on an existing "
-                "table without rebuilding it (not attempted here): %1.")
-                    .arg(changed.join(QStringLiteral(", ")));
+            m_limitation = QStringLiteral("SQLite can't add or drop a foreign key on an existing "
+                                          "table without rebuilding it (not attempted here): %1.")
+                               .arg(changed.join(QStringLiteral(", ")));
         return {};
     }
 
@@ -205,28 +197,26 @@ QString ForeignKeyDialog::buildSql() const
         QTableWidgetItem *n = m_grid->item(r, 0);
         current << n->text();
         if(!n->data(Qt::UserRole).toBool())
-            continue;                          /* existing, untouched */
+            continue; /* existing, untouched */
         const auto bt = [this](const QString &csv) {
             QStringList q;
             for(const QString &c : csv.split(',', Qt::SkipEmptyParts))
                 q << qi(m_driver, c.trimmed());
             return q.join(QStringLiteral(", "));
         };
-        adds << QStringLiteral(
-            "ADD CONSTRAINT %1 FOREIGN KEY (%2) REFERENCES %3 (%4) "
-            "ON DELETE %5 ON UPDATE %6")
-            .arg(qi(m_driver, n->text()),
-                 bt(n->data(Qt::UserRole + 1).toString()),
-                 qi(m_driver, n->data(Qt::UserRole + 2).toString()),
-                 bt(n->data(Qt::UserRole + 3).toString()),
-                 n->data(Qt::UserRole + 4).toString(),
-                 n->data(Qt::UserRole + 5).toString());
+        adds << QStringLiteral("ADD CONSTRAINT %1 FOREIGN KEY (%2) REFERENCES %3 (%4) "
+                               "ON DELETE %5 ON UPDATE %6")
+                    .arg(qi(m_driver, n->text()), bt(n->data(Qt::UserRole + 1).toString()),
+                         qi(m_driver, n->data(Qt::UserRole + 2).toString()),
+                         bt(n->data(Qt::UserRole + 3).toString()),
+                         n->data(Qt::UserRole + 4).toString(),
+                         n->data(Qt::UserRole + 5).toString());
     }
 
     /* MySQL: DROP FOREIGN KEY name. Standard SQL/PostgreSQL: a foreign key
      * is just a constraint, dropped like any other — DROP CONSTRAINT name. */
-    const QString dropKw = m_driver == DriverType::Postgres
-        ? QStringLiteral("DROP CONSTRAINT") : QStringLiteral("DROP FOREIGN KEY");
+    const QString dropKw = m_driver == DriverType::Postgres ? QStringLiteral("DROP CONSTRAINT")
+                                                            : QStringLiteral("DROP FOREIGN KEY");
     QStringList clauses;
     for(const QString &orig : m_originalNames)
         if(!current.contains(orig))
@@ -235,8 +225,7 @@ QString ForeignKeyDialog::buildSql() const
 
     if(clauses.isEmpty())
         return {};
-    const QString qualified = qi(m_driver, m_database) + QLatin1Char('.')
-                             + qi(m_driver, m_table);
+    const QString qualified = qi(m_driver, m_database) + QLatin1Char('.') + qi(m_driver, m_table);
     return QStringLiteral("ALTER TABLE %1\n  %2")
         .arg(qualified, clauses.join(QStringLiteral(",\n  ")));
 }

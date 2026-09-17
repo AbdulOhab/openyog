@@ -35,23 +35,25 @@ class ForeignKeyDialog : public QDialog
 public:
     struct FkDef
     {
-        QString     name;
+        QString name;
         QStringList columns;
-        QString     refTable;
+        QString refTable;
         QStringList refColumns;
-        QString     onDelete = QStringLiteral("RESTRICT");
-        QString     onUpdate = QStringLiteral("RESTRICT");
+        QString onDelete = QStringLiteral("RESTRICT");
+        QString onUpdate = QStringLiteral("RESTRICT");
     };
 
-    ForeignKeyDialog(QString database, QString table,
-                     const QList<FkDef> &fks, QStringList tableColumns,
-                     QStringList dbTables, QWidget *parent = nullptr,
+    ForeignKeyDialog(QString database, QString table, const QList<FkDef> &fks,
+                     QStringList tableColumns, QStringList dbTables, QWidget *parent = nullptr,
                      DriverType driver = DriverType::Mysql);
 
-    QString buildSql() const;   /* ALTER TABLE … or empty when unchanged */
+    QString buildSql() const; /* ALTER TABLE … or empty when unchanged */
     /* SQLite only: non-empty when buildSql() left a requested add/drop
      * undone because SQLite can't express it without a full table rebuild */
-    QString limitation() const { return m_limitation; }
+    QString limitation() const
+    {
+        return m_limitation;
+    }
 
 private slots:
     void addPending();
@@ -62,17 +64,17 @@ private:
     void addRow(const FkDef &fk, bool isNew);
 
     mutable QString m_limitation;
-    DriverType   m_driver = DriverType::Mysql;
-    QString      m_database, m_table;
-    QStringList  m_columns, m_dbTables;
-    QStringList  m_originalNames;
+    DriverType m_driver = DriverType::Mysql;
+    QString m_database, m_table;
+    QStringList m_columns, m_dbTables;
+    QStringList m_originalNames;
 
     QTableWidget *m_grid = nullptr;
-    QLineEdit    *m_name = nullptr;
-    QComboBox    *m_localCol = nullptr;
-    QComboBox    *m_refTable = nullptr;
-    QLineEdit    *m_refCol = nullptr;
-    QComboBox    *m_onDelete = nullptr;
-    QComboBox    *m_onUpdate = nullptr;
-    QLineEdit    *m_preview = nullptr;
+    QLineEdit *m_name = nullptr;
+    QComboBox *m_localCol = nullptr;
+    QComboBox *m_refTable = nullptr;
+    QLineEdit *m_refCol = nullptr;
+    QComboBox *m_onDelete = nullptr;
+    QComboBox *m_onUpdate = nullptr;
+    QLineEdit *m_preview = nullptr;
 };
