@@ -91,12 +91,18 @@ add_executable(openyog
     qt/UserManagerDialog.h qt/UserManagerDialog.cpp
     qt/ForeignKeyDialog.h  qt/ForeignKeyDialog.cpp
     qt/SqlDump.h           qt/SqlDump.cpp
-    qt/CodeEditor.h        qt/CodeEditor.cpp
+    qt/SqlEditor.h         qt/SqlEditor.cpp
     qt/FindBar.h           qt/FindBar.cpp
     qt/SqlFormat.h         qt/SqlFormat.cpp
     qt/TableDataView.h     qt/TableDataView.cpp
     qt/Theme.h             qt/Theme.cpp
-    qt/SqlHighlighter.h
 )
-target_link_libraries(openyog PRIVATE wycore Qt6::Widgets ${MARIADB_LIBRARY} ${SQLITE3_LIBRARY} ${PQ_LIBRARY})
+# QScintilla (the query editor): system package, same pattern as the
+# client libraries above — on Arch, `sudo pacman -S qscintilla-qt6`
+# (headers land in /usr/include/qt6/Qsci, lib is libqscintilla2_qt6).
+find_path(QSCINTILLA_INCLUDE_DIR Qsci/qsciscintilla.h
+          HINTS /usr/include/qt6 /usr/local/include/qt6 REQUIRED)
+find_library(QSCINTILLA_LIBRARY NAMES qscintilla2_qt6 REQUIRED)
+target_include_directories(openyog PRIVATE ${QSCINTILLA_INCLUDE_DIR})
+target_link_libraries(openyog PRIVATE wycore Qt6::Widgets ${MARIADB_LIBRARY} ${SQLITE3_LIBRARY} ${PQ_LIBRARY} ${QSCINTILLA_LIBRARY})
 target_compile_options(openyog PRIVATE -Wall)

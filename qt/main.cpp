@@ -31,7 +31,7 @@
 #include "SchemaSql.h"
 #include "SqlSplit.h"
 #include "SqlFormat.h"
-#include "CodeEditor.h"
+#include "SqlEditor.h"
 #include "Theme.h"
 #include "db/IDbDriver.h"
 #include "db/IDbConnection.h"
@@ -106,6 +106,8 @@ int main(int argc, char *argv[])
     QString schemaHtmlArg;
     QString delConn;
     QString shotMenuArg;     /* --shotmenu=Title selftest: screenshot one open top-level menu */
+    QString previewTheme;    /* --previewtheme=dark|twilight|light selftest: apply live,
+                              * without touching the persisted OpenYog.ini choice */
     for(int i = 1; i < argc; ++i) {
         const QString a = QString::fromLocal8Bit(argv[i]);
         if(a.startsWith(QStringLiteral("--screenshot=")))
@@ -1234,18 +1236,18 @@ int main(int argc, char *argv[])
             }
             return ok ? 0 : 1;
         }
+        if(a.startsWith(QStringLiteral("--previewtheme=")))
+            previewTheme = a.mid(QStringLiteral("--previewtheme=").size());
         if(a == QStringLiteral("--comptest")) {
             qputenv("QT_QPA_PLATFORM", "offscreen");
             QApplication app2(argc, argv);
-            CodeEditor ed;
+            SqlEditor ed;
             ed.setCompletions({ QStringLiteral("employees"),
                                 QStringLiteral("emp_dept"),
                                 QStringLiteral("orders") });
             const auto countFor = [&ed](const QString &sql) {
                 ed.setPlainText(sql);
-                QTextCursor c = ed.textCursor();
-                c.movePosition(QTextCursor::End);
-                ed.setTextCursor(c);
+                ed.moveCursorToEnd();
                 ed.triggerCompletion();
                 return ed.completionCountForTest();
             };
@@ -1368,6 +1370,8 @@ int main(int argc, char *argv[])
     /* SQLyog-look tab bars; palette/stylesheets follow the saved theme */
     const QString theme = Theme::load();
     Theme::apply(app, theme);
+    if(!previewTheme.isEmpty())
+        Theme::apply(app, previewTheme);
 
     dbDriverFor(DriverType::Mysql)->libraryInit();
     int rc = 0;
