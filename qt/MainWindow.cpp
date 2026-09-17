@@ -1002,6 +1002,7 @@ MainWindow::MainWindow(QWidget *parent)
         timeoutSpin->setRange(0, 24 * 3600);
         timeoutSpin->setValue(ConnectionTab::queryTimeoutSecs());
         timeoutSpin->setSpecialValueText(QStringLiteral("never"));
+        timeoutSpin->setLocale(QLocale::c());
         QColor browserColor = ObjectBrowserColor::load();
         auto *colorBtn = new QPushButton(
             browserColor.isValid() ? browserColor.name()
