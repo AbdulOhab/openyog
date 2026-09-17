@@ -92,6 +92,7 @@ int main(int argc, char *argv[])
                                 * context menu item texts (repeatable) — compares what
                                 * MySQL/SQLite/PostgreSQL offer for the same node kind
                                 * without eyeballing a screenshot */
+    bool dumpEditor = false;   /* --dumpeditor selftest: print the active editor's text */
     /* the four tree gestures above, repeated --xxxtreepath= args accumulate
      * here in command-line order and are replayed in that order — lets a
      * selftest script a whole browse sequence (expand A, double-click B,
@@ -153,6 +154,8 @@ int main(int argc, char *argv[])
         }
         if(a.startsWith(QStringLiteral("--dumptree=")))
             dumpTreePaths.append(a.mid(QStringLiteral("--dumptree=").size()));
+        if(a == QStringLiteral("--dumpeditor"))
+            dumpEditor = true;
         if(a.startsWith(QStringLiteral("--treemenu=")))
             treeMenuPaths.append(a.mid(QStringLiteral("--treemenu=").size()));
         if(a == QStringLiteral("--exportdlg"))
@@ -1784,6 +1787,11 @@ int main(int argc, char *argv[])
                     for(const QString &menuPath : treeMenuPaths) {
                         QTextStream(stdout) << "---- context menu @ " << menuPath << '\n';
                         for(const QString &line : w->selftestTreeMenu(menuPath))
+                            QTextStream(stdout) << line << '\n';
+                    }
+                    if(dumpEditor) {
+                        QTextStream(stdout) << "---- editor\n";
+                        for(const QString &line : w->selftestDumpEditor())
                             QTextStream(stdout) << line << '\n';
                     }
                     if(showInfoTab)

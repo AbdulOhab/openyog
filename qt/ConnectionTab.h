@@ -191,6 +191,7 @@ public slots:
     /* headless-test hook, forwards to ObjectBrowser::expandTreeItem() */
     void expandBrowserItem(const QString &path);
     QStringList dumpBrowserSubtree(const QString &path);      /* --dumptree= selftest */
+    QStringList dumpEditorText();                             /* --dumpeditor selftest */
     QStringList browserContextMenuItems(const QString &path); /* --treemenu= selftest */
     /* headless-test hook, forwards to ObjectBrowser::doubleClickTreeItem() */
     void doubleClickBrowserItem(const QString &path);

@@ -117,6 +117,10 @@ signals:
      * primary Postgres database). */
     void objectSelected(const QString &db, const QString &objType, const QString &name,
                         const QString &physDb = {});
+    /* double-click on a database/table/column/… node — upstream
+     * CQueryObject::InsertNodeText(): the node's name, already quoted for
+     * the connection's dialect, dropped at the active editor's caret */
+    void insertNameRequested(const QString &text);
     void databaseActivated(const QString &db); /* double click → USE */
     void tableActivated(const QString &db, const QString &table,
                         const QString &physDb = {}); /* → SELECT; physDb routes
