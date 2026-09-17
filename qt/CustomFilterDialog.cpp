@@ -19,8 +19,10 @@ const QStringList kConditions = {
 CustomFilterDialog::CustomFilterDialog(const QStringList &columns, const QVector<Row> &initial,
                                        std::function<QString(const QString &)> quoteIdent,
                                        std::function<QString(const QString &)> escapeValue,
+                                       std::function<QString(const QString &)> fullQueryFor,
                                        QWidget *parent)
-    : QDialog(parent), m_quoteIdent(std::move(quoteIdent)), m_escapeValue(std::move(escapeValue))
+    : QDialog(parent), m_quoteIdent(std::move(quoteIdent)), m_escapeValue(std::move(escapeValue)),
+      m_fullQueryFor(std::move(fullQueryFor))
 {
     setWindowTitle(QStringLiteral("Custom Filter"));
 
@@ -72,7 +74,7 @@ CustomFilterDialog::CustomFilterDialog(const QStringList &columns, const QVector
     m_previewRow = new QWidget(this);
     auto *previewLayout = new QVBoxLayout(m_previewRow);
     previewLayout->setContentsMargins(0, 0, 0, 0);
-    previewLayout->addWidget(new QLabel(QStringLiteral("WHERE"), m_previewRow));
+    previewLayout->addWidget(new QLabel(QStringLiteral("Query"), m_previewRow));
     previewLayout->addWidget(m_previewEdit);
     m_previewRow->hide();
 
@@ -93,7 +95,10 @@ CustomFilterDialog::CustomFilterDialog(const QStringList &columns, const QVector
 
 void CustomFilterDialog::updatePreview()
 {
-    m_previewEdit->setText(whereClause());
+    const QString where = whereClause();
+    m_previewEdit->setText(
+        m_fullQueryFor ? m_fullQueryFor(where)
+                       : (where.isEmpty() ? QString() : QStringLiteral("WHERE %1").arg(where)));
 }
 
 QVector<CustomFilterDialog::Row> CustomFilterDialog::rows() const
