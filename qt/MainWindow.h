@@ -47,6 +47,7 @@ public:
     void selftestCollapseBrowserItem(const QString &path); /* --collapsetreepath= selftest */
     void selftestExpandBrowserItem(const QString &path);
     QStringList selftestDumpTree(const QString &path);   /* --dumptree= selftest */   /* --expandtreepath= selftest */
+    QStringList selftestTreeMenu(const QString &path);   /* --treemenu= selftest */
     void selftestDoubleClickBrowserItem(const QString &path); /* --dblclicktreepath= selftest */
     void copySelectedTableToHost();   /* Table menu + --copytablehost selftest */
     void selftestRunAgain();   /* --runagain selftest: F9 a second time */
