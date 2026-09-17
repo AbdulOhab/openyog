@@ -604,6 +604,15 @@ TableDataView::TableDataView(QWidget *parent)
                     &TableDataView::openCustomFilter);
         }
     }
+    /* upstream's own toolbar layout is {…, ID_RESETFILTER, IDC_REFRESH} —
+     * a one-click "clear the active filter" button living right next to
+     * the funnel, so clearing a filter doesn't mean reopening the whole
+     * Custom Filter dialog just to blank out every row. Missed on the
+     * first pass; the owner pointed at it from a real-desktop screenshot. */
+    m_btnResetFilter = mkTool(ico(QStringLiteral("resetfilter.ico"), QStyle::SP_DialogCloseButton),
+                              QStringLiteral("Reset Filter"));
+    connect(m_btnResetFilter, &QToolButton::clicked, this, &TableDataView::resetFilter);
+
     auto *btnRefresh = mkTool(ico(QStringLiteral("refresh.ico"),
                                   QStyle::SP_BrowserReload),
                               QStringLiteral("Refresh data"));
@@ -701,6 +710,7 @@ TableDataView::TableDataView(QWidget *parent)
     if(btnFilter)
         tl->addWidget(btnFilter);
     tl->addWidget(m_filterLabel);
+    tl->addWidget(m_btnResetFilter);
     tl->addWidget(btnRefresh);
     tl->addWidget(vsep());
     tl->addWidget(m_limitChk);
@@ -857,7 +867,24 @@ void TableDataView::openCustomFilter()
     if(!discardStagedEdits(QStringLiteral("Re-query")))
         return;
     m_filterRows = dlg.rows();
-    m_where = dlg.whereClause();
+    applyFilterWhere(dlg.whereClause());
+}
+
+/* Reset Filter button: upstream's ID_RESETFILTER — clears the active
+ * filter directly, no dialog. A no-op (harmless) when nothing was set. */
+void TableDataView::resetFilter()
+{
+    if(!m_valid || (m_where.isEmpty() && m_filterRows.isEmpty()))
+        return;
+    if(!discardStagedEdits(QStringLiteral("Re-query")))
+        return;
+    m_filterRows.clear();
+    applyFilterWhere(QString());
+}
+
+void TableDataView::applyFilterWhere(const QString &where)
+{
+    m_where = where;
     const QString full = m_where.isEmpty() ? QString()
                                            : QStringLiteral("WHERE %1").arg(m_where);
     m_filterLabel->setText(

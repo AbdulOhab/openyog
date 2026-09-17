@@ -68,6 +68,7 @@ private slots:
     void checkAllRows(bool on);   /* row-select checkbox column — select all / none */
     void updateApplyBar();
     void openCustomFilter();       /* funnel button — Custom Filter dialog */
+    void resetFilter();            /* Reset Filter button — clear without reopening the dialog */
     void pageStep(int delta);
     void sortByColumn(int section);   /* header click → ORDER BY, toggles dir */
 
@@ -77,6 +78,10 @@ private:
     QString whereFromOrigRow(int row) const;
     bool discardStagedEdits(const QString &action);  /* prompt if pending */
 
+    /* apply a WHERE clause (empty clears it): updates m_where, the toolbar
+     * label, resets to the first page, and reloads — shared by the Custom
+     * Filter dialog's OK and the Reset Filter button */
+    void applyFilterWhere(const QString &where);
     void reload();
     QByteArray fetchCellBytes(int row, int col) const;   /* raw bytes for hex view */
     QString renderTextView() const;   /* column-aligned dump, upstream FormatResultSet */
@@ -118,6 +123,7 @@ private:
     QToolButton * m_tbText     = nullptr;
     int           m_viewMode   = 0;         /* 0 = grid, 2 = text */
     QLabel      * m_filterLabel = nullptr;  /* shows the active WHERE, empty = none */
+    QToolButton * m_btnResetFilter = nullptr;  /* one-click clear, no dialog */
     QCheckBox   * m_limitChk   = nullptr;   /* off = fetch every matching row */
     QSpinBox    * m_firstRow   = nullptr;   /* 0-based OFFSET */
     QSpinBox    * m_rowCount   = nullptr;   /* LIMIT */
