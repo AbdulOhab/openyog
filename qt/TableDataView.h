@@ -132,13 +132,16 @@ private:
     QToolButton *m_tbGrid = nullptr;   /* view toggles — exclusive, checkable */
     QToolButton *m_tbForm = nullptr;
     QToolButton *m_tbText = nullptr;
-    int m_viewMode = 0;                      /* 0 = grid, 2 = text */
-    QLabel *m_filterLabel = nullptr;         /* shows the active WHERE, empty = none */
-    QToolButton *m_btnResetFilter = nullptr; /* one-click clear, no dialog */
-    QCheckBox *m_limitChk = nullptr;         /* off = fetch every matching row */
-    QSpinBox *m_firstRow = nullptr;          /* 0-based OFFSET */
-    QSpinBox *m_rowCount = nullptr;          /* LIMIT */
-    QToolButton *m_nextBtn = nullptr;        /* ▶ — advance by # of rows */
+    int m_viewMode = 0;              /* 0 = grid, 2 = text */
+    QLabel *m_filterLabel = nullptr; /* shows the active WHERE, empty = none */
+    /* one toolbar slot, upstream-style: funnel + "Custom Filter…" when no
+     * filter is active, funnel-with-X + "Reset Filter" once one is — see
+     * applyFilterWhere() */
+    QToolButton *m_btnFilter = nullptr;
+    QCheckBox *m_limitChk = nullptr;  /* off = fetch every matching row */
+    QSpinBox *m_firstRow = nullptr;   /* 0-based OFFSET */
+    QSpinBox *m_rowCount = nullptr;   /* LIMIT */
+    QToolButton *m_nextBtn = nullptr; /* ▶ — advance by # of rows */
     QString m_where;
     /* Custom Filter dialog's rows, kept so reopening it (or a later table
      * reload) shows the same Field/Condition/Value the user last entered —

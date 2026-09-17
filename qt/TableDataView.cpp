@@ -604,25 +604,18 @@ TableDataView::TableDataView(QWidget *parent) : QWidget(parent)
     connect(viewGrp, &QButtonGroup::idClicked, this, &TableDataView::setViewMode);
 
     /* right group: filter · refresh │ [x] Limit rows …  (SQLyog keeps refresh
-     * over here, next to the filter funnel — not with the DML icons) */
-    QToolButton *btnFilter = nullptr;
-    {
-        QIcon fn = Icons::get(QStringLiteral("filter.ico"));
-        if(fn.isNull())
-            fn = QIcon::fromTheme(QStringLiteral("view-filter"));
-        if(!fn.isNull()) {
-            btnFilter = mkTool(fn, QStringLiteral("Custom Filter…"));
-            connect(btnFilter, &QToolButton::clicked, this, &TableDataView::openCustomFilter);
-        }
-    }
-    /* upstream's own toolbar layout is {…, ID_RESETFILTER, IDC_REFRESH} —
-     * a one-click "clear the active filter" button living right next to
-     * the funnel, so clearing a filter doesn't mean reopening the whole
-     * Custom Filter dialog just to blank out every row. Missed on the
-     * first pass; the owner pointed at it from a real-desktop screenshot. */
-    m_btnResetFilter = mkTool(ico(QStringLiteral("resetfilter.ico"), QStyle::SP_DialogCloseButton),
-                              QStringLiteral("Reset Filter"));
-    connect(m_btnResetFilter, &QToolButton::clicked, this, &TableDataView::resetFilter);
+     * over here, next to the filter funnel — not with the DML icons).
+     * Upstream (src/DataView.cpp's ID_RESETFILTER handler + UpdateFilterIcon())
+     * uses ONE toolbar slot for this, not two: its icon and behavior swap
+     * depending on whether a filter is currently active — the plain funnel
+     * ("Custom Filter…", opens the dialog) when not, a funnel-with-a-red-X
+     * ("Reset Filter", clears directly) once one is. First pass here had
+     * two separate, always-visible buttons; consolidated after the owner
+     * checked upstream's actual behavior mid-filter. */
+    m_btnFilter = mkTool(ico(QStringLiteral("filter.ico"), QStyle::SP_FileDialogDetailedView),
+                         QStringLiteral("Custom Filter…"));
+    connect(m_btnFilter, &QToolButton::clicked, this,
+            [this] { m_where.isEmpty() ? openCustomFilter() : resetFilter(); });
 
     auto *btnRefresh = mkTool(ico(QStringLiteral("refresh.ico"), QStyle::SP_BrowserReload),
                               QStringLiteral("Refresh data"));
@@ -715,10 +708,8 @@ TableDataView::TableDataView(QWidget *parent) : QWidget(parent)
     tl->addWidget(m_tbForm);
     tl->addWidget(m_tbText);
     tl->addStretch(1);
-    if(btnFilter)
-        tl->addWidget(btnFilter);
+    tl->addWidget(m_btnFilter);
     tl->addWidget(m_filterLabel);
-    tl->addWidget(m_btnResetFilter);
     tl->addWidget(btnRefresh);
     tl->addWidget(vsep());
     tl->addWidget(m_limitChk);
@@ -829,6 +820,10 @@ void TableDataView::load(IDbConnection *conn, const QString &db, const QString &
         m_filterLabel->clear();
         m_filterLabel->setToolTip(QString());
     }
+    if(m_btnFilter) {
+        m_btnFilter->setIcon(Icons::get(QStringLiteral("filter.ico")));
+        m_btnFilter->setToolTip(QStringLiteral("Custom Filter…"));
+    }
     m_orderBy.clear();
     m_sortColumn = -1;
     m_sortDesc = false;
@@ -895,6 +890,15 @@ void TableDataView::applyFilterWhere(const QString &where)
     m_filterLabel->setText(m_filterLabel->fontMetrics().elidedText(full, Qt::ElideRight,
                                                                    m_filterLabel->maximumWidth()));
     m_filterLabel->setToolTip(full);
+    /* upstream's UpdateFilterIcon(): the one filter button's icon/tooltip
+     * follow whether a filter is active, not two separate buttons */
+    if(m_where.isEmpty()) {
+        m_btnFilter->setIcon(Icons::get(QStringLiteral("filter.ico")));
+        m_btnFilter->setToolTip(QStringLiteral("Custom Filter…"));
+    } else {
+        m_btnFilter->setIcon(Icons::get(QStringLiteral("resetfilter.ico")));
+        m_btnFilter->setToolTip(QStringLiteral("Reset Filter"));
+    }
     if(m_firstRow) {
         m_firstRow->blockSignals(true);
         m_firstRow->setValue(0); /* new filter → back to the top */
