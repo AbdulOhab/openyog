@@ -171,6 +171,12 @@ private:
      * of the customContextMenuRequested handler so contextMenuItemsForTest()
      * can build the same menu without executing it */
     void populateContextMenu(QMenu &menu, QTreeWidgetItem *item);
+    /* the "Create Table…"/"Create Object"/"Copy|Alter|Backup|Empty|
+     * Truncate|Drop Database…" block — shared by a KDatabase node (every
+     * driver) and, for PostgreSQL, a KPgDatabase node that IS the tab's
+     * own primary database (safe: same m_conn, no cross-connection
+     * routing needed) */
+    void populateDatabaseMenu(QMenu &menu, const QString &db);
 
     enum ItemRole { RoleKind = Qt::UserRole + 1, RoleName };
     enum Kind { KindConnection, KindDatabase, KindFolder, KindTable };
