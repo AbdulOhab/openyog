@@ -49,7 +49,7 @@ ConnectionDialog::ConnectionDialog(QWidget *parent) : QDialog(parent)
      * bitmap per driver, swapped by driverChanged() so this panel never
      * claims to be MySQL when it isn't ------------------------------- */
     m_brandImage = new QLabel(this);
-    m_brandImage->setPixmap(QPixmap(Icons::dir() + QStringLiteral("connection.png")));
+    m_brandImage->setPixmap(QPixmap(Icons::path(QStringLiteral("connection.png"))));
     m_brandImage->setAlignment(Qt::AlignTop | Qt::AlignHCenter);
     m_brandImage->setFixedWidth(150);
 
@@ -515,9 +515,9 @@ void ConnectionDialog::driverChanged(int index)
                    : dt == SqlDriverType::Postgres ? QStringLiteral("Connect to PostgreSQL Server")
                                                    : QStringLiteral("Connect to MySQL Host"));
     m_brandImage->setPixmap(QPixmap(
-        Icons::dir() + (dt == SqlDriverType::Sqlite     ? QStringLiteral("connection_sqlite.png")
-                        : dt == SqlDriverType::Postgres ? QStringLiteral("connection_postgres.png")
-                                                        : QStringLiteral("connection.png"))));
+        Icons::path(dt == SqlDriverType::Sqlite     ? QStringLiteral("connection_sqlite.png")
+                    : dt == SqlDriverType::Postgres ? QStringLiteral("connection_postgres.png")
+                                                    : QStringLiteral("connection.png"))));
 }
 
 void ConnectionDialog::browseSqliteFile()

@@ -102,6 +102,14 @@ EOF
 cp -f "$QT_MINGW/plugins/platforms/qwindows.dll"   "$DEPLOY/platforms/"
 cp -f "$QT_MINGW/plugins/platforms/qoffscreen.dll" "$DEPLOY/platforms/"
 
+# imageformats/qico.dll: EVERY toolbar, menu and tree icon is a .ico from
+# include/bitmaps, and ICO decoding lives in this plugin — QtGui only has PNG,
+# BMP, PPM, XBM and XPM built in. Linux never noticed because the distro Qt
+# installs the plugin system-wide. Without it here the icons are compiled into
+# the exe and still render as nothing, so this is not optional.
+mkdir -p "$DEPLOY/imageformats"
+cp -f "$QT_MINGW/plugins/imageformats/qico.dll" "$DEPLOY/imageformats/"
+
 echo "deploy ready: $DEPLOY"
 ls -la "$DEPLOY"
 

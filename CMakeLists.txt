@@ -75,9 +75,31 @@ find_package(Qt6 REQUIRED COMPONENTS Widgets)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 
+# The authentic SQLyog bitmaps (include/bitmaps) get compiled INTO the binary.
+# qt/Icons.h used to read them from a path relative to the executable
+# (<exe>/../include/bitmaps), which only ever resolved inside the build tree —
+# a deployed Windows folder or an installed Linux prefix has no sibling source
+# tree, so every icon silently came back as a null QIcon.
+# Globbed, not listed: several Icons::get() call sites take the filename from
+# runtime data (ObjectBrowser's node kinds, MainWindow's Create-object map), so
+# a hand-written list would go stale without anything failing loudly.
+set(BITMAP_DIR "${CMAKE_CURRENT_SOURCE_DIR}/include/bitmaps")
+file(GLOB OPENYOG_BITMAPS CONFIGURE_DEPENDS RELATIVE "${BITMAP_DIR}"
+     "${BITMAP_DIR}/*.ico" "${BITMAP_DIR}/*.ICO" "${BITMAP_DIR}/*.png")
+set(BITMAP_QRC_BODY "")
+foreach(bmp IN LISTS OPENYOG_BITMAPS)
+    string(APPEND BITMAP_QRC_BODY "    <file alias=\"${bmp}\">${BITMAP_DIR}/${bmp}</file>\n")
+endforeach()
+# via a staging file + COPYONLY so an unchanged icon set doesn't re-run rcc
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/bitmaps.qrc.in"
+     "<!DOCTYPE RCC><RCC version=\"1.0\">\n<qresource prefix=\"/bitmaps\">\n${BITMAP_QRC_BODY}</qresource>\n</RCC>\n")
+configure_file("${CMAKE_CURRENT_BINARY_DIR}/bitmaps.qrc.in"
+               "${CMAKE_CURRENT_BINARY_DIR}/bitmaps.qrc" COPYONLY)
+
 add_executable(openyog
     qt/main.cpp
     qt/openyog.qrc
+    "${CMAKE_CURRENT_BINARY_DIR}/bitmaps.qrc"
     qt/db/IDbDriver.h
     qt/db/IDbConnection.h
     qt/db/DbDriverRegistry.h   qt/db/DbDriverRegistry.cpp
@@ -119,3 +141,12 @@ find_library(QSCINTILLA_LIBRARY NAMES qscintilla2_qt6 REQUIRED)
 target_include_directories(openyog PRIVATE ${QSCINTILLA_INCLUDE_DIR})
 target_link_libraries(openyog PRIVATE wycore Qt6::Widgets ${MARIADB_LIBRARY} ${SQLITE3_LIBRARY} ${PQ_LIBRARY} ${QSCINTILLA_LIBRARY})
 target_compile_options(openyog PRIVATE -Wall)
+
+# Windows only: compile qt/openyog.rc so the .exe carries its own icon. windres
+# resolves the script's "resources/openyog.ico" against its include path, not
+# against the script's own directory, so qt/ has to be on it explicitly.
+if(WIN32)
+    enable_language(RC)
+    set(CMAKE_RC_FLAGS "${CMAKE_RC_FLAGS} -I${CMAKE_CURRENT_SOURCE_DIR}/qt")
+    target_sources(openyog PRIVATE qt/openyog.rc)
+endif()
