@@ -1,0 +1,12 @@
+/* Windows resource script — gives openyog.exe its own icon in Explorer, the
+ * taskbar and Alt-Tab. QApplication::setWindowIcon() (qt/main.cpp) only dresses
+ * the window at runtime; the file itself needs a real ICON resource, or the
+ * shell falls back to the generic executable glyph.
+ *
+ * Resource id 1 (numeric, not a named identifier): the shell shows the
+ * lowest-numbered icon resource as the file's icon, so this is unambiguous
+ * regardless of anything else linked in later. Compiled by windres only on
+ * Windows builds — see the WIN32 block in CMakeLists.txt, which also puts
+ * qt/ on the resource-compiler include path so the path below resolves.
+ */
+1 ICON "resources/openyog.ico"

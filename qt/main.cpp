@@ -34,6 +34,7 @@
 #include "SqlEditor.h"
 #include <Qsci/qscilexersql.h>
 #include "CustomFilterDialog.h"
+#include "Icons.h"
 #include "Theme.h"
 #include "db/IDbDriver.h"
 #include "db/IDbConnection.h"
@@ -44,14 +45,18 @@
 #include <QAction>
 #include <QCheckBox>
 #include <QComboBox>
+#include <QDir>
 #include <QKeySequence>
 #include <QLineEdit>
 #include <QListWidget>
 #include <QFile>
 #include <QFileInfo>
 #include <QIcon>
+#include <QPixmap>
+#include <QImage>
 #include <QMenu>
 #include <QMenuBar>
+#include <QPainter>
 #include <QPushButton>
 #include <QRegularExpression>
 #include <QTableWidget>
@@ -1280,6 +1285,68 @@ int main(int argc, char *argv[])
                                 << "), buffer-kept=" << (kept ? "yes" : "NO")
                                 << ", shot=/tmp/openyog-casetest.png\n";
             return upper && kept ? 0 : 1;
+        }
+        /* --icontest — every bitmap the UI draws actually decodes. Catches two
+         * failure modes that are both silent at runtime, because a QIcon that
+         * cannot load just draws nothing and leaves a text-only toolbar:
+         *   1. include/bitmaps not compiled into the binary (the files used to
+         *      be read from <exe>/../include/bitmaps, a path that exists only
+         *      inside a build tree — never in a deployed Windows folder);
+         *   2. .ico decoding unavailable. ICO is an imageformats PLUGIN, not a
+         *      built-in QtGui format, so a Windows deploy without
+         *      imageformats/qico.dll fails every icon even with the files
+         *      embedded. Linux never sees this — the distro Qt has the plugin.
+         * Decoding is forced via pixmap(): QIcon::isNull() is false for any
+         * icon built from a filename, present or not, so it proves nothing. */
+        if(a == QStringLiteral("--icontest")) {
+            QApplication app2(argc, argv);
+            const QStringList embedded = QDir(QStringLiteral(":/bitmaps")).entryList(QDir::Files);
+            QStringList failed;
+            for(const QString &f : embedded)
+                if(QIcon(Icons::path(f)).pixmap(16, 16).isNull())
+                    failed << f;
+            /* a few names the main toolbar and browser tree ask for by hand,
+             * so a glob that silently matched nothing can't pass this */
+            const QStringList required = {
+                QStringLiteral("execute_16.ico"), QStringLiteral("refresh_16.ico"),
+                QStringLiteral("table.ico"),      QStringLiteral("discon.ICO"),
+                QStringLiteral("connection.png"),
+            };
+            QStringList missing;
+            for(const QString &f : required)
+                if(QIcon(Icons::path(f)).pixmap(16, 16).isNull())
+                    missing << f;
+            /* contact sheet of every embedded bitmap — wine swallows this
+             * app's stdout, so under wine the PNG is the only readable proof
+             * (same trick --casetest uses). Painted straight onto a QImage:
+             * no widgets, so a fontless wine prefix can't tofu it. */
+            const int cell = 34, cols = 16;
+            QImage sheet(cols * cell, ((embedded.size() + cols - 1) / cols) * cell,
+                         QImage::Format_ARGB32);
+            sheet.fill(Qt::white);
+            {
+                QPainter p(&sheet);
+                for(int i = 0; i < embedded.size(); ++i)
+                    p.drawPixmap((i % cols) * cell + 1, (i / cols) * cell + 1,
+                                 QIcon(Icons::path(embedded[i])).pixmap(32, 32));
+            }
+            sheet.save(QStringLiteral("/tmp/openyog-icontest.png"));
+
+            const bool ok = !embedded.isEmpty() && failed.isEmpty() && missing.isEmpty();
+            QTextStream(stdout) << "icontest: embedded=" << embedded.size()
+                                << " decoded=" << (embedded.size() - failed.size())
+                                << " required-ok=" << (required.size() - missing.size()) << "/"
+                                << required.size() << " sheet=/tmp/openyog-icontest.png\n";
+            if(!failed.isEmpty())
+                QTextStream(stdout) << "  undecodable: " << failed.mid(0, 8).join(u' ')
+                                    << (failed.size() > 8 ? " …" : "") << "\n";
+            if(!missing.isEmpty())
+                QTextStream(stdout) << "  MISSING required: " << missing.join(u' ') << "\n";
+            if(embedded.isEmpty())
+                QTextStream(stdout) << "  :/bitmaps is empty — the generated "
+                                       "bitmaps.qrc never made it into the binary\n";
+            QTextStream(stdout) << "icontest: " << (ok ? "PASS" : "FAIL") << "\n";
+            return ok ? 0 : 1;
         }
         if(a == QStringLiteral("--filtertest")) {
             /* Custom Filter dialog's WHERE-building — the part faithfully
