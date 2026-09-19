@@ -1,7 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- OpenYog application icon. Original mark (no SQLyog branding):
-     a database cylinder on the app's signature blue, with a green
-     "run" chevron echoing the toolbar's execute icons. -->
+<!-- OpenYog application icon. Original mark (no SQLyog/MySQL branding):
+     a database cylinder on the app's signature blue (#3B7DBB family, same
+     hue as Theme.cpp's strips/tab bars), with a cyan query-cursor chevron
+     replacing the old generic green "play" triangle — meant to read as
+     "run a query against your data", not "media player". -->
 <svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
@@ -10,22 +12,17 @@
     </linearGradient>
   </defs>
 
-  <rect x="8" y="8" width="240" height="240" rx="48" fill="url(#bg)"/>
+  <rect x="8" y="8" width="240" height="240" rx="52" fill="url(#bg)"/>
 
   <!-- database cylinder -->
-  <g transform="translate(-8 -6)">
-    <g fill="#FFFFFF">
-      <ellipse cx="112" cy="72" rx="58" ry="21"/>
-      <path d="M54 72 v44 a58 21 0 0 0 116 0 V72 a58 21 0 0 1 -116 0 z" opacity="0.94"/>
-      <path d="M54 116 v44 a58 21 0 0 0 116 0 v-44 a58 21 0 0 1 -116 0 z" opacity="0.82"/>
-    </g>
-    <g fill="none" stroke="#2F6FA8" stroke-width="5" opacity="0.30">
-      <path d="M54 72 a58 21 0 0 0 116 0"/>
-      <path d="M54 116 a58 21 0 0 0 116 0"/>
-    </g>
-  </g>
+  <rect x="58" y="96" width="106" height="80" fill="#FFFFFF"/>
+  <ellipse cx="111" cy="176" rx="53" ry="21" fill="#D7E9FC"/>
+  <ellipse cx="111" cy="136" rx="53" ry="21" fill="#FFFFFF"/>
+  <ellipse cx="111" cy="96"  rx="53" ry="21" fill="#FFFFFF"/>
+  <path d="M58 96 a53 21 0 0 0 106 0"  fill="none" stroke="#2F6FA8" stroke-width="6" opacity="0.85"/>
+  <path d="M58 136 a53 21 0 0 0 106 0" fill="none" stroke="#2F6FA8" stroke-width="5" opacity="0.45"/>
 
-  <!-- green "run" chevron -->
-  <path d="M150 156 l60 34 -60 34 z" fill="#3FB950"
-        stroke="#2F6FA8" stroke-width="7" stroke-linejoin="round"/>
+  <!-- cyan "query cursor" chevron -->
+  <path d="M168 174 l34 -26 l-34 -26" fill="none" stroke="#3FB9E0"
+        stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>
