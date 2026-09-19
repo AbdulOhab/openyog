@@ -52,7 +52,19 @@ cmake --build build-cmake
 ./build-cmake/openyog
 ```
 
-A Windows build via mingw-w64 is planned; the core already compiles portably.
+## Build (Windows, cross-compiled from Linux)
+
+Cross-compiled with mingw-w64 + an official Qt 6.11.2 `win64_mingw`
+prebuilt (not built from source); verified end-to-end with a wine smoke
+test, real-hardware testing still pending.
+
+```bash
+tools/windows-cross-build.sh --zip
+```
+
+Produces `build-mingw/deploy/` (the exe + its full DLL closure + Qt
+plugins) and `build-mingw/openyog-win-deploy.zip` — copy the zip's whole
+contents to a Windows machine, not just `openyog.exe`.
 
 ## Licensing
 
