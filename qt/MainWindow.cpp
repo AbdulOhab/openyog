@@ -84,9 +84,22 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
     m_tabs->setCornerWidget(plus, Qt::TopRightCorner);
 
     /* welcome page shown while no connection is open — the empty QTabWidget
-     * pane was just a blank rectangle; SQLyog's MDI area is the blue strip */
+     * pane was just a blank rectangle; SQLyog's MDI area is the blue strip.
+     * Painted via QPalette, not setStyleSheet(): Qt's stylesheet cascade
+     * rule means ANY setStyleSheet() call on an ancestor — even just a
+     * "background:" rule — switches every descendant widget without its
+     * own stylesheet from native QStyle painting to Qt's own CSS box-model
+     * renderer. That silently demoted "New Connection…" below to a flat,
+     * slightly-rounded CSS button on every platform (confirmed identical on
+     * native Linux and under wine — not a Windows-only rendering gap, see
+     * WORKLOG 2026-09-19), which is exactly what a bundled native style
+     * plugin (qmodernwindowsstyle.dll) cannot fix: the button had already
+     * opted out of native painting before that plugin ever got a say. */
     auto *welcome = new QWidget(this);
-    welcome->setStyleSheet(QStringLiteral("background:#3B7DBB;"));
+    welcome->setAutoFillBackground(true);
+    QPalette welcomePal = welcome->palette();
+    welcomePal.setColor(QPalette::Window, QColor(0x3B, 0x7D, 0xBB));
+    welcome->setPalette(welcomePal);
     auto *wl = new QVBoxLayout(welcome);
     wl->setAlignment(Qt::AlignCenter);
     auto *wIcon = new QLabel(welcome);
