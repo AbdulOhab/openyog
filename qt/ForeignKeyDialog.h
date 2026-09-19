@@ -25,8 +25,10 @@
 #include <QString>
 #include <QStringList>
 
+class IDbConnection;
 class QComboBox;
 class QLineEdit;
+class QListWidget;
 class QTableWidget;
 
 class ForeignKeyDialog : public QDialog
@@ -43,9 +45,13 @@ public:
         QString onUpdate = QStringLiteral("RESTRICT");
     };
 
+    /* `conn` is used only to fetch the REFERENCED table's columns live, as
+     * the user picks a different one in m_refTable — this table's own
+     * columns (tableColumns) are already known, but a foreign key can
+     * point at any other table, whose columns aren't fetched up front. */
     ForeignKeyDialog(QString database, QString table, const QList<FkDef> &fks,
-                     QStringList tableColumns, QStringList dbTables, QWidget *parent = nullptr,
-                     SqlDriverType driver = SqlDriverType::Mysql);
+                     QStringList tableColumns, QStringList dbTables, IDbConnection *conn,
+                     QWidget *parent = nullptr, SqlDriverType driver = SqlDriverType::Mysql);
 
     QString buildSql() const; /* ALTER TABLE … or empty when unchanged */
     /* SQLite only: non-empty when buildSql() left a requested add/drop
@@ -59,6 +65,7 @@ private slots:
     void addPending();
     void removeSelected();
     void updatePreview();
+    void reloadRefColumns(const QString &refTable);
 
 private:
     void addRow(const FkDef &fk, bool isNew);
@@ -68,12 +75,13 @@ private:
     QString m_database, m_table;
     QStringList m_columns, m_dbTables;
     QStringList m_originalNames;
+    IDbConnection *m_conn = nullptr;
 
     QTableWidget *m_grid = nullptr;
     QLineEdit *m_name = nullptr;
-    QComboBox *m_localCol = nullptr;
+    QListWidget *m_localCols = nullptr;
     QComboBox *m_refTable = nullptr;
-    QLineEdit *m_refCol = nullptr;
+    QListWidget *m_refCols = nullptr;
     QComboBox *m_onDelete = nullptr;
     QComboBox *m_onUpdate = nullptr;
     QLineEdit *m_preview = nullptr;
