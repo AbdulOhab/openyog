@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- OpenYog application icon. Original mark (no SQLyog/MySQL branding):
      a database cylinder on the app's signature blue (#3B7DBB family, same
-     hue as Theme.cpp's strips/tab bars), with a cyan query-cursor chevron
+     hue as Theme.cpp's strips/tab bars), with a green query-cursor chevron
      replacing the old generic green "play" triangle — meant to read as
      "run a query against your data", not "media player". -->
 <svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
@@ -22,7 +22,7 @@
   <path d="M58 96 a53 21 0 0 0 106 0"  fill="none" stroke="#2F6FA8" stroke-width="6" opacity="0.85"/>
   <path d="M58 136 a53 21 0 0 0 106 0" fill="none" stroke="#2F6FA8" stroke-width="5" opacity="0.45"/>
 
-  <!-- cyan "query cursor" chevron -->
-  <path d="M168 174 l34 -26 l-34 -26" fill="none" stroke="#3FB9E0"
+  <!-- green "query cursor" chevron -->
+  <path d="M168 174 l34 -26 l-34 -26" fill="none" stroke="#3FB950"
         stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>
