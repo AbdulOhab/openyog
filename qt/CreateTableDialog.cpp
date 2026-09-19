@@ -196,11 +196,22 @@ void CreateTableDialog::buildCommon()
     auto *addBtn = new QPushButton(QStringLiteral("&Add Column"), this);
     addBtn->setObjectName(QStringLiteral("addColumnBtn")); /* test discoverability */
     auto *delBtn = new QPushButton(QStringLiteral("&Remove Column"), this);
+    /* reorder: rows are otherwise append-only, yet column order is part of
+     * the table's definition — CREATE mode bakes it into the emitted defs,
+     * ALTER mode surfaces it as MySQL AFTER/FIRST (see buildAlterSql()) */
+    auto *upBtn = new QPushButton(QStringLiteral("Move &Up"), this);
+    upBtn->setObjectName(QStringLiteral("moveUpBtn")); /* test discoverability */
+    auto *downBtn = new QPushButton(QStringLiteral("Move &Down"), this);
+    downBtn->setObjectName(QStringLiteral("moveDownBtn")); /* test discoverability */
     connect(addBtn, &QPushButton::clicked, this, [this] { addColumnRow(); });
     connect(delBtn, &QPushButton::clicked, this, &CreateTableDialog::removeSelectedRow);
+    connect(upBtn, &QPushButton::clicked, this, [this] { moveSelectedRow(-1); });
+    connect(downBtn, &QPushButton::clicked, this, [this] { moveSelectedRow(1); });
     auto *rowBtns = new QHBoxLayout;
     rowBtns->addWidget(addBtn);
     rowBtns->addWidget(delBtn);
+    rowBtns->addWidget(upBtn);
+    rowBtns->addWidget(downBtn);
     rowBtns->addStretch(1);
 
     m_preview = new QLineEdit(this);
@@ -276,6 +287,64 @@ void CreateTableDialog::removeSelectedRow()
     if(row >= 0 && m_grid->rowCount() > 1)
         m_grid->removeRow(row);
     updatePreview();
+}
+
+void CreateTableDialog::moveSelectedRow(int delta)
+{
+    const int row = m_grid->currentRow();
+    const int other = row + delta;
+    if(row < 0 || other < 0 || other >= m_grid->rowCount())
+        return;
+    /* swap BY VALUE rather than shuffling QTableWidgetItem/cell-widget
+     * pointers between rows — Qt owns each item/widget per cell, and
+     * moving them is fragile in ways re-writing their contents isn't */
+    const ColumnDef a = rowColumnDef(row), b = rowColumnDef(other);
+    const QString origA = m_grid->item(row, CName)->data(Qt::UserRole).toString();
+    const QString origB = m_grid->item(other, CName)->data(Qt::UserRole).toString();
+    const auto writeRow = [this](int r, const ColumnDef &c, const QString &orig) {
+        m_grid->item(r, CName)->setText(c.name);
+        m_grid->item(r, CName)->setData(Qt::UserRole, orig);
+        m_grid->item(r, CLen)->setText(c.length);
+        m_grid->item(r, CDefault)->setText(c.def);
+        m_grid->item(r, CComment)->setText(c.comment);
+        if(auto *typeBox = qobject_cast<QComboBox *>(m_grid->cellWidget(r, CType)))
+            typeBox->setCurrentText(c.type);
+        const struct
+        {
+            Col col;
+            bool on;
+        } flags[] = {
+            {CPk, c.pk}, {CNotNull, c.notNull}, {CUnsigned, c.isUnsigned}, {CAuto, c.autoInc}};
+        for(const auto &f : flags)
+            if(auto *cb = cellBox(m_grid->cellWidget(r, f.col)))
+                cb->setChecked(f.on);
+    };
+    writeRow(row, b, origB);
+    writeRow(other, a, origA);
+    m_grid->setCurrentCell(other, m_grid->currentColumn());
+    updatePreview();
+}
+
+QVector<CreateTableDialog::RowRef> CreateTableDialog::nonEmptyRows() const
+{
+    QVector<RowRef> rows;
+    for(int r = 0; r < m_grid->rowCount(); ++r) {
+        QTableWidgetItem *nameItem = m_grid->item(r, CName);
+        if(!nameItem)
+            continue;
+        const QString name = nameItem->text().trimmed();
+        if(!name.isEmpty())
+            rows.append({r, name, nameItem->data(Qt::UserRole).toString()});
+    }
+    return rows;
+}
+
+QString CreateTableDialog::prevExistingOrig(const QVector<RowRef> &rows, int i)
+{
+    for(int j = i - 1; j >= 0; --j)
+        if(!rows[j].orig.isEmpty())
+            return rows[j].orig;
+    return QString();
 }
 
 CreateTableDialog::ColumnDef CreateTableDialog::rowColumnDef(int row) const
@@ -423,26 +492,49 @@ QString CreateTableDialog::buildAlterSql() const
     QStringList clauses, newPk;
     QStringList seenOrig;
 
-    for(int r = 0; r < m_grid->rowCount(); ++r) {
-        QTableWidgetItem *nameItem = m_grid->item(r, CName);
-        if(!nameItem)
-            continue;
-        const QString name = nameItem->text().trimmed();
-        if(name.isEmpty())
-            continue;
-        const QString orig = nameItem->data(Qt::UserRole).toString();
+    /* Position rules (MySQL):
+     * - an EXISTING column only "moved" when its predecessor among other
+     *   EXISTING columns changed — a new column inserted above it doesn't
+     *   displace it (the new column's own FIRST/AFTER does the inserting),
+     *   so a repositioning CHANGE is judged against prevExistingOrig(),
+     *   not the raw previous row.
+     * - a NEW column appends at the table's end by default, so it only
+     *   needs an explicit FIRST/AFTER when some row follows it in the grid.
+     * AFTER names refer to post-ALTER names (current row names), and both
+     * the ADD and the CHANGE clauses are emitted in grid order, so a new
+     * column's ADD always precedes any CHANGE that positions relative to
+     * it within the one ALTER TABLE statement. */
+    const QVector<RowRef> rows = nonEmptyRows();
+    for(int i = 0; i < rows.count(); ++i) {
+        const int r = rows[i].row;
+        const QString &name = rows[i].name;
+        const QString &orig = rows[i].orig;
         const QString body = rowBody(r);
 
         if(cellBox(m_grid->cellWidget(r, CPk)) && cellBox(m_grid->cellWidget(r, CPk))->isChecked())
             newPk << name;
 
+        /* FIRST, or AFTER the previous row's current name */
+        const QString place = [this, &rows, i]() {
+            if(i == 0)
+                return QStringLiteral(" FIRST");
+            return QStringLiteral(" AFTER `%1`").arg(rows[i - 1].name);
+        }();
+
         if(orig.isEmpty()) {
-            clauses << QStringLiteral("ADD COLUMN `%1` %2").arg(name, body);
+            if(i < rows.count() - 1) /* not the last row => MySQL's
+                                      * append-at-end default is wrong */
+                clauses << QStringLiteral("ADD COLUMN `%1` %2%3").arg(name, body, place);
+            else
+                clauses << QStringLiteral("ADD COLUMN `%1` %2").arg(name, body);
         } else {
             seenOrig << orig;
-            if(name == orig && body == m_originalBody.value(orig))
+            const bool moved =
+                prevExistingOrig(rows, i) != m_originalCols.value(m_originalCols.indexOf(orig) - 1);
+            if(name == orig && body == m_originalBody.value(orig) && !moved)
                 continue; /* unchanged column — no CHANGE clause */
-            clauses << QStringLiteral("CHANGE COLUMN `%1` `%2` %3").arg(orig, name, body);
+            clauses << QStringLiteral("CHANGE COLUMN `%1` `%2` %3%4")
+                           .arg(orig, name, body, moved ? place : QString());
         }
     }
 
@@ -531,6 +623,22 @@ QString CreateTableDialog::buildAlterSqlSqlite() const
             stmts
                 << QStringLiteral("ALTER TABLE %1 DROP COLUMN %2").arg(qualified, qi(m_driver, oc));
 
+    /* SQLite's ALTER TABLE can't reposition a column either — no FIRST/
+     * AFTER clause exists and ADD COLUMN only ever appends — same flag-
+     * don't-attempt treatment as the type/PK changes above */
+    {
+        const QVector<RowRef> rows = nonEmptyRows();
+        for(int i = 0; i < rows.count(); ++i) {
+            const bool moved =
+                rows[i].orig.isEmpty()
+                    ? i < rows.count() - 1 /* new column not appended last */
+                    : prevExistingOrig(rows, i) !=
+                          m_originalCols.value(m_originalCols.indexOf(rows[i].orig) - 1);
+            if(moved)
+                limited << QStringLiteral("%1 (column reorder)").arg(rows[i].name);
+        }
+    }
+
     QStringList a = newPk, b = m_originalPk;
     a.sort();
     b.sort();
@@ -554,8 +662,36 @@ QString CreateTableDialog::buildAlterSqlSqlite() const
  * the whole string as one implicit transaction (see CreateTableDialog.h). */
 QString CreateTableDialog::buildAlterSqlPostgres() const
 {
+    m_alterLimitation.clear();
     const QString qualified = qualifyName(m_driver, m_database, m_table);
     QStringList clauses, newPk, seenOrig, extraStatements;
+
+    /* PostgreSQL's ALTER TABLE has no way to reposition a column at all —
+     * physical column order is fixed at creation; changing it needs a
+     * drop-and-recreate (losing data) or full table rebuild. Same story
+     * for placing a NEW column anywhere but the end (ADD COLUMN always
+     * appends). Report via alterLimitation() and apply everything else,
+     * rather than emitting SQL that silently lands columns elsewhere than
+     * the grid shows. */
+    {
+        const QVector<RowRef> rows = nonEmptyRows();
+        QStringList reordered;
+        for(int i = 0; i < rows.count(); ++i) {
+            if(rows[i].orig.isEmpty()) {
+                if(i < rows.count() - 1) /* not appended last */
+                    reordered << rows[i].name;
+            } else if(prevExistingOrig(rows, i) !=
+                      m_originalCols.value(m_originalCols.indexOf(rows[i].orig) - 1)) {
+                reordered << rows[i].name;
+            }
+        }
+        if(!reordered.isEmpty())
+            m_alterLimitation =
+                QStringLiteral("PostgreSQL can't reposition columns with ALTER TABLE (needs a "
+                               "table rebuild, not attempted here); order of: %1 was left "
+                               "unchanged.")
+                    .arg(reordered.join(QStringLiteral(", ")));
+    }
 
     for(int r = 0; r < m_grid->rowCount(); ++r) {
         const ColumnDef c = rowColumnDef(r);

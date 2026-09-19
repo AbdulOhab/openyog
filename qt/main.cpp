@@ -523,6 +523,70 @@ int main(int argc, char *argv[])
                   "alter: retype-only change flagged via alterLimitation()");
             delete bdlg;
 
+            /* ---- ALTER mode: column reorder via Move Up/Down. SQLite
+             * can't reposition columns at all -> alterLimitation() flags
+             * it while a simultaneous rename still goes through */
+            auto *rdlg = new CreateTableDialog(QString(), QStringLiteral("t1"), cols2, QString(),
+                                               QString(), nullptr, SqlDriverType::Sqlite);
+            auto *rgrid = rdlg->findChild<QTableWidget *>(QStringLiteral("columnGrid"));
+            rgrid->setCurrentCell(2, 0); /* "note" */
+            rdlg->findChild<QPushButton *>(QStringLiteral("moveUpBtn"))->click();
+            check(rgrid->item(1, 0)->text() == QStringLiteral("note"),
+                  "reorder: Move Up swaps the grid rows");
+            const QString alterSql3 = rdlg->buildSql();
+            check(alterSql3.isEmpty(), "reorder: SQLite reorder produces no SQL");
+            check(rdlg->alterLimitation().contains(QStringLiteral("reorder")),
+                  "reorder: SQLite flags it via alterLimitation()");
+            /* rename alongside the (unsupported) reorder still emits */
+            rgrid->item(2, 0)->setText(QStringLiteral("memo"));
+            const QString alterSql4 = rdlg->buildSql();
+            check(alterSql4.contains(QStringLiteral("RENAME COLUMN")),
+                  "reorder+rename: rename still emitted");
+            delete rdlg;
+
+            /* ---- the MySQL dialect of the same reorder emits AFTER clauses
+             * (pure string building — buildSql never touches a connection,
+             * so the SQLite conn above can host the dialog while the DDL
+             * is MySQL's). Swap full_name/note: note moves up between id
+             * and full_name (AFTER `id`), full_name moves down (AFTER
+             * `note`); id itself hasn't moved and emits nothing. */
+            auto *mdlg = new CreateTableDialog(QString(), QStringLiteral("t1"), cols2, QString(),
+                                               QString(), nullptr, SqlDriverType::Mysql);
+            auto *mgrid = mdlg->findChild<QTableWidget *>(QStringLiteral("columnGrid"));
+            mgrid->setCurrentCell(2, 0); /* "note" */
+            mdlg->findChild<QPushButton *>(QStringLiteral("moveUpBtn"))->click();
+            const QString mysqlReorder = mdlg->buildSql();
+            check(mysqlReorder.contains(QStringLiteral("CHANGE COLUMN `note`")) &&
+                      mysqlReorder.contains(QStringLiteral("AFTER `id`")),
+                  "reorder mysql: moved-up column carries AFTER id");
+            check(mysqlReorder.contains(QStringLiteral("CHANGE COLUMN `full_name`")) &&
+                      mysqlReorder.contains(QStringLiteral("AFTER `note`")),
+                  "reorder mysql: moved-down column carries AFTER note");
+            /* moving id itself down makes full_name the top column — the
+             * one case that emits FIRST */
+            auto *fdlg = new CreateTableDialog(QString(), QStringLiteral("t1"), cols2, QString(),
+                                               QString(), nullptr, SqlDriverType::Mysql);
+            auto *fgrid = fdlg->findChild<QTableWidget *>(QStringLiteral("columnGrid"));
+            fgrid->setCurrentCell(0, 0); /* "id" */
+            fdlg->findChild<QPushButton *>(QStringLiteral("moveDownBtn"))->click();
+            const QString mysqlFirst = fdlg->buildSql();
+            check(mysqlFirst.contains(QStringLiteral("FIRST")) &&
+                      mysqlFirst.contains(QStringLiteral("CHANGE COLUMN `full_name`")),
+                  "reorder mysql: column moved to the top carries FIRST");
+            delete fdlg;
+            /* untouched-position edits must NOT grow stray FIRST/AFTER */
+            auto *ndlg = new CreateTableDialog(QString(), QStringLiteral("t1"), cols2, QString(),
+                                               QString(), nullptr, SqlDriverType::Mysql);
+            auto *ngrid = ndlg->findChild<QTableWidget *>(QStringLiteral("columnGrid"));
+            ngrid->item(2, 0)->setText(QStringLiteral("memo")); /* plain rename, no move */
+            const QString mysqlRename = ndlg->buildSql();
+            check(mysqlRename.contains(QStringLiteral("CHANGE COLUMN")) &&
+                      !mysqlRename.contains(QStringLiteral("AFTER")) &&
+                      !mysqlRename.contains(QStringLiteral("FIRST")),
+                  "reorder mysql: same-position rename emits no AFTER/FIRST");
+            delete ndlg;
+            delete mdlg;
+
             delete c;
             return fails == 0 ? 0 : 1;
         }
