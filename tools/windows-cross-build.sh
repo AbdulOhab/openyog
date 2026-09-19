@@ -178,6 +178,16 @@ cp -f "$QT_MINGW/plugins/platforms/qoffscreen.dll" "$DEPLOY/platforms/"
 mkdir -p "$DEPLOY/imageformats"
 cp -f "$QT_MINGW/plugins/imageformats/qico.dll" "$DEPLOY/imageformats/"
 
+# styles/qmodernwindowsstyle.dll: without ANY style plugin, Qt falls back to
+# its own "Fusion"/basic "windows" style — square flat buttons, no native
+# theming, no dark-mode awareness. Looked distinctly last-decade in the
+# owner's first real-hardware screenshot (session 98). This one plugin
+# provides both "windows11" (Fluent, Win 11) and "windowsvista" (Win 7-10)
+# style keys (confirmed via `strings` on the DLL) — Qt's platform plugin
+# auto-picks the right one for the running OS, no code change needed.
+mkdir -p "$DEPLOY/styles"
+cp -f "$QT_MINGW/plugins/styles/qmodernwindowsstyle.dll" "$DEPLOY/styles/"
+
 echo "deploy ready: $DEPLOY"
 ls -la "$DEPLOY"
 
