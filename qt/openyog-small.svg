@@ -1,11 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- OpenYog icon, small-size variant (16–32px): bold, high-contrast,
-     no gradient/chevron so it stays legible as a favicon-size mark. -->
+<!-- OpenYog icon, small-size variant (16-48px): bold, high-contrast, no
+     gradient/separator strokes so it stays legible as a favicon-size mark
+     (see qt/openyog.svg for the full-detail large-size version + the
+     rationale for the mark itself). -->
 <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
-  <rect x="0" y="0" width="32" height="32" rx="6" fill="#2F6FA8"/>
-  <g fill="#FFFFFF" stroke="#2F6FA8" stroke-width="2">
-    <ellipse cx="16" cy="9" rx="10" ry="4"/>
-    <path d="M6 9 v7 a10 4 0 0 0 20 0 V9 a10 4 0 0 1 -20 0 z"/>
-    <path d="M6 16 v7 a10 4 0 0 0 20 0 v-7 a10 4 0 0 1 -20 0 z"/>
-  </g>
+  <rect x="1" y="1" width="30" height="30" rx="6.5" fill="#3B7DBB"/>
+  <rect x="7.25" y="12.5" width="13.25" height="9" fill="#FFFFFF"/>
+  <ellipse cx="13.9" cy="21.5" rx="6.6" ry="2.5" fill="#FFFFFF"/>
+  <ellipse cx="13.9" cy="12.5" rx="6.6" ry="2.5" fill="#FFFFFF"/>
+  <path d="M21 21.25 l4.5 -3.5 l-4.5 -3.5 z" fill="#3FB9E0"/>
 </svg>
