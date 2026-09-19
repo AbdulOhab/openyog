@@ -8,5 +8,5 @@
   <rect x="7.25" y="12.5" width="13.25" height="9" fill="#FFFFFF"/>
   <ellipse cx="13.9" cy="21.5" rx="6.6" ry="2.5" fill="#FFFFFF"/>
   <ellipse cx="13.9" cy="12.5" rx="6.6" ry="2.5" fill="#FFFFFF"/>
-  <path d="M21 21.25 l4.5 -3.5 l-4.5 -3.5 z" fill="#3FB9E0"/>
+  <path d="M21 21.25 l4.5 -3.5 l-4.5 -3.5 z" fill="#3FB950"/>
 </svg>
