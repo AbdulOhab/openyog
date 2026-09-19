@@ -24,6 +24,35 @@
 #      (/tmp/qsci-cross recipe in WORKLOG; headers GLOB'd into add_library
 #      for AUTOMOC) and installed into the Qt tree with
 #      cmake --install build-mingw --prefix ~/Qt-mingw/6.11.2/mingw_64.
+#   4. mariadb-connector-c 3.3.10 built from source at $MARIADB_MINGW below
+#      — NOT the AUR mingw-w64-mariadb-connector-c package (3.4.8): that
+#      version has a security-hardening default (MariaDB 11.4+) that
+#      unconditionally demands TLS on every TCP connection, and
+#      MYSQL_OPT_SSL_ENFORCE=0 does not disable it (open upstream
+#      regression). Recipe: `git clone --branch v3.3.10 https://github.com/
+#      mariadb-corporation/mariadb-connector-c.git`, then
+#        x86_64-w64-mingw32-cmake -G Ninja -B build-mingw \
+#            -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DCMAKE_C_FLAGS=-std=gnu17 \
+#            -DWITH_CURL=OFF -DWITH_UNIT_TESTS=OFF -DWITH_SSL=SCHANNEL \
+#            -DWITH_MYSQLCOMPAT=OFF -DCMAKE_FIND_ROOT_PATH=/usr/x86_64-w64-mingw32
+#        cmake --build build-mingw --target mariadbclient   # static lib
+#        cmake --build build-mingw --target libmariadb      # the DLL
+#        cmake --install build-mingw --prefix "$MARIADB_MINGW" --component Development
+#        cmake --install build-mingw --prefix "$MARIADB_MINGW" --component SharedLibraries
+#      (`-DCMAKE_POLICY_VERSION_MINIMUM`/`-std=gnu17`: this 2021-era source
+#      predates both a newer CMake's minimum-version floor and a C23 compiler
+#      making `bool` a keyword, which collides with the source's own
+#      `typedef char bool`.) Then two compatibility fixups this project's
+#      layout needs (3.3.10's own install layout is include/mariadb/*.h +
+#      lib/mariadb/, not the include/mysql/ + flat lib/ every other package
+#      here uses):
+#        ln -s mariadb "$MARIADB_MINGW/include/mysql"
+#        cp "$MARIADB_MINGW/lib/mariadb/liblibmariadb.dll.a" \
+#           "$MARIADB_MINGW/lib/mariadb/libmariadb.dll.a"    # upstream's own
+#      CMake names the import lib "liblibmariadb.dll.a" (target "libmariadb"
+#      + the "lib" prefix, doubled) — copied to the name find_library()
+#      actually looks for.
+#      Full story: xnote/2026-09-19-windows-mariadb-ssl-regression.md
 #
 # Gotchas baked into the flags below (all hit the hard way):
 #   - The Arch mingw toolchain is UCRT; official win64_mingw Qt is UCRT too.
@@ -38,6 +67,10 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 QT_MINGW="${QT_MINGW:-$HOME/Qt-mingw/6.11.2/mingw_64}"
+# mingw-w64-mariadb-connector-c (AUR, 3.4.8 as of this writing) is NOT used
+# for the Windows build — see MARIADB_MINGW below and the long comment at
+# this script's DLL-closure step for why.
+MARIADB_MINGW="${MARIADB_MINGW:-$HOME/mingw-mariadb-3.3.10}"
 BUILD="$ROOT/build-mingw"
 DEPLOY="$BUILD/deploy"
 QSCINTILLA_LIB="$QT_MINGW/bin/libqscintilla2_qt6.dll"
@@ -45,11 +78,25 @@ QSCINTILLA_LIB="$QT_MINGW/bin/libqscintilla2_qt6.dll"
 command -v x86_64-w64-mingw32-cmake >/dev/null || { echo "mingw-w64-cmake missing" >&2; exit 1; }
 [ -d "$QT_MINGW/lib/cmake" ] || { echo "Qt mingw tree missing at $QT_MINGW" >&2; exit 1; }
 [ -f "$QSCINTILLA_LIB" ] || { echo "QScintilla not installed into the Qt tree ($QSCINTILLA_LIB)" >&2; exit 1; }
+[ -f "$MARIADB_MINGW/lib/mariadb/libmariadb.dll" ] || {
+    echo "mariadb-connector-c 3.3.10 not built at $MARIADB_MINGW — see" >&2
+    echo "xnote/2026-09-19-windows-mariadb-ssl-regression.md to rebuild it" >&2
+    exit 1
+}
 
 # ---- configure + build -------------------------------------------------
+# MDB_MYSQL_DIR/MARIADB_LIBRARY: pre-set these two find_path()/find_library()
+# cache variables to skip the root CMakeLists.txt's own search entirely —
+# it would otherwise happily find the AUR mingw-w64-mariadb-connector-c
+# package's 3.4.8 headers/import-lib on the sysroot instead (same symbol
+# names, so it links fine and the bug below wouldn't show up until runtime
+# against a real non-TLS server). Native Linux is untouched: these are only
+# passed here, never added to CMakeLists.txt itself.
 x86_64-w64-mingw32-cmake -G Ninja -B "$BUILD" -S "$ROOT" \
     -DCMAKE_BUILD_TYPE=Release \
-    -DCMAKE_FIND_ROOT_PATH="/usr/x86_64-w64-mingw32;$QT_MINGW"
+    -DCMAKE_FIND_ROOT_PATH="/usr/x86_64-w64-mingw32;$QT_MINGW" \
+    -DMDB_MYSQL_DIR="$MARIADB_MINGW/include" \
+    -DMARIADB_LIBRARY="$MARIADB_MINGW/lib/mariadb/libmariadb.dll.a"
 cmake --build "$BUILD" --target openyog
 
 # ---- deploy: exe + transitive DLL closure ------------------------------
@@ -58,6 +105,27 @@ cmake --build "$BUILD" --target openyog
 # and copy what isn't a wine/Windows builtin from our three supply dirs.
 mkdir -p "$DEPLOY/platforms"
 cp -f "$BUILD/openyog.exe" "$DEPLOY/"
+
+# libmariadb.dll goes in FIRST, explicitly, from our own 3.3.10 build — not
+# from the closure walk below. mingw-w64-mariadb-connector-c (AUR) is on
+# 3.4.8, which shipped a security-hardening default change (MariaDB 11.4+):
+# every TCP connection now demands TLS unconditionally, and MYSQL_OPT_SSL_
+# ENFORCE=0 does NOT turn it back off (confirmed upstream regression, still
+# open as of this writing — see the xnote for the empirical proof and the
+# report links). A user pointed at a plain non-TLS MySQL/MariaDB server
+# would get "TLS/SSL error: SSL is required, but the server does not
+# support it" on every single connection attempt — this is exactly what
+# happened on the owner's real Windows box (session 97). 3.3.10 (built from
+# source at $MARIADB_MINGW, see the prereq check above) predates the
+# change. If this explicit copy weren't here, the closure walk below would
+# just as happily pick up the AUR package's 3.4.8 DLL from
+# /usr/x86_64-w64-mingw32/bin — same exported symbols, links fine, bug
+# comes back silently at runtime. Whenever this project's own mariadb
+# dependency changes, rebuild 3.3.10 the same way, never `pacman -S` a
+# newer mingw-w64-mariadb-connector-c into this path without re-testing
+# against a real non-TLS server first.
+cp -f "$MARIADB_MINGW/lib/mariadb/libmariadb.dll" "$DEPLOY/"
+
 QTBIN="$QT_MINGW/bin"
 python3 - "$DEPLOY/openyog.exe" "$DEPLOY" "$QTBIN" "/usr/x86_64-w64-mingw32/bin" <<'EOF'
 import subprocess, os, sys
