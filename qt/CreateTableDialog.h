@@ -28,6 +28,7 @@
 #include <QHash>
 #include <QList>
 #include <QString>
+#include <QVector>
 
 class QLineEdit;
 class QComboBox;
@@ -55,11 +56,12 @@ public:
      * (alter mode, PostgreSQL only ever needs the extra statements); empty
      * when there is nothing to do (no name / no columns / no changes) */
     QString buildSql() const;
-    /* alter mode, SQLite only: non-empty when buildSql() above left some
-     * requested change undone because SQLite's ALTER TABLE can't express it
-     * without a full table rebuild (see buildAlterSqlSqlite()) — the
-     * caller should show this to the user rather than assume "no changes
-     * to apply" the way an empty buildSql() with an empty limitation means */
+    /* alter mode, SQLite/PostgreSQL: non-empty when buildSql() above left
+     * some requested change undone because the backend's ALTER TABLE can't
+     * express it without a full table rebuild (see buildAlterSqlSqlite()) or
+     * at all (PostgreSQL column repositioning) — the caller should show
+     * this to the user rather than assume "no changes to apply" the way an
+     * empty buildSql() with an empty limitation means */
     QString alterLimitation() const
     {
         return m_alterLimitation;
@@ -68,11 +70,26 @@ public:
 private slots:
     void addColumnRow(const QString &name = {}, const QString &type = {});
     void removeSelectedRow();
+    void moveSelectedRow(int delta); /* -1 = up, +1 = down */
     void updatePreview();
 
 private:
     enum Col { CName, CType, CLen, CDefault, CPk, CNotNull, CUnsigned, CAuto, CComment, ColCount };
     enum class Mode { Create, Alter };
+
+    /* one non-empty grid row, in grid order — the position-aware alter
+     * builders walk this rather than raw grid rows (empty/named-less
+     * rows never participate in column order) */
+    struct RowRef
+    {
+        int row;
+        QString name; /* current name */
+        QString orig; /* original name tag; empty => newly added column */
+    };
+    QVector<RowRef> nonEmptyRows() const;
+    /* orig tag of the nearest PRECEDING existing column (new columns
+     * skipped — see buildAlterSql() for why), "" when there is none */
+    static QString prevExistingOrig(const QVector<RowRef> &rows, int i);
 
     void buildCommon();                    /* shared widget construction */
     void seedRow(const ColumnDef &c);      /* alter mode: row + original name tag */
