@@ -10,6 +10,7 @@
  *   openyog --autoconnect=… --dumpdb=FILE.sql          dump a database
  *   openyog --delconn=NAME                             delete a saved connection
  *   openyog --screenshot=FILE.png --indexdlg           render the Manage Indexes dialog
+ *   openyog --screenshot=FILE.png --fkdlg              render the Foreign Keys dialog
  *   openyog --fmtsql="SELECT …"                        print the formatted SQL, exit
  *   openyog --comptest                                 autocomplete self-check
  *   openyog --sqlitetest=FILE.sqlite                   SQLite driver shape self-check
@@ -73,6 +74,7 @@ int main(int argc, char *argv[])
     QString dialogDriver; /* --dialogdriver=sqlite : preselect a driver, --dialog selftest */
     bool shotCreateTable = false;
     bool shotIndexDlg = false;
+    bool shotFkDlg = false; /* --fkdlg: render the Foreign Keys dialog */
     bool shotExportDlg = false;
     QPair<QString, QString> openTableParts;
     QString dataViewMode;       /* --dataview=text|grid selftest */
@@ -135,6 +137,8 @@ int main(int argc, char *argv[])
             shotCreateTable = true;
         if(a == QStringLiteral("--indexdlg"))
             shotIndexDlg = true;
+        if(a == QStringLiteral("--fkdlg"))
+            shotFkDlg = true;
         if(a == QStringLiteral("--runagain"))
             runAgain = true;
         if(a == QStringLiteral("--copytablehost"))
@@ -617,6 +621,27 @@ int main(int argc, char *argv[])
                       !names.contains(QStringLiteral("idx_old")),
                   "final state: idx_city present, idx_old gone");
 
+            /* composite (multi-column) index: check two columns, assert
+             * both come out comma-joined in the CREATE INDEX column list —
+             * the SQL side always supported this; this pins the input path */
+            {
+                auto *dlg2 = new IndexDialog(
+                    QString(), QStringLiteral("t1"), {},
+                    {QStringLiteral("id"), QStringLiteral("city"), QStringLiteral("name")}, nullptr,
+                    SqlDriverType::Sqlite);
+                auto *newName2 = dlg2->findChild<QLineEdit *>(QStringLiteral("newIndexName"));
+                auto *newCols2 = dlg2->findChild<QListWidget *>(QStringLiteral("newIndexCols"));
+                newName2->setText(QStringLiteral("idx_cn"));
+                newCols2->item(1)->setCheckState(Qt::Checked); /* "city" */
+                newCols2->item(2)->setCheckState(Qt::Checked); /* "name" */
+                dlg2->findChild<QPushButton *>(QStringLiteral("addIndexBtn"))->click();
+                const QString sql2 = dlg2->buildSql();
+                check(sql2.contains(QStringLiteral("idx_cn")) &&
+                          sql2.contains(QStringLiteral("(`city`, `name`)")),
+                      "composite: both columns comma-joined in CREATE INDEX");
+                delete dlg2;
+            }
+
             delete c;
             return fails == 0 ? 0 : 1;
         }
@@ -703,18 +728,55 @@ int main(int argc, char *argv[])
                   "duplicate: copy has the same column shape and data");
 
             /* --- Foreign Keys: adding one to an existing SQLite table must
-             * be refused (via limitation()), not sent as broken SQL */
+             * be refused (via limitation()), not sent as broken SQL. Driven
+             * through the checklist pickers (local + referenced columns,
+             * nth-checked ↔ nth-checked pairing), composite here: two
+             * columns each way. The ref checklist is populated live from
+             * the connection when m_refTable's selection changes — same
+             * conn as everything else in this test. */
+            const auto checkFkItem = [](QListWidget *lw, const QString &name) {
+                const auto hits = lw->findItems(name, Qt::MatchExactly);
+                if(!hits.isEmpty())
+                    hits.first()->setCheckState(Qt::Checked);
+            };
             ForeignKeyDialog fkdlg(QString(), QStringLiteral("staff"), {},
                                    {QStringLiteral("id"), QStringLiteral("name")},
-                                   {QStringLiteral("staff")}, nullptr, SqlDriverType::Sqlite);
-            fkdlg.findChild<QComboBox *>(QStringLiteral("localCol"))
-                ->setCurrentText(QStringLiteral("name"));
-            fkdlg.findChild<QLineEdit *>(QStringLiteral("refCol"))->setText(QStringLiteral("name"));
+                                   {QStringLiteral("staff")}, c, nullptr, SqlDriverType::Sqlite);
+            checkFkItem(fkdlg.findChild<QListWidget *>(QStringLiteral("localCols")),
+                        QStringLiteral("id"));
+            checkFkItem(fkdlg.findChild<QListWidget *>(QStringLiteral("localCols")),
+                        QStringLiteral("name"));
+            checkFkItem(fkdlg.findChild<QListWidget *>(QStringLiteral("refCols")),
+                        QStringLiteral("id"));
+            checkFkItem(fkdlg.findChild<QListWidget *>(QStringLiteral("refCols")),
+                        QStringLiteral("name"));
             fkdlg.findChild<QPushButton *>(QStringLiteral("addFkBtn"))->click();
             const QString fkSql = fkdlg.buildSql();
             check(fkSql.isEmpty(), "fk: SQLite add-FK produces no SQL");
             check(!fkdlg.limitation().isEmpty(),
                   "fk: SQLite add-FK flagged via limitation() instead");
+
+            /* same checklist-driven composite input, MySQL dialect — pure
+             * string building (buildSql never touches the conn), so the
+             * SQLite connection above can supply the column lists while
+             * the generated DDL is asserted to comma-join BOTH column
+             * lists of the composite key */
+            ForeignKeyDialog fkmysql(QString(), QStringLiteral("staff"), {},
+                                     {QStringLiteral("id"), QStringLiteral("name")},
+                                     {QStringLiteral("staff")}, c, nullptr, SqlDriverType::Mysql);
+            checkFkItem(fkmysql.findChild<QListWidget *>(QStringLiteral("localCols")),
+                        QStringLiteral("id"));
+            checkFkItem(fkmysql.findChild<QListWidget *>(QStringLiteral("localCols")),
+                        QStringLiteral("name"));
+            checkFkItem(fkmysql.findChild<QListWidget *>(QStringLiteral("refCols")),
+                        QStringLiteral("id"));
+            checkFkItem(fkmysql.findChild<QListWidget *>(QStringLiteral("refCols")),
+                        QStringLiteral("name"));
+            fkmysql.findChild<QPushButton *>(QStringLiteral("addFkBtn"))->click();
+            const QString fkMySql = fkmysql.buildSql();
+            check(fkMySql.contains(QStringLiteral("FOREIGN KEY (`id`, `name`)")) &&
+                      fkMySql.contains(QStringLiteral("REFERENCES `staff` (`id`, `name`)")),
+                  "fk: composite key comma-joins both column lists");
 
             delete c;
             return fails == 0 ? 0 : 1;
@@ -1715,7 +1777,7 @@ int main(int argc, char *argv[])
     }
 
     if(!screenshot.isEmpty()) {
-        if(shotDialog || shotCreateTable || shotIndexDlg || shotExportDlg) {
+        if(shotDialog || shotCreateTable || shotIndexDlg || shotExportDlg || shotFkDlg) {
             QWidget *dlg = nullptr;
             if(shotExportDlg) {
                 auto *ed = new ExportDialog(QStringLiteral("employees"),
@@ -1732,6 +1794,19 @@ int main(int argc, char *argv[])
                                       {pk, ix},
                                       {QStringLiteral("id"), QStringLiteral("name"),
                                        QStringLiteral("salary"), QStringLiteral("city")});
+            } else if(shotFkDlg) {
+                /* conn=nullptr: the ref-columns checklist only fills live
+                 * with a connection; for the visual render the local
+                 * checklist and seeded FK rows are what's being checked */
+                ForeignKeyDialog::FkDef fk{QStringLiteral("fk_emp_dept"),
+                                           {QStringLiteral("dept_id")},
+                                           QStringLiteral("departments"),
+                                           {QStringLiteral("id")}};
+                dlg = new ForeignKeyDialog(
+                    QStringLiteral("port_test"), QStringLiteral("employees"), {fk},
+                    {QStringLiteral("id"), QStringLiteral("name"), QStringLiteral("salary"),
+                     QStringLiteral("dept_id")},
+                    {QStringLiteral("employees"), QStringLiteral("departments")}, nullptr);
             } else if(shotCreateTable) {
                 dlg = new CreateTableDialog(QStringLiteral("port_test"));
             } else {

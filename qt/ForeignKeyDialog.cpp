@@ -1,11 +1,14 @@
 #include "ForeignKeyDialog.h"
 
+#include "db/IDbConnection.h"
+
 #include <QComboBox>
 #include <QDialogButtonBox>
 #include <QFormLayout>
 #include <QHeaderView>
 #include <QLabel>
 #include <QLineEdit>
+#include <QListWidget>
 #include <QPushButton>
 #include <QTableWidget>
 #include <QVBoxLayout>
@@ -29,13 +32,13 @@ QString qi(SqlDriverType driver, const QString &ident)
 } // namespace
 
 ForeignKeyDialog::ForeignKeyDialog(QString database, QString table, const QList<FkDef> &fks,
-                                   QStringList tableColumns, QStringList dbTables, QWidget *parent,
-                                   SqlDriverType driver)
+                                   QStringList tableColumns, QStringList dbTables,
+                                   IDbConnection *conn, QWidget *parent, SqlDriverType driver)
     : QDialog(parent), m_driver(driver), m_database(std::move(database)), m_table(std::move(table)),
-      m_columns(std::move(tableColumns)), m_dbTables(std::move(dbTables))
+      m_columns(std::move(tableColumns)), m_dbTables(std::move(dbTables)), m_conn(conn)
 {
     setWindowTitle(QStringLiteral("Foreign Keys — `%1`").arg(m_table));
-    resize(640, 460);
+    resize(640, 520);
 
     m_grid = new QTableWidget(0, 5, this);
     m_grid->setHorizontalHeaderLabels({QStringLiteral("Name"), QStringLiteral("Column(s)"),
@@ -55,17 +58,35 @@ ForeignKeyDialog::ForeignKeyDialog(QString database, QString table, const QList<
 
     m_name = new QLineEdit(this);
     m_name->setPlaceholderText(QStringLiteral("constraint name (optional)"));
-    m_localCol = new QComboBox(this);
-    m_localCol->setObjectName(QStringLiteral("localCol")); /* test discoverability */
-    m_localCol->setEditable(true);                         /* type "a, b" for a composite FK */
-    m_localCol->addItems(m_columns);
-    m_localCol->setCurrentText(QString());
+
+    /* local columns: check as many as the composite key needs, same
+     * checklist pattern as IndexDialog::m_newCols */
+    m_localCols = new QListWidget(this);
+    m_localCols->setObjectName(QStringLiteral("localCols")); /* test discoverability */
+    m_localCols->setSelectionMode(QAbstractItemView::NoSelection);
+    m_localCols->setMaximumHeight(90);
+    for(const QString &c : m_columns) {
+        auto *it = new QListWidgetItem(c, m_localCols);
+        it->setFlags(it->flags() | Qt::ItemIsUserCheckable);
+        it->setCheckState(Qt::Unchecked);
+    }
+
     m_refTable = new QComboBox(this);
     m_refTable->setObjectName(QStringLiteral("refTable")); /* test discoverability */
     m_refTable->addItems(m_dbTables);
-    m_refCol = new QLineEdit(this);
-    m_refCol->setObjectName(QStringLiteral("refCol")); /* test discoverability */
-    m_refCol->setPlaceholderText(QStringLiteral("referenced column(s), comma-separated to match"));
+
+    /* referenced columns: a second checklist, refreshed from the live
+     * connection every time m_refTable's selection changes — this table's
+     * own columns were already known (m_columns), but a foreign key can
+     * reference any other table, whose columns aren't fetched up front */
+    m_refCols = new QListWidget(this);
+    m_refCols->setObjectName(QStringLiteral("refCols")); /* test discoverability */
+    m_refCols->setSelectionMode(QAbstractItemView::NoSelection);
+    m_refCols->setMaximumHeight(90);
+    connect(m_refTable, &QComboBox::currentTextChanged, this, &ForeignKeyDialog::reloadRefColumns);
+    if(!m_dbTables.isEmpty())
+        reloadRefColumns(m_refTable->currentText());
+
     m_onDelete = new QComboBox(this);
     m_onDelete->addItems(kActions);
     m_onUpdate = new QComboBox(this);
@@ -76,9 +97,9 @@ ForeignKeyDialog::ForeignKeyDialog(QString database, QString table, const QList<
 
     auto *form = new QFormLayout;
     form->addRow(QStringLiteral("Name"), m_name);
-    form->addRow(QStringLiteral("Local column(s)"), m_localCol);
+    form->addRow(QStringLiteral("Local column(s)"), m_localCols);
     form->addRow(QStringLiteral("Referenced table"), m_refTable);
-    form->addRow(QStringLiteral("Referenced column(s)"), m_refCol);
+    form->addRow(QStringLiteral("Referenced column(s)"), m_refCols);
     form->addRow(QStringLiteral("On Delete"), m_onDelete);
     form->addRow(QStringLiteral("On Update"), m_onUpdate);
 
@@ -126,15 +147,19 @@ void ForeignKeyDialog::addRow(const FkDef &fk, bool isNew)
 
 void ForeignKeyDialog::addPending()
 {
-    const auto split = [](const QString &s) {
+    /* nth-checked local column pairs with the nth-checked referenced
+     * column — checklist order defines the pairing (same semantics the
+     * old comma-typed input assumed, just sourced from checkboxes) */
+    const auto checked = [](QListWidget *lw) {
         QStringList out;
-        for(const QString &p : s.split(',', Qt::SkipEmptyParts))
-            out << p.trimmed();
+        for(int i = 0; i < lw->count(); ++i)
+            if(lw->item(i)->checkState() == Qt::Checked)
+                out << lw->item(i)->text();
         return out;
     };
     FkDef fk;
-    fk.columns = split(m_localCol->currentText());
-    fk.refColumns = split(m_refCol->text());
+    fk.columns = checked(m_localCols);
+    fk.refColumns = checked(m_refCols);
     fk.refTable = m_refTable->currentText();
     if(fk.columns.isEmpty() || fk.refTable.isEmpty() || fk.columns.size() != fk.refColumns.size()) {
         m_preview->setText(QStringLiteral("— local and referenced column counts must match —"));
@@ -148,9 +173,25 @@ void ForeignKeyDialog::addPending()
     addRow(fk, true);
 
     m_name->clear();
-    m_refCol->clear();
-    m_localCol->setCurrentText(QString());
+    for(QListWidget *lw : {m_localCols, m_refCols})
+        for(int i = 0; i < lw->count(); ++i)
+            lw->item(i)->setCheckState(Qt::Unchecked);
     updatePreview();
+}
+
+void ForeignKeyDialog::reloadRefColumns(const QString &refTable)
+{
+    if(!m_conn || refTable.isEmpty())
+        return;
+    /* canonical shape (qt/db/IDbConnection.h): Field(0) Type(1) … — column
+     * names from field 0, the same read promptManageForeignKeys() uses for
+     * this table's own columns */
+    m_refCols->clear();
+    for(const QStringList &row : m_conn->listColumns(m_database, refTable).rows) {
+        auto *it = new QListWidgetItem(row.value(0), m_refCols);
+        it->setFlags(it->flags() | Qt::ItemIsUserCheckable);
+        it->setCheckState(Qt::Unchecked);
+    }
 }
 
 void ForeignKeyDialog::removeSelected()
