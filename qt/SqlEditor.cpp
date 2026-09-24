@@ -11,6 +11,7 @@
 #include <QKeyEvent>
 #include <QPalette>
 #include <QRegularExpression>
+#include <QSet>
 #include <QStandardPaths>
 #include <Qsci/qscilexersql.h>
 
@@ -239,6 +240,124 @@ void SqlEditor::setSchema(const QStringList &tables, const QStringList &columns)
     m_columns = columns;
 }
 
+void SqlEditor::setColumnLookup(std::function<QStringList(const QString &)> lookup)
+{
+    m_columnLookup = std::move(lookup);
+}
+
+/* The tables (with aliases) the statement around the caret reads or writes:
+ * whatever follows FROM/JOIN/UPDATE/INTO, plus a comma-separated list after
+ * FROM. Only names present in the schema list count — a subquery alias or a
+ * typo just isn't a table here. Whole statement, not just the text before
+ * the caret: in "SELECT | FROM t" the table comes after. */
+QVector<SqlEditor::StmtTable> SqlEditor::tablesInStatement() const
+{
+    const int pos = cursorPosition();
+    const QString doc = toPlainText();
+    const int start = doc.lastIndexOf(QLatin1Char(';'), qMax(0, pos - 1)) + 1;
+    int end = doc.indexOf(QLatin1Char(';'), pos);
+    if(end < 0)
+        end = doc.size();
+    const QString stmt = doc.mid(start, end - start);
+
+    static const QRegularExpression tok(
+        QStringLiteral("`[^`]+`|\"[^\"]+\"|[A-Za-z_][A-Za-z0-9_$]*|[.,()]"));
+    QStringList toks;
+    auto it = tok.globalMatch(stmt);
+    while(it.hasNext())
+        toks << it.next().captured(0);
+
+    static const QSet<QString> notAlias = {
+        "WHERE",   "JOIN",   "INNER",     "LEFT",         "RIGHT", "FULL",   "CROSS",
+        "NATURAL", "OUTER",  "ON",        "USING",        "GROUP", "ORDER",  "HAVING",
+        "LIMIT",   "UNION",  "SET",       "VALUES",       "FROM",  "SELECT", "AS",
+        "INTO",    "WINDOW", "RETURNING", "STRAIGHT_JOIN"};
+    const auto unquote = [](QString t) {
+        if(t.size() >= 2 && (t.startsWith(QLatin1Char('`')) || t.startsWith(QLatin1Char('"'))))
+            t = t.mid(1, t.size() - 2);
+        return t;
+    };
+    const auto isIdent = [](const QString &t) {
+        return !t.isEmpty() && (t[0].isLetter() || t[0] == QLatin1Char('_') ||
+                                t[0] == QLatin1Char('`') || t[0] == QLatin1Char('"'));
+    };
+
+    QVector<StmtTable> out;
+    for(int i = 0; i < toks.size(); ++i) {
+        const QString u = toks[i].toUpper();
+        if(u != QLatin1String("FROM") && u != QLatin1String("JOIN") &&
+           u != QLatin1String("UPDATE") && u != QLatin1String("INTO"))
+            continue;
+        const bool list = u == QLatin1String("FROM");
+        int j = i + 1;
+        while(j < toks.size() && isIdent(toks[j])) {
+            QString name = unquote(toks[j++]);
+            while(j + 1 < toks.size() && toks[j] == QLatin1String(".") && isIdent(toks[j + 1])) {
+                name = unquote(toks[j + 1]); /* schema.table → table */
+                j += 2;
+            }
+            QString alias;
+            if(j < toks.size() && toks[j].compare(QLatin1String("AS"), Qt::CaseInsensitive) == 0 &&
+               j + 1 < toks.size()) {
+                alias = unquote(toks[j + 1]);
+                j += 2;
+            } else if(j < toks.size() && isIdent(toks[j]) &&
+                      !notAlias.contains(toks[j].toUpper())) {
+                alias = unquote(toks[j++]);
+            }
+            for(const QString &t : m_tables)
+                if(t.compare(name, Qt::CaseInsensitive) == 0) {
+                    out.append({t, alias});
+                    break;
+                }
+            if(list && j < toks.size() && toks[j] == QLatin1String(","))
+                ++j;
+            else
+                break;
+        }
+    }
+    return out;
+}
+
+/* the word right before a "." that ends the text before the partial
+ * identifier — "e" in "SELECT e.na|" — or empty when there is none */
+QString SqlEditor::qualifierBeforeCursor() const
+{
+    const int pos = cursorPosition();
+    const QString doc = toPlainText();
+    int e = pos;
+    while(e > 0 && (doc[e - 1].isLetterOrNumber() || doc[e - 1] == QLatin1Char('_')))
+        --e;
+    if(e == 0 || doc[e - 1] != QLatin1Char('.'))
+        return {};
+    int q = e - 1;
+    if(q > 0 && (doc[q - 1] == QLatin1Char('`') || doc[q - 1] == QLatin1Char('"')))
+        --q;
+    int s = q;
+    while(s > 0 && (doc[s - 1].isLetterOrNumber() || doc[s - 1] == QLatin1Char('_')))
+        --s;
+    return doc.mid(s, q - s);
+}
+
+/* Columns of the statement's tables in table order, then ordinal order. With
+ * a qualifier ("alias." / "table."), only that table's — empty when the
+ * qualifier names none of them, so the caller falls back to every column. */
+QStringList SqlEditor::columnsOfTables(const QVector<StmtTable> &tables,
+                                       const QString &qualifier) const
+{
+    QStringList out;
+    if(!m_columnLookup)
+        return out;
+    for(const StmtTable &t : tables) {
+        if(!qualifier.isEmpty() && qualifier.compare(t.alias, Qt::CaseInsensitive) != 0 &&
+           qualifier.compare(t.table, Qt::CaseInsensitive) != 0)
+            continue;
+        out += m_columnLookup(t.table);
+    }
+    out.removeDuplicates();
+    return out;
+}
+
 /* Which identifiers to offer, from the last significant keyword before the
  * cursor on the current statement.  Mirrors SQLyog's AutoCompleteInterface
  * clause tracking (tables after FROM/JOIN, columns after SELECT/WHERE …). */
@@ -291,9 +410,25 @@ QStringList SqlEditor::candidatesForContext() const
         case CtxTable:
             list += m_tables.isEmpty() ? m_generic : m_tables;
             break;
-        case CtxColumn:
-            list += m_columns.isEmpty() ? m_generic : m_columns;
-            break;
+        case CtxColumn: {
+            /* the statement's own tables' columns lead, in table order —
+             * not merged into the alphabetical pool below, which is what
+             * buried them among every column of the database. */
+            const QVector<StmtTable> tables = tablesInStatement();
+            const QString qualifier = qualifierBeforeCursor();
+            const QStringList own = columnsOfTables(tables, qualifier);
+            if(!qualifier.isEmpty() && !own.isEmpty())
+                return own; /* "alias." — that table's columns and nothing else */
+            QStringList rest = list;
+            rest += m_columns.isEmpty() ? m_generic : m_columns;
+            rest.removeDuplicates();
+            rest.sort(Qt::CaseInsensitive);
+            QStringList ordered = own;
+            for(const QString &w : rest)
+                if(!own.contains(w))
+                    ordered << w;
+            return ordered;
+        }
         case CtxAll:
         default:
             list += m_generic;
@@ -347,6 +482,10 @@ void SqlEditor::popupCompleter(bool force)
     getCursorPosition(&m_ctxLine, &m_ctxIndex);
     m_ctxPrefixLen = prefix.length();
     m_lastCompletionCount = hits.size();
+    m_lastHits = hits;
+    /* keep candidatesForContext()'s order (own-table columns first) instead
+     * of Scintilla's default alphabetical re-sort */
+    SendScintilla(SCI_AUTOCSETORDER, static_cast<long>(SC_ORDER_CUSTOM));
     showUserList(1, hits);
 }
 

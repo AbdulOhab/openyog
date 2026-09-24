@@ -568,7 +568,9 @@ ConnectionTab::ConnectionTab(const ConnectionParams &params, QWidget *parent)
         SqlEditor *ed = currentEditor();
         if(!ed)
             return;
-        ed->insert(text); /* at the caret, like upstream's SCI_REPLACESEL */
+        /* SCI_REPLACESEL, like upstream: unlike QsciScintilla::insert() it
+         * leaves the caret after the inserted name, not in front of it */
+        ed->replaceSelectedText(text);
         ed->setFocus();
     });
     connect(m_browser, &ObjectBrowser::databaseActivated, this, &ConnectionTab::useDatabase);
@@ -683,6 +685,20 @@ void ConnectionTab::attachEditor(SqlEditor *ed, const QString &title)
     });
     ed->setCompletions(m_completions);
     ed->setSchema(m_tableNames, m_columnNames);
+    ed->setColumnLookup([this](const QString &table) {
+        if(!m_conn)
+            return QStringList();
+        const QString db = defaultDb();
+        const QString key = db + QLatin1Char('\x1f') + table;
+        auto it = m_columnCache.find(key);
+        if(it == m_columnCache.end()) {
+            QStringList cols;
+            for(const QStringList &row : m_conn->listColumns(db, table).rows)
+                cols << row.value(0);
+            it = m_columnCache.insert(key, cols);
+        }
+        return it.value();
+    });
     Q_UNUSED(title);
 }
 
@@ -932,6 +948,7 @@ bool ConnectionTab::switchDatabase(const QString &database)
 void ConnectionTab::updateCompletions()
 {
     m_completions.clear();
+    m_columnCache.clear();
     m_tableNames.clear();
     m_columnNames.clear();
     const QString db = defaultDb();
