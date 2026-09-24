@@ -184,16 +184,21 @@ QTreeView::item { height: 18px; }
 QString checkBoxSheet(const char *border, const char *bg, const char *accent,
                       const char *disabledBorder, const char *disabledBg)
 {
-    return QStringLiteral(
-               "QCheckBox::indicator { width: 13px; height: 13px; border: 1px solid %1;"
-               " border-radius: 2px; background: %2; }"
-               "QCheckBox::indicator:hover { border-color: %3; }"
-               "QCheckBox::indicator:checked { background: %3; border-color: %3;"
-               " image: url(:/resources/check-white.png); }"
-               "QCheckBox::indicator:disabled { border-color: %4; background: %5; }"
-               "QCheckBox::indicator:checked:disabled { background: %4; border-color: %4; }")
-        .arg(QLatin1String(border), QLatin1String(bg), QLatin1String(accent),
-             QLatin1String(disabledBorder), QLatin1String(disabledBg));
+    /* QCheckBox widgets, and the checkable rows of item views (the column
+     * checklists in the Foreign Keys / Index dialogs) */
+    QString out;
+    for(const char *sel : {"QCheckBox", "QAbstractItemView"})
+        out +=
+            QStringLiteral("%6::indicator { width: 13px; height: 13px; border: 1px solid %1;"
+                           " border-radius: 2px; background: %2; }"
+                           "%6::indicator:hover { border-color: %3; }"
+                           "%6::indicator:checked { background: %3; border-color: %3;"
+                           " image: url(:/resources/check-white.png); }"
+                           "%6::indicator:disabled { border-color: %4; background: %5; }"
+                           "%6::indicator:checked:disabled { background: %4; border-color: %4; }")
+                .arg(QLatin1String(border), QLatin1String(bg), QLatin1String(accent),
+                     QLatin1String(disabledBorder), QLatin1String(disabledBg), QLatin1String(sel));
+    return out;
 }
 
 /* the platform theme may ask for icons on OK/Cancel/… (GTK's button-images);
