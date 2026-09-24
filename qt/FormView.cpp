@@ -1,4 +1,5 @@
 #include "FormView.h"
+#include "Icons.h"
 
 #include <QCheckBox>
 #include <QEvent>
@@ -6,7 +7,11 @@
 #include <QGridLayout>
 #include <QHBoxLayout>
 #include <QLabel>
+#include <QEvent>
+#include <QIcon>
 #include <QLineEdit>
+#include <QPainter>
+#include <QPixmap>
 #include <QPlainTextEdit>
 #include <QScrollArea>
 #include <QIntValidator>
@@ -22,8 +27,57 @@ QToolButton *navButton(const QString &text, const QString &tip, QWidget *parent)
     b->setText(text);
     b->setToolTip(tip);
     b->setAutoRaise(true);
-    b->setMinimumWidth(28);
     return b;
+}
+
+/* first / previous / next / last arrows, painted in the palette's own colours
+ * so they stay crisp and readable on every theme (an icon file would be one
+ * fixed colour); a separate greyed pixmap for the disabled state */
+QIcon navIcon(int kind, const QPalette &pal)
+{
+    QIcon icon;
+    const struct
+    {
+        QIcon::Mode mode;
+        QColor color;
+    } modes[] = {{QIcon::Normal, pal.color(QPalette::Active, QPalette::ButtonText)},
+                 {QIcon::Disabled, pal.color(QPalette::Disabled, QPalette::ButtonText)}};
+    for(const auto &m : modes) {
+        QPixmap pm(32, 32);
+        pm.setDevicePixelRatio(2);
+        pm.fill(Qt::transparent);
+        QPainter p(&pm);
+        p.setRenderHint(QPainter::Antialiasing, true);
+        p.setPen(Qt::NoPen);
+        p.setBrush(m.color);
+        const auto tri = [&](qreal tipX, qreal baseX) {
+            const QPointF pts[3] = {{baseX, 3.5}, {tipX, 8.0}, {baseX, 12.5}};
+            p.drawPolygon(pts, 3);
+        };
+        switch(kind) {
+            case 0: /* first: bar + left triangle */
+                p.drawRoundedRect(QRectF(2.6, 3.5, 1.9, 9.0), 0.6, 0.6);
+                tri(5.6, 12.2);
+                break;
+            case 1:
+                tri(4.6, 11.4);
+                break;
+            case 2:
+                tri(11.4, 4.6);
+                break;
+            default: /* last */
+                p.drawRoundedRect(QRectF(11.5, 3.5, 1.9, 9.0), 0.6, 0.6);
+                tri(10.4, 3.8);
+                break;
+        }
+        icon.addPixmap(pm, m.mode);
+    }
+    return icon;
+}
+
+QIcon fileIcon(const QString &name)
+{
+    return Icons::get(name);
 }
 
 /* long-text column types get a multi-line box */
@@ -49,36 +103,77 @@ QString tint(int state, bool dirty)
 
 FormView::FormView(QWidget *parent) : QWidget(parent)
 {
-    m_first = navButton(QStringLiteral("|◀"), QStringLiteral("First row"), this);
-    m_prev = navButton(QStringLiteral("◀"), QStringLiteral("Previous row"), this);
-    m_next = navButton(QStringLiteral("▶"), QStringLiteral("Next row"), this);
-    m_last = navButton(QStringLiteral("▶|"), QStringLiteral("Last row"), this);
+    m_first = navButton(QString(), QStringLiteral("First row"), this);
+    m_prev = navButton(QString(), QStringLiteral("Previous row"), this);
+    m_next = navButton(QString(), QStringLiteral("Next row"), this);
+    m_last = navButton(QString(), QStringLiteral("Last row"), this);
+    for(QToolButton *b : {m_first, m_prev, m_next, m_last}) {
+        b->setIconSize(QSize(16, 16));
+        b->setFixedSize(30, 28);
+        b->setObjectName(QStringLiteral("formNav"));
+    }
     m_goto = new QLineEdit(this);
     m_goto->setValidator(new QIntValidator(1, 99999999, m_goto));
     m_goto->setAlignment(Qt::AlignCenter);
     m_goto->setFixedWidth(64);
     m_goto->setToolTip(QStringLiteral("Go to row (Enter)"));
     m_count = new QLabel(this);
-    m_new = navButton(QStringLiteral("＋ New row"), QStringLiteral("Stage a new, empty row"), this);
-    m_dup = navButton(QStringLiteral("⧉ Duplicate"),
+    m_new = navButton(QStringLiteral("New row"), QStringLiteral("Stage a new, empty row"), this);
+    m_dup = navButton(QStringLiteral("Duplicate"),
                       QStringLiteral("Stage a new row copied from this one"), this);
-    m_del =
-        navButton(QStringLiteral("✕ Delete"), QStringLiteral("Mark this row for deletion"), this);
-
+    m_del = navButton(QStringLiteral("Delete"), QStringLiteral("Mark this row for deletion"), this);
+    m_new->setIcon(fileIcon(QStringLiteral("result_insert.ico")));
+    m_dup->setIcon(fileIcon(QStringLiteral("duplicaterow.ico")));
+    m_del->setIcon(fileIcon(QStringLiteral("result_delete.ico")));
+    for(QToolButton *b : {m_new, m_dup, m_del}) {
+        b->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+        b->setIconSize(QSize(16, 16));
+        b->setMinimumHeight(28);
+        b->setObjectName(QStringLiteral("formAction"));
+    }
+    /* thin divider between the groups */
+    const auto divider = [this] {
+        auto *f = new QFrame(this);
+        f->setFixedSize(1, 20);
+        f->setStyleSheet(QStringLiteral("background: rgba(127, 127, 127, 110);"));
+        return f;
+    };
+    auto *rowLabel = new QLabel(QStringLiteral("Row"), this);
     auto *nav = new QHBoxLayout;
-    nav->setContentsMargins(6, 4, 6, 2);
+    nav->setContentsMargins(8, 6, 8, 6);
+    nav->setSpacing(4);
     nav->addWidget(m_first);
     nav->addWidget(m_prev);
-    nav->addWidget(new QLabel(QStringLiteral("Row"), this));
+    nav->addSpacing(4);
+    nav->addWidget(rowLabel);
     nav->addWidget(m_goto);
     nav->addWidget(m_count);
+    nav->addSpacing(4);
     nav->addWidget(m_next);
     nav->addWidget(m_last);
-    nav->addSpacing(16);
+    nav->addSpacing(10);
+    nav->addWidget(divider());
+    nav->addSpacing(10);
     nav->addWidget(m_new);
     nav->addWidget(m_dup);
     nav->addWidget(m_del);
     nav->addStretch(1);
+
+    /* toolbar-style buttons: flat until hovered, then a soft frame — colours are
+     * translucent greys so the same sheet suits light and dark themes */
+    setStyleSheet(QStringLiteral(
+        "QToolButton#formNav, QToolButton#formAction {"
+        " border: 1px solid transparent; border-radius: 4px; padding: 2px 8px; }"
+        "QToolButton#formNav { padding: 2px; }"
+        "QToolButton#formNav:hover:enabled, QToolButton#formAction:hover:enabled {"
+        " background: rgba(127, 127, 127, 45); border-color: rgba(127, 127, 127, 110); }"
+        "QToolButton#formNav:pressed:enabled, QToolButton#formAction:pressed:enabled {"
+        " background: rgba(127, 127, 127, 90); }"
+        "QToolButton#formAction[danger=\"true\"]:hover:enabled { background: rgba(220, 70, 70, 60);"
+        " border-color: rgba(220, 70, 70, 140); }"));
+    m_del->setObjectName(QStringLiteral("formAction"));
+    m_del->setProperty("danger", true);
+    applyNavIcons();
 
     m_banner = new QLabel(this);
     m_banner->setContentsMargins(8, 3, 8, 3);
@@ -131,6 +226,21 @@ FormView::FormView(QWidget *parent) : QWidget(parent)
         commit();
         emit deleteRequested(m_row);
     });
+}
+
+void FormView::applyNavIcons()
+{
+    m_first->setIcon(navIcon(0, palette()));
+    m_prev->setIcon(navIcon(1, palette()));
+    m_next->setIcon(navIcon(2, palette()));
+    m_last->setIcon(navIcon(3, palette()));
+}
+
+void FormView::changeEvent(QEvent *event)
+{
+    if(event->type() == QEvent::PaletteChange || event->type() == QEvent::ApplicationPaletteChange)
+        applyNavIcons(); /* live theme switch */
+    QWidget::changeEvent(event);
 }
 
 void FormView::setModel(QAbstractItemModel *model, const Hooks &hooks)
@@ -304,8 +414,7 @@ void FormView::refresh()
             m_banner->setStyleSheet(QStringLiteral("background: #FDE7E9; color: #1E1E1E;"));
             m_banner->show();
         }
-        m_del->setText(state == Deleted ? QStringLiteral("↶ Undo delete")
-                                        : QStringLiteral("✕ Delete"));
+        m_del->setText(state == Deleted ? QStringLiteral("Undo delete") : QStringLiteral("Delete"));
     }
     updateNav();
 }
