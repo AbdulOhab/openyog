@@ -652,6 +652,7 @@ ConnectionTab::ConnectionTab(const ConnectionParams &params, QWidget *parent)
     if(m_conn)
         dbs = m_conn->listDatabases();
     m_databases = dbs;
+    selectSoleSchema();
     emit databasesChanged(dbs, defaultDb());
     updateActiveConnectionLabel();
 }
@@ -919,6 +920,7 @@ bool ConnectionTab::switchDatabase(const QString &database)
 
     const QStringList dbs = m_conn->listDatabases();
     m_databases = dbs;
+    selectSoleSchema();
     emit databasesChanged(dbs, defaultDb());
     QApplication::restoreOverrideCursor();
     return true;
@@ -4208,6 +4210,23 @@ void ConnectionTab::toggleResultPane()
 void ConnectionTab::toggleEditorPane()
 {
     m_editorTabs->setVisible(!m_editorTabs->isVisible());
+}
+
+/* PostgreSQL: a database with exactly one schema has nothing to choose, so
+ * make it current right away — the toolbar combo then shows it without the
+ * user having to click the schema. Silent (no Messages text): this is part
+ * of connecting/switching, not a user action. */
+void ConnectionTab::selectSoleSchema()
+{
+    if(!m_conn || m_params.driverType != SqlDriverType::Postgres || m_databases.size() != 1 ||
+       !m_currentSchema.isEmpty())
+        return;
+    const QString schema = m_databases.first();
+    if(!m_conn->query(QStringLiteral("SET search_path TO %1").arg(m_conn->quoteIdent(schema)),
+                      nullptr, nullptr))
+        return;
+    m_currentSchema = schema;
+    updateCompletions();
 }
 
 void ConnectionTab::useDatabase(const QString &db)

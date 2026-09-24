@@ -373,6 +373,7 @@ private:
     QStringList m_tableNames;  /* offered after FROM / JOIN / INTO / UPDATE */
     QStringList m_columnNames; /* offered after SELECT / WHERE / ON / SET … */
     void updateCompletions();
+    void selectSoleSchema(); /* Postgres: one schema → current, no click needed */
     /* defaultDb() (see public section above): the schema/database to
      * operate on when nothing more specific was selected (no table chosen
      * in the browser, no explicit db argument) — for MySQL/SQLite this is
