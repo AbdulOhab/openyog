@@ -1382,21 +1382,21 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
     connect(rollbackTool, &QAction::triggered, this,
             [runTx] { runTx(QStringLiteral("ROLLBACK")); });
 
-    m_statusMsg = new QLabel(QStringLiteral("Ready"), this);
-    statusBar()->addWidget(m_statusMsg, 1);
-    m_driverLabel = new QLabel(QStringLiteral("—"), this);
+    /* the connection ("user@host:port/db") takes the left slot the static "Ready"
+     * label used to hold — nothing ever updated that label, and menu-hover
+     * help (QAction status tips) overlays this slot like any left-side widget */
     m_connectionLabel = new QLabel(QStringLiteral("No connection"), this);
+    statusBar()->addWidget(m_connectionLabel, 1);
+    m_driverLabel = new QLabel(QStringLiteral("—"), this);
     m_execLabel = new QLabel(QStringLiteral("Exec: 0 sec"), this);
     m_totalLabel = new QLabel(QStringLiteral("Total: 0 sec"), this);
     m_cursorLabel = new QLabel(QStringLiteral("Ln 1, Col 1"), this);
     m_connectionsLabel = new QLabel(QStringLiteral("Connections: 0"), this);
-    for(QLabel *l : {m_driverLabel, m_connectionLabel, m_execLabel, m_totalLabel, m_cursorLabel,
-                     m_connectionsLabel}) {
+    for(QLabel *l : {m_driverLabel, m_execLabel, m_totalLabel, m_cursorLabel, m_connectionsLabel}) {
         l->setMinimumWidth(90);
         l->setFrameStyle(QFrame::Panel | QFrame::Sunken);
         statusBar()->addPermanentWidget(l);
     }
-    m_connectionLabel->setMinimumWidth(170);
 
     /* Menu actions carry their shortcut as a "\t<keys>" hint in the text, which
      * only *displays* the accelerator. Turn each hint into a real QKeySequence
