@@ -204,11 +204,6 @@ ConnectionDialog::ConnectionDialog(QWidget *parent) : QDialog(parent)
     m_pgPort->setGroupSeparatorShown(false);
     m_pgPort->setLocale(QLocale::c());
     m_pgDatabase = new QLineEdit(QStringLiteral("postgres"), this);
-    auto *pgCompress = new QCheckBox(QStringLiteral("Use Compressed Protocol"), this);
-    pgCompress->setEnabled(false);
-    pgCompress->setToolTip(
-        QStringLiteral("Not available on PostgreSQL — libpq has no protocol compression "
-                       "for a plain TCP connection."));
 
     auto *pgPwRow = new QHBoxLayout;
     pgPwRow->addWidget(m_pgPassword, 1);
@@ -227,7 +222,6 @@ ConnectionDialog::ConnectionDialog(QWidget *parent) : QDialog(parent)
         new QLabel(QStringLiteral("(Click a database in the tree to switch to it.)"), this);
     pgHint->setEnabled(false);
     pgForm->addRow(QString(), pgHint);
-    pgForm->addRow(QString(), pgCompress);
 
     m_pgIdleDefault = new QRadioButton(QStringLiteral("De&fault"), this);
     m_pgIdleDefault->setChecked(true);
