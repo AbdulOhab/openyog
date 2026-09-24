@@ -38,10 +38,10 @@ public:
     /* programmatic path used by the --autoconnect selftest (main.cpp) */
     bool openAndRun(const ConnectionParams &params);
     void openTableData(const QString &db, const QString &table);
-    void setDataViewMode(const QString &mode);             /* selftest: "text" | "grid" */
-    void openSchemaObjectTab(const QString &objType);      /* selftest */
-    void selftestUseDatabase(const QString &db);           /* --usedb= selftest */
-    void selftestExpandDatabase(const QString &name);      /* --expandpgdb= selftest */
+    void setDataViewMode(const QString &mode);        /* selftest: "text" | "grid" */
+    void openSchemaObjectTab(const QString &objType); /* selftest */
+    void selftestUseDatabase(const QString &db);      /* --usedb= selftest */
+    void selftestExpandDatabase(const QString &name); /* --expandpgdb= selftest */
     void selftestSelectBrowserItem(const QString &path);   /* --selecttreepath= selftest */
     void selftestClickBrowserItem(const QString &path);    /* --clicktreepath= selftest */
     void selftestCollapseBrowserItem(const QString &path); /* --collapsetreepath= selftest */
@@ -54,6 +54,7 @@ public:
     void copySelectedTableToHost();                 /* Table menu + --copytablehost selftest */
     void selftestRunAgain();                        /* --runagain selftest: F9 a second time */
     void selftestExplain(const QString &mode);      /* --explain=json|plain selftest */
+    QString selftestShowDataTab();                  /* --showdatatab selftest */
     void selftestShowInfoTab();                     /* --showinfotab selftest */
     QStringList selftestComboItems() const;         /* --dumpcombo selftest */
     void selftestSwitchDatabase(const QString &db); /* --switchdb= selftest */

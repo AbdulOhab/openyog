@@ -505,8 +505,11 @@ ConnectionTab::ConnectionTab(const ConnectionParams &params, QWidget *parent)
     /* the connection label tracks which result page is in front: a side
      * connection is only "the active connection" while its Table Data
      * grid is the visible one (see m_tableDataPhysDb) */
-    connect(m_resultTabs, &QTabWidget::currentChanged, this,
-            [this](int) { updateActiveConnectionLabel(); });
+    connect(m_resultTabs, &QTabWidget::currentChanged, this, [this](int) {
+        if(m_resultTabs->currentWidget() == m_tableData)
+            showPendingTable();
+        updateActiveConnectionLabel();
+    });
 
     m_findBar = new FindBar([this] { return currentEditor(); }, this);
 
@@ -563,7 +566,21 @@ ConnectionTab::ConnectionTab(const ConnectionParams &params, QWidget *parent)
         m_keepAliveTimer->start();
     }
 
-    connect(m_browser, &ObjectBrowser::objectSelected, this, &ConnectionTab::updateInfoTab);
+    /* a click shows the object in Info, and — for a table — in Table Data
+     * too (SQLyog keeps both right-pane tabs on the selected object). The
+     * grid is loaded lazily: only if Table Data is the tab in front, else
+     * when the user switches to it, so browsing tables never runs a
+     * SELECT nobody looks at. */
+    connect(m_browser, &ObjectBrowser::objectSelected, this,
+            [this](const QString &db, const QString &objType, const QString &name,
+                   const QString &physDb) {
+                updateInfoTab(db, objType, name, physDb);
+                if(objType != QStringLiteral("TABLE"))
+                    return;
+                m_pendingTable = {db, name, physDb};
+                if(m_resultTabs->currentWidget() == m_tableData)
+                    showPendingTable();
+            });
     connect(m_browser, &ObjectBrowser::insertNameRequested, this, [this](const QString &text) {
         SqlEditor *ed = currentEditor();
         if(!ed)
@@ -576,29 +593,7 @@ ConnectionTab::ConnectionTab(const ConnectionParams &params, QWidget *parent)
     connect(m_browser, &ObjectBrowser::databaseActivated, this, &ConnectionTab::useDatabase);
     connect(m_browser, &ObjectBrowser::tableActivated, this,
             [this](const QString &db, const QString &table, const QString &physDb) {
-                if(!m_conn)
-                    return;
-                /* physDb routes PostgreSQL's multi-database tree: a table under a
-                 * non-primary database loads through that database's own (pooled)
-                 * side connection, not m_conn. connectionFor() falls back to m_conn
-                 * for an empty physDb (MySQL/SQLite) or the current primary, and
-                 * pool entries are only ever moved between m_conn and the pool —
-                 * never deleted — so the pointer stays valid for this tab's life. */
-                QString error;
-                IDbConnection *c = connectionFor(physDb, &error);
-                if(!c) {
-                    m_messages->setPlainText(
-                        QStringLiteral("Could not open %1.%2: %3").arg(physDb, table, error));
-                    m_resultTabs->setCurrentWidget(m_messages);
-                    return;
-                }
-                m_tableData->load(c, db, table);
-                /* remember whose connection is feeding the grid — primary (empty)
-                 * or a foreign database's side connection — so the status bar can
-                 * say which one the rows on screen came from */
-                m_tableDataPhysDb = (c == m_conn) ? QString() : physDb;
-                m_resultTabs->setCurrentWidget(m_tableData);
-                updateActiveConnectionLabel();
+                loadTableData(db, table, physDb, true);
             });
     connect(m_tableData, &TableDataView::statusMessage, this,
             [this](const QString &text) { m_messages->appendPlainText(text); });
@@ -1381,6 +1376,12 @@ void ConnectionTab::selftestExplain(const QString &mode)
     explainCurrent(mode == QLatin1String("json"));
 }
 
+QString ConnectionTab::selftestShowDataTab()
+{
+    m_resultTabs->setCurrentWidget(m_tableData);
+    return m_tableData->loadedTable();
+}
+
 void ConnectionTab::selftestShowInfoTab()
 {
     m_resultTabs->setCurrentWidget(m_info);
@@ -1878,6 +1879,53 @@ void ConnectionTab::openSelectedTable()
     if(info.size() < 2 || !m_conn)
         return;
     openTableData(info[0], info[1]);
+}
+
+/* Loads a table into the Table Data grid through the right connection.
+ * physDb routes PostgreSQL's multi-database tree: a table under a
+ * non-primary database loads through that database's own (pooled) side
+ * connection, not m_conn. connectionFor() falls back to m_conn for an empty
+ * physDb (MySQL/SQLite) or the current primary, and pool entries are only
+ * ever moved between m_conn and the pool — never deleted — so the pointer
+ * stays valid for this tab's life. `activate` brings the tab to the front. */
+void ConnectionTab::loadTableData(const QString &db, const QString &table, const QString &physDb,
+                                  bool activate)
+{
+    if(!m_conn)
+        return;
+    QString error;
+    IDbConnection *c = connectionFor(physDb, &error);
+    if(!c) {
+        m_messages->setPlainText(
+            QStringLiteral("Could not open %1.%2: %3").arg(physDb, table, error));
+        m_resultTabs->setCurrentWidget(m_messages);
+        return;
+    }
+    m_tableData->load(c, db, table);
+    m_loadedTableKey = QStringList{physDb, db, table}.join(QLatin1Char('\x1f'));
+    /* remember whose connection is feeding the grid — primary (empty) or a
+     * foreign database's side connection — so the status bar can say which
+     * one the rows on screen came from */
+    m_tableDataPhysDb = (c == m_conn) ? QString() : physDb;
+    if(activate)
+        m_resultTabs->setCurrentWidget(m_tableData);
+    updateActiveConnectionLabel();
+}
+
+/* the table last clicked in the tree, loaded now that Table Data is in
+ * front. Skipped when it's already the one on screen (keeps its sort/filter)
+ * or when the grid holds staged edits — a click must never throw those away. */
+void ConnectionTab::showPendingTable()
+{
+    if(m_pendingTable.table.isEmpty())
+        return;
+    const PendingTable t = m_pendingTable;
+    m_pendingTable = {};
+    if(m_tableData->hasStagedEdits())
+        return;
+    if(QStringList{t.physDb, t.db, t.table}.join(QLatin1Char('\x1f')) == m_loadedTableKey)
+        return;
+    loadTableData(t.db, t.table, t.physDb, false);
 }
 
 void ConnectionTab::openTableData(const QString &db, const QString &table)

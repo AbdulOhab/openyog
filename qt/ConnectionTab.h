@@ -166,6 +166,7 @@ public slots:
     void runAndEdit();              /* F8 — run, and open a single-table SELECT editable */
     void explainCurrent(bool json); /* EXPLAIN [FORMAT=JSON] the current stmt */
     void selftestExplain(const QString &mode); /* --explain=json|plain selftest */
+    QString selftestShowDataTab(); /* --showdatatab selftest: switch to Table Data; its table */
     void selftestShowInfoTab();    /* --showinfotab selftest: switch to the Info result tab */
     void renameCurrentEditorTab(); /* Alt+F2 */
     void dumpTable(const QString &db, const QString &table); /* one-table SQL dump */
@@ -268,7 +269,7 @@ public slots:
      * editors open here, like SQLyog, instead of a modal dialog) */
     SqlEditor *openEditorWithSql(const QString &title, const QString &sql);
     void openTableData(const QString &db, const QString &table);
-    void setDataViewMode(const QString &mode); /* selftest: "text" | "grid" */
+    void setDataViewMode(const QString &mode);       /* selftest: "text" | "grid" */
     void editTableCell(int row, int col, const QString &value, bool stageOnly = false);
     void openSqlFile(const QString &path);
     void saveEditor();
@@ -372,8 +373,17 @@ private:
     QStringList m_completions; /* schema identifiers for autocomplete (union) */
     QStringList m_tableNames;  /* offered after FROM / JOIN / INTO / UPDATE */
     QStringList m_columnNames; /* offered after SELECT / WHERE / ON / SET … */
+    struct PendingTable
+    {
+        QString db, table, physDb;
+    };
+    PendingTable m_pendingTable;               /* last table clicked, not yet in the grid */
+    QString m_loadedTableKey;                  /* physDb, db, table of the grid's content */
     QHash<QString, QStringList> m_columnCache; /* completion: db + table → columns */
     void updateCompletions();
+    void loadTableData(const QString &db, const QString &table, const QString &physDb,
+                       bool activate);
+    void showPendingTable();
     void selectSoleSchema(); /* Postgres: one schema → current, no click needed */
     /* defaultDb() (see public section above): the schema/database to
      * operate on when nothing more specific was selected (no table chosen

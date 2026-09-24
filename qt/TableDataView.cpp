@@ -827,6 +827,11 @@ void TableDataView::load(IDbConnection *conn, const QString &db, const QString &
     reload();
 }
 
+bool TableDataView::hasStagedEdits() const
+{
+    return m_model->pendingOps() != 0;
+}
+
 bool TableDataView::discardStagedEdits(const QString &action)
 {
     if(m_model->pendingOps() == 0)
