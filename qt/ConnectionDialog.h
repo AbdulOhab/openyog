@@ -27,6 +27,14 @@ public:
 
     ConnectionParams params() const;
 
+protected:
+    void showEvent(QShowEvent *event) override;
+    void hideEvent(QHideEvent *event) override;
+    /* arrow keys while the dialog is up and focus is not in a text field:
+     * Left/Right switch the driver, Up/Down step through the saved
+     * connections */
+    bool eventFilter(QObject *watched, QEvent *event) override;
+
 private slots:
     void reloadSavedList();
     void loadSelected();
