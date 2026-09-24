@@ -360,9 +360,11 @@ ConnectionDialog::ConnectionDialog(QWidget *parent) : QDialog(parent)
     auto *root = new QVBoxLayout(this);
     root->addLayout(top);
 
+    /* open on a blank MySQL form, not on whichever saved entry sorts first
+     * (that made the dialog come up as SQLite/PostgreSQL whenever such an
+     * entry led the list) — a saved connection is one pick away in the combo */
+    m_saved->setPlaceholderText(QStringLiteral("— saved connections —"));
     reloadSavedList();
-    if(m_saved->count())
-        loadSelected();
     updateButtonState();
 }
 
@@ -381,7 +383,7 @@ void ConnectionDialog::reloadSavedList()
     m_saved->clear();
     m_saved->addItems(ConnectionStore::storedNames());
     const int i = m_saved->findText(keep);
-    m_saved->setCurrentIndex(i >= 0 ? i : 0);
+    m_saved->setCurrentIndex(i); /* -1 (none selected) when nothing was selected before */
     m_saved->blockSignals(false);
     updateButtonState();
 }
