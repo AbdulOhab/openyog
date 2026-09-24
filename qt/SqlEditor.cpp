@@ -130,6 +130,13 @@ void SqlEditor::reskin()
     setUnmatchedBraceForegroundColor(dark ? QColor(0xE0, 0x7A, 0x7A) : QColor(0xB0, 0x3A, 0x3A));
 
     if(auto *lx = qobject_cast<QsciLexerSQL *>(lexer())) {
+        /* the default style paints the empty area past the text, and with a
+         * lexer attached setPaper() above doesn't reach it — a live theme
+         * switch left it in the old (white) paper */
+        lx->setDefaultPaper(base);
+        lx->setDefaultColor(text);
+        SendScintilla(SCI_STYLESETBACK, STYLE_DEFAULT, base);
+        SendScintilla(SCI_STYLESETFORE, STYLE_DEFAULT, text);
         /* light colors are the ones the old SqlHighlighter used; dark picks
          * the same hues lightened enough to read on the dark base */
         const QColor kw = dark ? QColor(0x7F, 0xB3, 0xE8) : QColor(0x2A, 0x5D, 0x9F);
