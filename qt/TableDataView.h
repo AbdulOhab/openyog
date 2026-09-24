@@ -54,6 +54,7 @@ public slots:
      * mirroring Community, where it only pops the upgrade dialog. */
     void setViewMode(int mode); /* 0 = grid, 2 = text (1 = form, unused) */
 
+    bool hasStagedEdits() const; /* unsaved staged edits/inserts/deletes in the grid */
     QString loadedTable() const
     {
         return m_valid ? m_table : QString();

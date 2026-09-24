@@ -1932,6 +1932,13 @@ void MainWindow::selftestExplain(const QString &mode)
         tab->selftestExplain(mode);
 }
 
+QString MainWindow::selftestShowDataTab()
+{
+    if(auto *tab = currentTab())
+        return tab->selftestShowDataTab();
+    return QString();
+}
+
 void MainWindow::selftestShowInfoTab()
 {
     if(auto *tab = currentTab())

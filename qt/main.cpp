@@ -77,11 +77,12 @@ int main(int argc, char *argv[])
     bool shotFkDlg = false; /* --fkdlg: render the Foreign Keys dialog */
     bool shotExportDlg = false;
     QPair<QString, QString> openTableParts;
-    QString dataViewMode;       /* --dataview=text|grid selftest */
-    QString checkRows;          /* --checkrows=0,2,4 selftest */
-    QString hexCell;            /* --hexcell=row:col:hexdigits selftest */
-    QString mkObj;              /* --mkobj=VIEW|PROCEDURE|… selftest */
-    QString explainMode;        /* --explain=json|plain selftest: Explain "SELECT 1" */
+    QString dataViewMode;  /* --dataview=text|grid selftest */
+    QString checkRows;     /* --checkrows=0,2,4 selftest */
+    QString hexCell;       /* --hexcell=row:col:hexdigits selftest */
+    QString mkObj;         /* --mkobj=VIEW|PROCEDURE|… selftest */
+    QString explainMode;   /* --explain=json|plain selftest: Explain "SELECT 1" */
+    bool showDataTab = false;   /* --showdatatab selftest: switch to Table Data, print its table */
     bool showInfoTab = false;   /* --showinfotab selftest: switch to the Info result tab */
     QString useDbArg;           /* --usedb=NAME selftest */
     QString expandPgDbArg;      /* --expandpgdb=NAME selftest */
@@ -1595,6 +1596,8 @@ int main(int argc, char *argv[])
             explainMode = a.mid(QStringLiteral("--explain=").size());
         if(a == QStringLiteral("--showinfotab"))
             showInfoTab = true;
+        if(a == QStringLiteral("--showdatatab"))
+            showDataTab = true;
         if(a.startsWith(QStringLiteral("--usedb=")))
             useDbArg = a.mid(QStringLiteral("--usedb=").size());
         if(a.startsWith(QStringLiteral("--expandpgdb=")))
@@ -2032,6 +2035,8 @@ int main(int argc, char *argv[])
                     }
                     if(showInfoTab)
                         w->selftestShowInfoTab();
+                    if(showDataTab)
+                        QTextStream(stdout) << "datatab: " << w->selftestShowDataTab() << '\n';
                     /* mkObj/runAgain/explain can pop a guard QMessageBox
                      * whose modal loop blocks this callback right where the
                      * call is made — schedule the screenshot BEFORE those
