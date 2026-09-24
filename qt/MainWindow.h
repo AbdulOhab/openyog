@@ -39,6 +39,7 @@ public:
     bool openAndRun(const ConnectionParams &params);
     void openTableData(const QString &db, const QString &table);
     void setDataViewMode(const QString &mode);        /* selftest: "text" | "grid" */
+    QString selftestCellText(int row, int col) const; /* --celltext= selftest: grid cell's text */
     void openSchemaObjectTab(const QString &objType); /* selftest */
     void selftestUseDatabase(const QString &db);      /* --usedb= selftest */
     void selftestExpandDatabase(const QString &name); /* --expandpgdb= selftest */

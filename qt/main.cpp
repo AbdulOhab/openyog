@@ -80,6 +80,9 @@ int main(int argc, char *argv[])
     QString dataViewMode;  /* --dataview=text|grid selftest */
     QString checkRows;     /* --checkrows=0,2,4 selftest */
     QString hexCell;       /* --hexcell=row:col:hexdigits selftest */
+    QStringList cellTexts; /* --celltext=row:col selftest (repeatable): print the cell's displayed
+                            * text — asserts the <BLOB> placeholder for binary columns, the
+                            * post-edit display, … */
     QString mkObj;         /* --mkobj=VIEW|PROCEDURE|… selftest */
     QString explainMode;   /* --explain=json|plain selftest: Explain "SELECT 1" */
     bool showDataTab = false;   /* --showdatatab selftest: switch to Table Data, print its table */
@@ -1588,6 +1591,10 @@ int main(int argc, char *argv[])
         /* --hexcell=row:col:deadbeef : stage a binary x'…' edit and apply */
         if(a.startsWith(QStringLiteral("--hexcell=")))
             hexCell = a.mid(QStringLiteral("--hexcell=").size());
+        /* --celltext=row:col : print the cell's displayed text (asserts the
+         * <BLOB> placeholder for binary columns, the post-edit display, …) */
+        if(a.startsWith(QStringLiteral("--celltext=")))
+            cellTexts << a.mid(QStringLiteral("--celltext=").size());
         /* --mkobj=VIEW : open the Create <obj> editor tab */
         if(a.startsWith(QStringLiteral("--mkobj=")))
             mkObj = a.mid(QStringLiteral("--mkobj=").size());
@@ -1993,6 +2000,13 @@ int main(int argc, char *argv[])
                         w->setDataViewMode(QStringLiteral("check:") + checkRows);
                     if(!hexCell.isEmpty())
                         w->setDataViewMode(QStringLiteral("hex:") + hexCell);
+                    for(const QString &oneCell : std::as_const(cellTexts)) {
+                        const QStringList ct = oneCell.split(QLatin1Char(':'));
+                        if(ct.size() == 2)
+                            QTextStream(stdout)
+                                << "celltext: " << w->selftestCellText(ct[0].toInt(), ct[1].toInt())
+                                << '\n';
+                    }
                     if(!useDbArg.isEmpty())
                         w->selftestUseDatabase(useDbArg);
                     if(!expandPgDbArg.isEmpty())

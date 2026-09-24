@@ -1886,6 +1886,13 @@ void MainWindow::setDataViewMode(const QString &mode)
         tab->setDataViewMode(mode);
 }
 
+QString MainWindow::selftestCellText(int row, int col) const
+{
+    if(auto *tab = currentTab())
+        return tab->cellTextForTest(row, col);
+    return QString();
+}
+
 void MainWindow::openSchemaObjectTab(const QString &objType)
 {
     if(auto *tab = currentTab())

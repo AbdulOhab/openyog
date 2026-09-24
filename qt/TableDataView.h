@@ -42,6 +42,7 @@ public slots:
     void stageCellOnly(int row, int col, const QString &value); /* selftest: stage, no apply */
     void checkRowsForTest(const QString &csv); /* selftest: tick the row-select column */
     void hexCellForTest(int row, int col, const QString &hex); /* selftest: stage x'…' + apply */
+    QString cellTextForTest(int row, int col) const; /* selftest: the grid's DisplayRole text */
     void setCellNull();
     void editCellInTextEditor(); /* big multi-line editor for the current cell */
     void refresh();
@@ -102,6 +103,7 @@ private:
         QString name;
         bool nullable = true;
         bool autoInc = false;
+        bool blob = false; /* declared type looks binary — see typeLooksBinary() */
     };
 
     IDbConnection *m_conn = nullptr;
