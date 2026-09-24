@@ -4,7 +4,13 @@
 
 #include <QCheckBox>
 #include <QComboBox>
+#include <QAbstractSpinBox>
+#include <QApplication>
 #include <QDialogButtonBox>
+#include <QKeyEvent>
+#include <QPlainTextEdit>
+#include <QRadioButton>
+#include <QTextEdit>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QFormLayout>
@@ -358,6 +364,58 @@ ConnectionDialog::ConnectionDialog(QWidget *parent) : QDialog(parent)
     m_saved->setPlaceholderText(QStringLiteral("— saved connections —"));
     reloadSavedList();
     updateButtonState();
+}
+
+/* application-wide while shown (the key goes to whichever widget has focus,
+ * not to the dialog), removed again on hide */
+void ConnectionDialog::showEvent(QShowEvent *event)
+{
+    QDialog::showEvent(event);
+    qApp->installEventFilter(this);
+}
+
+void ConnectionDialog::hideEvent(QHideEvent *event)
+{
+    qApp->removeEventFilter(this);
+    QDialog::hideEvent(event);
+}
+
+bool ConnectionDialog::eventFilter(QObject *watched, QEvent *event)
+{
+    if(event->type() != QEvent::KeyPress)
+        return QDialog::eventFilter(watched, event);
+    auto *ke = static_cast<QKeyEvent *>(event);
+    const int key = ke->key();
+    if((key != Qt::Key_Left && key != Qt::Key_Right && key != Qt::Key_Up && key != Qt::Key_Down) ||
+       (ke->modifiers() & ~Qt::KeypadModifier))
+        return QDialog::eventFilter(watched, event);
+
+    /* only while this dialog is the active modal one (a Test Connection
+     * result box on top of it must keep its own keys), no combo popup open */
+    QWidget *focus = QApplication::focusWidget();
+    if(!focus || QApplication::activeModalWidget() != this || QApplication::activePopupWidget() ||
+       !(focus == this || isAncestorOf(focus)))
+        return QDialog::eventFilter(watched, event);
+    /* arrows mean something in these: caret movement, spin steps, radio groups */
+    if(qobject_cast<QLineEdit *>(focus) || qobject_cast<QAbstractSpinBox *>(focus) ||
+       qobject_cast<QTextEdit *>(focus) || qobject_cast<QPlainTextEdit *>(focus) ||
+       qobject_cast<QRadioButton *>(focus) ||
+       (qobject_cast<QComboBox *>(focus) && qobject_cast<QComboBox *>(focus)->isEditable()))
+        return QDialog::eventFilter(watched, event);
+
+    if(key == Qt::Key_Left || key == Qt::Key_Right) {
+        const int i = m_driverCombo->currentIndex() + (key == Qt::Key_Right ? 1 : -1);
+        if(i >= 0 && i < m_driverCombo->count())
+            m_driverCombo->setCurrentIndex(i);
+    } else if(m_saved->count() > 0) {
+        const int i = qBound(0, m_saved->currentIndex() + (key == Qt::Key_Down ? 1 : -1),
+                             m_saved->count() - 1);
+        if(i != m_saved->currentIndex()) {
+            m_saved->setCurrentIndex(i);
+            loadSelected(); /* setCurrentIndex() alone doesn't emit activated() */
+        }
+    }
+    return true;
 }
 
 void ConnectionDialog::updateButtonState()
