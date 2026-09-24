@@ -1,5 +1,6 @@
 #include "SqliteConnection.h"
 
+#include <QHash>
 #include <QRegularExpression>
 
 #include <algorithm>
@@ -212,6 +213,22 @@ DbResultSet SqliteConnection::listColumns(const QString &db, const QString &tabl
         }
     }
 
+    /* SHOW COLUMNS' UNI/MUL: a column that leads a non-primary index —
+     * UNI when that index is unique and single-column, MUL otherwise (same
+     * rule as MySQL). Derived from listIndexes() so both stay in step. */
+    QHash<QString, int> indexWidth;
+    const DbResultSet idx = listIndexes(db, table);
+    for(const QStringList &ix : idx.rows)
+        ++indexWidth[ix.value(2)];
+    QHash<QString, QString> keyOf;
+    for(const QStringList &ix : idx.rows) {
+        if(ix.value(3) != QStringLiteral("1") || ix.value(2) == QStringLiteral("PRIMARY"))
+            continue;
+        const bool uni = ix.value(1) == QStringLiteral("0") && indexWidth.value(ix.value(2)) == 1;
+        if(uni || !keyOf.contains(ix.value(4)))
+            keyOf[ix.value(4)] = uni ? QStringLiteral("UNI") : QStringLiteral("MUL");
+    }
+
     DbResultSet out;
     out.headers << QStringLiteral("Field") << QStringLiteral("Type") << QStringLiteral("Null")
                 << QStringLiteral("Key") << QStringLiteral("Default") << QStringLiteral("Extra")
@@ -222,9 +239,9 @@ DbResultSet SqliteConnection::listColumns(const QString &db, const QString &tabl
         r << row.value(1) /* Field */
           << row.value(2) /* Type */
           << (row.value(3).toInt() || isPk ? QStringLiteral("NO")
-                                           : QStringLiteral("YES")) /* Null */
-          << (isPk ? QStringLiteral("PRI") : QString())             /* Key */
-          << row.value(4)                                           /* Default */
+                                           : QStringLiteral("YES"))     /* Null */
+          << (isPk ? QStringLiteral("PRI") : keyOf.value(row.value(1))) /* Key */
+          << row.value(4)                                               /* Default */
           << (isPk && pkCols == 1 && pkIsInteger ? QStringLiteral("auto_increment") : QString())
           << QString(); /* Comment — SQLite has no column comments */
         out.rows << r;

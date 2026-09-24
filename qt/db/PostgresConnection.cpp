@@ -248,7 +248,9 @@ DbResultSet PostgresConnection::listColumns(const QString &db, const QString &ta
             "       WHEN data_type='numeric' AND numeric_precision IS NOT NULL "
             "         THEN 'numeric(' || numeric_precision || ',' || numeric_scale || ')' "
             "       ELSE data_type END, "
-            "  is_nullable, column_default, is_identity "
+            "  is_nullable, column_default, is_identity, "
+            "  coalesce(col_description((quote_ident(table_schema)||'.'||"
+            "quote_ident(table_name))::regclass, ordinal_position), '') "
             "FROM information_schema.columns "
             "WHERE table_schema='%1' AND table_name='%2' ORDER BY ordinal_position")
             .arg(schema, table),
@@ -268,6 +270,23 @@ DbResultSet PostgresConnection::listColumns(const QString &db, const QString &ta
     for(const QStringList &row : pk.rows)
         pkCols.insert(row.value(0));
 
+    /* SHOW COLUMNS' UNI/MUL: the leading column of each non-primary index —
+     * UNI for a single-column unique index, MUL otherwise (MySQL's rule) */
+    DbResultSet ix;
+    runBuffered(QStringLiteral("SELECT a.attname, i.indisunique AND i.indnatts=1 "
+                               "FROM pg_index i JOIN pg_class c ON c.oid=i.indrelid "
+                               "JOIN pg_namespace n ON n.oid=c.relnamespace "
+                               "JOIN pg_attribute a ON a.attrelid=c.oid AND a.attnum=i.indkey[0] "
+                               "WHERE n.nspname='%1' AND c.relname='%2' AND NOT i.indisprimary")
+                    .arg(schema, table),
+                &ix, nullptr);
+    QHash<QString, QString> keyOf;
+    for(const QStringList &row : ix.rows) {
+        const bool uni = row.value(1) == QStringLiteral("t") || row.value(1) == QStringLiteral("1");
+        if(uni || !keyOf.contains(row.value(0)))
+            keyOf[row.value(0)] = uni ? QStringLiteral("UNI") : QStringLiteral("MUL");
+    }
+
     DbResultSet out;
     out.headers << QStringLiteral("Field") << QStringLiteral("Type") << QStringLiteral("Null")
                 << QStringLiteral("Key") << QStringLiteral("Default") << QStringLiteral("Extra")
@@ -282,11 +301,9 @@ DbResultSet PostgresConnection::listColumns(const QString &db, const QString &ta
         r << name << row.value(1)
           << (row.value(2) == QStringLiteral("NO") || isPk ? QStringLiteral("NO")
                                                            : QStringLiteral("YES"))
-          << (isPk ? QStringLiteral("PRI") : QString())
+          << (isPk ? QStringLiteral("PRI") : keyOf.value(name))
           << (def.isNull() ? QStringLiteral("NULL") : def)
-          << (isIdentity ? QStringLiteral("auto_increment") : QString())
-          << QString(); /* Comment: needs a separate pg_description join,
-                         * not worth it until something reads it */
+          << (isIdentity ? QStringLiteral("auto_increment") : QString()) << row.value(5);
         out.rows << r;
     }
     return out;
