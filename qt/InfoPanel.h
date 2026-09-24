@@ -34,11 +34,13 @@ public:
 
 protected:
     bool eventFilter(QObject *watched, QEvent *event) override;
+    void changeEvent(QEvent *event) override;
 
 private:
     void rescan();        /* find every match, repaint the highlights */
     void step(int delta); /* move the current match, scroll to it */
     void paintHighlights();
+    void applyIcons();
 
     QTextBrowser *m_view = nullptr;
     QLineEdit *m_field = nullptr;

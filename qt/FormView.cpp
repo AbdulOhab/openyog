@@ -1,5 +1,6 @@
 #include "FormView.h"
 #include "Icons.h"
+#include "NavIcons.h"
 
 #include <QCheckBox>
 #include <QEvent>
@@ -28,51 +29,6 @@ QToolButton *navButton(const QString &text, const QString &tip, QWidget *parent)
     b->setToolTip(tip);
     b->setAutoRaise(true);
     return b;
-}
-
-/* first / previous / next / last arrows, painted in the palette's own colours
- * so they stay crisp and readable on every theme (an icon file would be one
- * fixed colour); a separate greyed pixmap for the disabled state */
-QIcon navIcon(int kind, const QPalette &pal)
-{
-    QIcon icon;
-    const struct
-    {
-        QIcon::Mode mode;
-        QColor color;
-    } modes[] = {{QIcon::Normal, pal.color(QPalette::Active, QPalette::ButtonText)},
-                 {QIcon::Disabled, pal.color(QPalette::Disabled, QPalette::ButtonText)}};
-    for(const auto &m : modes) {
-        QPixmap pm(32, 32);
-        pm.setDevicePixelRatio(2);
-        pm.fill(Qt::transparent);
-        QPainter p(&pm);
-        p.setRenderHint(QPainter::Antialiasing, true);
-        p.setPen(Qt::NoPen);
-        p.setBrush(m.color);
-        const auto tri = [&](qreal tipX, qreal baseX) {
-            const QPointF pts[3] = {{baseX, 3.5}, {tipX, 8.0}, {baseX, 12.5}};
-            p.drawPolygon(pts, 3);
-        };
-        switch(kind) {
-            case 0: /* first: bar + left triangle */
-                p.drawRoundedRect(QRectF(2.6, 3.5, 1.9, 9.0), 0.6, 0.6);
-                tri(5.6, 12.2);
-                break;
-            case 1:
-                tri(4.6, 11.4);
-                break;
-            case 2:
-                tri(11.4, 4.6);
-                break;
-            default: /* last */
-                p.drawRoundedRect(QRectF(11.5, 3.5, 1.9, 9.0), 0.6, 0.6);
-                tri(10.4, 3.8);
-                break;
-        }
-        icon.addPixmap(pm, m.mode);
-    }
-    return icon;
 }
 
 QIcon fileIcon(const QString &name)
@@ -110,7 +66,7 @@ FormView::FormView(QWidget *parent) : QWidget(parent)
     for(QToolButton *b : {m_first, m_prev, m_next, m_last}) {
         b->setIconSize(QSize(16, 16));
         b->setFixedSize(30, 28);
-        b->setObjectName(QStringLiteral("formNav"));
+        b->setObjectName(QStringLiteral("flatTool"));
     }
     m_goto = new QLineEdit(this);
     m_goto->setValidator(new QIntValidator(1, 99999999, m_goto));
@@ -129,7 +85,7 @@ FormView::FormView(QWidget *parent) : QWidget(parent)
         b->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
         b->setIconSize(QSize(16, 16));
         b->setMinimumHeight(28);
-        b->setObjectName(QStringLiteral("formAction"));
+        b->setObjectName(QStringLiteral("flatAction"));
     }
     /* thin divider between the groups */
     const auto divider = [this] {
@@ -159,19 +115,8 @@ FormView::FormView(QWidget *parent) : QWidget(parent)
     nav->addWidget(m_del);
     nav->addStretch(1);
 
-    /* toolbar-style buttons: flat until hovered, then a soft frame — colours are
-     * translucent greys so the same sheet suits light and dark themes */
-    setStyleSheet(QStringLiteral(
-        "QToolButton#formNav, QToolButton#formAction {"
-        " border: 1px solid transparent; border-radius: 4px; padding: 2px 8px; }"
-        "QToolButton#formNav { padding: 2px; }"
-        "QToolButton#formNav:hover:enabled, QToolButton#formAction:hover:enabled {"
-        " background: rgba(127, 127, 127, 45); border-color: rgba(127, 127, 127, 110); }"
-        "QToolButton#formNav:pressed:enabled, QToolButton#formAction:pressed:enabled {"
-        " background: rgba(127, 127, 127, 90); }"
-        "QToolButton#formAction[danger=\"true\"]:hover:enabled { background: rgba(220, 70, 70, 60);"
-        " border-color: rgba(220, 70, 70, 140); }"));
-    m_del->setObjectName(QStringLiteral("formAction"));
+    setStyleSheet(NavIcons::flatToolSheet());
+    m_del->setObjectName(QStringLiteral("flatAction"));
     m_del->setProperty("danger", true);
     applyNavIcons();
 
@@ -230,10 +175,10 @@ FormView::FormView(QWidget *parent) : QWidget(parent)
 
 void FormView::applyNavIcons()
 {
-    m_first->setIcon(navIcon(0, palette()));
-    m_prev->setIcon(navIcon(1, palette()));
-    m_next->setIcon(navIcon(2, palette()));
-    m_last->setIcon(navIcon(3, palette()));
+    m_first->setIcon(NavIcons::arrow(NavIcons::First, palette()));
+    m_prev->setIcon(NavIcons::arrow(NavIcons::Prev, palette()));
+    m_next->setIcon(NavIcons::arrow(NavIcons::Next, palette()));
+    m_last->setIcon(NavIcons::arrow(NavIcons::Last, palette()));
 }
 
 void FormView::changeEvent(QEvent *event)
