@@ -30,6 +30,7 @@
 #include <QRegularExpression>
 #include <QMouseEvent>
 #include <QPainter>
+#include <QPainterPath>
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QSet>
@@ -73,6 +74,44 @@ bool typeLooksBinary(const QString &typeName)
     const QString t = typeName.toUpper();
     return t.contains(QStringLiteral("BLOB")) || t.contains(QStringLiteral("BINARY")) ||
            t.contains(QStringLiteral("BYTEA"));
+}
+
+/* The row-header and select-all checkboxes are painted by hand: asking the
+ * style for PE_IndicatorCheckBox gave a box with no visible frame under some
+ * platform themes (the GTK one on XFCE), so they read as bare white squares.
+ * A bordered box in the text colour, filled + ticked when checked — same
+ * look as the QCheckBox indicators in Theme.cpp, on the header's own palette. */
+void paintCheckIndicator(QPainter *p, const QRect &r, bool checked, const QPalette &pal)
+{
+    const QColor base = pal.color(QPalette::Base);
+    const QColor text = pal.color(QPalette::Text);
+    const bool dark = base.lightness() < 128;
+    const QColor border((text.red() * 55 + base.red() * 45) / 100,
+                        (text.green() * 55 + base.green() * 45) / 100,
+                        (text.blue() * 55 + base.blue() * 45) / 100);
+    const QColor accent = dark ? pal.color(QPalette::Highlight) : QColor(0x3B, 0x7D, 0xBB);
+    const QColor tick = dark ? pal.color(QPalette::HighlightedText) : QColor(Qt::white);
+
+    p->save();
+    p->setRenderHint(QPainter::Antialiasing, true);
+    const QRectF box = QRectF(r).adjusted(0.5, 0.5, -0.5, -0.5);
+    p->setPen(QPen(checked ? accent : border, 1));
+    p->setBrush(checked ? accent : base);
+    p->drawRoundedRect(box, 2, 2);
+    if(checked) {
+        QPen tp(tick, qMax(1.6, r.width() / 8.0));
+        tp.setCapStyle(Qt::RoundCap);
+        tp.setJoinStyle(Qt::RoundJoin);
+        p->setPen(tp);
+        p->setBrush(Qt::NoBrush);
+        const qreal w = box.width(), h = box.height();
+        QPainterPath path;
+        path.moveTo(box.left() + w * 0.24, box.top() + h * 0.52);
+        path.lineTo(box.left() + w * 0.43, box.top() + h * 0.72);
+        path.lineTo(box.left() + w * 0.78, box.top() + h * 0.30);
+        p->drawPath(path);
+    }
+    p->restore();
 }
 } // namespace
 
@@ -425,13 +464,10 @@ protected:
                     p.drawLine(br.bottomLeft(), br.bottomRight());
 
                     const int sz = 14;
-                    QStyleOptionButton co;
-                    co.state = QStyle::State_Enabled |
-                               (allState() == Qt::Checked ? QStyle::State_On : QStyle::State_Off);
-                    co.rect =
-                        QRect(br.center().x() - sz / 2 + 1, br.center().y() - sz / 2 + 1, sz, sz);
-                    m_corner->style()->drawPrimitive(QStyle::PE_IndicatorCheckBox, &co, &p,
-                                                     m_corner);
+                    paintCheckIndicator(
+                        &p,
+                        QRect(br.center().x() - sz / 2 + 1, br.center().y() - sz / 2 + 1, sz, sz),
+                        allState() == Qt::Checked, m_corner->palette());
                     return true; /* swallow the default corner paint */
                 }
                 case QEvent::MouseButtonRelease:
@@ -463,12 +499,7 @@ protected:
         style()->drawControl(QStyle::CE_Header, &ho, p, this);
 
         /* just a checkbox, centred — no row number (SQLyog's leftmost column) */
-        QStyleOptionButton co;
-        co.initFrom(this);
-        co.rect = checkboxRect(rect);
-        co.state = QStyle::State_Enabled |
-                   (m_checked.contains(logical) ? QStyle::State_On : QStyle::State_Off);
-        style()->drawPrimitive(QStyle::PE_IndicatorCheckBox, &co, p, this);
+        paintCheckIndicator(p, checkboxRect(rect), m_checked.contains(logical), palette());
 
         /* subtle rule down the right edge, to set the column off from the grid */
         p->setPen(palette().color(QPalette::Mid));
