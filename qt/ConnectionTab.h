@@ -272,6 +272,7 @@ public slots:
     SqlEditor *openEditorWithSql(const QString &title, const QString &sql);
     void openTableData(const QString &db, const QString &table);
     void setDataViewMode(const QString &mode);       /* selftest: "text" | "grid" */
+    QString cellTextForTest(int row, int col) const; /* selftest: grid cell's displayed text */
     void editTableCell(int row, int col, const QString &value, bool stageOnly = false);
     void openSqlFile(const QString &path);
     void saveEditor();

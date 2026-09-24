@@ -61,6 +61,19 @@ QString hexLiteral(SqlDriverType driver, const QString &hex)
         return QStringLiteral("decode('%1','hex')").arg(hex);
     return QStringLiteral("x'%1'").arg(hex);
 }
+
+/* Does a column's declared type look binary? A heuristic on the raw type
+ * name, same style as ConnectionTab's CHAR/TEXT-only LIKE check — the
+ * seam carries no portable type-category, just the driver-native string
+ * (BLOB/TINYBLOB/MEDIUMBLOB/LONGBLOB/VARBINARY/BINARY for MySQL, BYTEA
+ * for PostgreSQL; SQLite's dynamic typing means whatever the column was
+ * declared as is all there is, and a BLOB-affinity name lands here) */
+bool typeLooksBinary(const QString &typeName)
+{
+    const QString t = typeName.toUpper();
+    return t.contains(QStringLiteral("BLOB")) || t.contains(QStringLiteral("BINARY")) ||
+           t.contains(QStringLiteral("BYTEA"));
+}
 } // namespace
 
 /* ---------------- editable model (staged edits + inserts + deletes) ------- */
@@ -83,6 +96,14 @@ public:
         m_expr.clear();
         endResetModel();
         emit pendingChanged();
+    }
+
+    /* which columns are binary-typed (drives the <BLOB> display
+     * placeholder in data()) — set right after setGrid() from the
+     * caller's ColumnInfo; empty/no call means no blob columns */
+    void setBlobColumns(const QVector<bool> &cols)
+    {
+        m_blobCols = cols;
     }
 
     /* append a blank pending-insert row; returns its index */
@@ -234,8 +255,18 @@ public:
         if(!idx.isValid())
             return {};
         const int r = idx.row(), c = idx.column();
-        if(role == Qt::DisplayRole || role == Qt::EditRole)
+        if(role == Qt::DisplayRole || role == Qt::EditRole) {
+            /* untouched binary cells render as a placeholder: query()'s
+             * rows went through QString::fromUtf8, so the "real" string is
+             * mangled bytes — garbage on screen and useless to read. A
+             * staged edit (Text tab, Hex tab's x'…' display) or a typed
+             * new-row value still shows what the user put there */
+            if(role == Qt::DisplayRole && c < m_blobCols.size() && m_blobCols.at(c) &&
+               m_rows[r][c] != QStringLiteral("NULL") && m_state.value(r) == Normal &&
+               !m_expr.contains({r, c}) && !dirty(r, c))
+                return QStringLiteral("<BLOB>");
             return m_rows[r][c];
+        }
         if(role == Qt::BackgroundRole) {
             if(m_state[r] == Inserted)
                 return QColor(0xE6, 0xF4, 0xEA); /* green */
@@ -294,6 +325,7 @@ private:
     QVector<QStringList> m_rows;
     QVector<QStringList> m_orig;
     QVector<RowState> m_state;
+    QVector<bool> m_blobCols;              /* per-column, from setBlobColumns() */
     QMap<QPair<int, int>, QString> m_expr; /* (r,c) → verbatim SQL expr */
 };
 
@@ -1045,6 +1077,11 @@ void TableDataView::hexCellForTest(int row, int col, const QString &hex)
     applyPendingEdits();
 }
 
+QString TableDataView::cellTextForTest(int row, int col) const
+{
+    return m_model->data(m_model->index(row, col), Qt::DisplayRole).toString();
+}
+
 void TableDataView::checkRowsForTest(const QString &csv)
 {
     if(!m_checkHeader)
@@ -1198,6 +1235,7 @@ void TableDataView::reload()
         ci.name = m_columns.last();
         ci.nullable = row.value(2) != QStringLiteral("NO");
         ci.autoInc = row.value(5).contains(QStringLiteral("auto_increment"));
+        ci.blob = typeLooksBinary(row.value(1));
         m_colInfo << ci;
     }
     if(m_columns.isEmpty()) {
@@ -1264,6 +1302,10 @@ void TableDataView::reload()
         rows = rs.rows;
     }
     m_model->setGrid(header, rows);
+    QVector<bool> blobCols;
+    for(const ColumnInfo &ci : std::as_const(m_colInfo))
+        blobCols << ci.blob;
+    m_model->setBlobColumns(blobCols);
     if(m_checkHeader)
         m_checkHeader->clearChecks();
     m_valid = true;
@@ -1500,7 +1542,10 @@ void TableDataView::editCellInTextEditor()
         return;
     const int row = idx.row(), c = idx.column();
     const QString col = m_model->columns().value(c);
-    const bool isNull = idx.data().toString() == QStringLiteral("NULL");
+    /* cur(), not idx.data(): a binary column's untouched DisplayRole is the
+     * <BLOB> placeholder — the editor wants the actual (mangled) value */
+    const QString cur = m_model->cur(row, c);
+    const bool isNull = cur == QStringLiteral("NULL");
 
     QDialog dlg(this);
     dlg.setWindowTitle(QStringLiteral("Edit `%1` — row %2").arg(col).arg(row + 1));
@@ -1508,12 +1553,14 @@ void TableDataView::editCellInTextEditor()
 
     auto *tabs = new QTabWidget(&dlg);
     auto *edit = new QPlainTextEdit(tabs);
-    edit->setPlainText(isNull ? QString() : idx.data().toString());
+    edit->setPlainText(isNull ? QString() : cur);
     edit->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
     tabs->addTab(edit, QStringLiteral("Text"));
 
     /* Hex tab: read-only offset dump on top, an editable raw-hex field below.
-     * Typing hex there and pressing OK writes the cell as an x'…' literal. */
+     * Typing hex there and pressing OK writes the cell as an x'…' literal;
+     * Load/Save move the same content to/from a file (the natural workflow
+     * for anything bigger than a handful of bytes). */
     auto *hexPage = new QWidget(tabs);
     auto *hexLay = new QVBoxLayout(hexPage);
     auto *hexDump = new QPlainTextEdit(hexPage);
@@ -1524,21 +1571,23 @@ void TableDataView::editCellInTextEditor()
     hexEdit->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
     hexEdit->setPlaceholderText(QStringLiteral("raw hex, e.g. 48656c6c6f — even number of 0-9 a-f "
                                                "(whitespace ignored); OK writes it as x'…'"));
+    auto *loadBtn = new QPushButton(QStringLiteral("&Load from File…"), hexPage);
+    auto *saveBtn = new QPushButton(QStringLiteral("&Save to File…"), hexPage);
+    auto *fileBtns = new QHBoxLayout;
+    fileBtns->addWidget(loadBtn);
+    fileBtns->addWidget(saveBtn);
+    fileBtns->addStretch(1);
     hexLay->addWidget(new QLabel(QStringLiteral("Bytes:"), hexPage));
     hexLay->addWidget(hexDump, 2);
     hexLay->addWidget(new QLabel(QStringLiteral("Edit as hex:"), hexPage));
     hexLay->addWidget(hexEdit, 1);
+    hexLay->addLayout(fileBtns);
     tabs->addTab(hexPage, QStringLiteral("Hex"));
 
-    bool hexLoaded = false;
-    connect(tabs, &QTabWidget::currentChanged, &dlg, [&](int i) {
-        if(i != 1 || hexLoaded)
-            return;
-        hexLoaded = true;
-        const QByteArray b = m_model->rowState(row) == TableDataModel::Inserted
-                                 ? edit->toPlainText().toUtf8()
-                                 : fetchCellBytes(row, c);
-        QString dump, raw;
+    /* classic hex+ASCII offset dump, shared by the lazy tab load and the
+     * Load-from-File button */
+    const auto renderDump = [&hexDump](const QByteArray &b) {
+        QString dump;
         for(int off = 0; off < b.size(); off += 16) {
             QString h, a;
             for(int j = 0; j < 16; ++j) {
@@ -1552,10 +1601,66 @@ void TableDataView::editCellInTextEditor()
             }
             dump += QStringLiteral("%1  %2 %3\n").arg(off, 8, 16, QLatin1Char('0')).arg(h, a);
         }
-        raw = QString::fromLatin1(b.toHex());
         hexDump->setPlainText(b.isEmpty() ? QStringLiteral("(empty / NULL)") : dump);
         hexDump->appendPlainText(QStringLiteral("\n%1 byte(s)").arg(b.size()));
-        hexEdit->setPlainText(raw);
+    };
+
+    bool hexLoaded = false;
+    const auto loadHex = [&] {
+        hexLoaded = true;
+        const QByteArray b = m_model->rowState(row) == TableDataModel::Inserted
+                                 ? edit->toPlainText().toUtf8()
+                                 : fetchCellBytes(row, c);
+        renderDump(b);
+        hexEdit->setPlainText(QString::fromLatin1(b.toHex()));
+    };
+    connect(tabs, &QTabWidget::currentChanged, &dlg, [&](int i) {
+        if(i != 1 || hexLoaded)
+            return;
+        loadHex();
+    });
+    /* a binary column opens on the Hex tab — the Text tab would just show
+     * the mangled fromUtf8 bytes the placeholder is hiding */
+    if(c < m_colInfo.size() && m_colInfo.at(c).blob)
+        tabs->setCurrentIndex(1);
+
+    /* normalize the editable hex field the same way the OK path does —
+     * QByteArray::fromHex would silently DROP bad characters, so validate
+     * first and refuse rather than write a corrupted file */
+    const auto validHex = [&] {
+        const QString h =
+            hexEdit->toPlainText().remove(QRegularExpression(QStringLiteral("\\s"))).toLower();
+        return !h.contains(QRegularExpression(QStringLiteral("[^0-9a-f]"))) && (h.size() % 2) == 0;
+    };
+    connect(loadBtn, &QPushButton::clicked, &dlg, [&] {
+        const QString f = QFileDialog::getOpenFileName(&dlg, QStringLiteral("Load binary content"));
+        if(f.isEmpty())
+            return;
+        QFile in(f);
+        if(!in.open(QIODevice::ReadOnly)) {
+            QMessageBox::warning(&dlg, QStringLiteral("Load"), in.errorString());
+            return;
+        }
+        const QByteArray b = in.readAll();
+        renderDump(b);
+        hexEdit->setPlainText(QString::fromLatin1(b.toHex()));
+    });
+    connect(saveBtn, &QPushButton::clicked, &dlg, [&] {
+        if(!validHex()) {
+            QMessageBox::warning(&dlg, QStringLiteral("Hex"),
+                                 QStringLiteral("Enter an even number of hex digits (0-9, a-f)."));
+            return;
+        }
+        const QString f = QFileDialog::getSaveFileName(&dlg, QStringLiteral("Save binary content"));
+        if(f.isEmpty())
+            return;
+        QFile out(f);
+        if(!out.open(QIODevice::WriteOnly)) {
+            QMessageBox::warning(&dlg, QStringLiteral("Save"), out.errorString());
+            return;
+        }
+        out.write(QByteArray::fromHex(
+            hexEdit->toPlainText().remove(QRegularExpression(QStringLiteral("\\s"))).toLatin1()));
     });
 
     auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);

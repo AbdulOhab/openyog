@@ -1889,6 +1889,11 @@ void ConnectionTab::openSelectedTable()
     openTableData(info[0], info[1]);
 }
 
+QString ConnectionTab::cellTextForTest(int row, int col) const
+{
+    return m_tableData->cellTextForTest(row, col);
+}
+
 /* Loads a table into the Table Data grid through the right connection.
  * physDb routes PostgreSQL's multi-database tree: a table under a
  * non-primary database loads through that database's own (pooled) side
