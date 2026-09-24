@@ -493,6 +493,13 @@ void ObjectBrowser::loadDatabases(IDbConnection *conn, const QString &currentDb,
                     populateSchema(db, schema, physDb);
                 }
                 pd->setExpanded(true);
+                /* a switch (autoDrill off) leaves nothing selected but the
+                 * connection root — put the highlight on the database that
+                 * just became current, where the click was */
+                if(!autoDrill) {
+                    m_tree->setCurrentItem(pd);
+                    m_tree->scrollToItem(pd);
+                }
             }
         }
     } else {
