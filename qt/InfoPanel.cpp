@@ -1,4 +1,5 @@
 #include "InfoPanel.h"
+#include "NavIcons.h"
 
 #include <QEvent>
 #include <QHBoxLayout>
@@ -31,18 +32,30 @@ InfoPanel::InfoPanel(QWidget *parent) : QWidget(parent)
     m_case->setCheckable(true);
     m_case->setAutoRaise(true);
     m_prev = new QToolButton(this);
-    m_prev->setText(QStringLiteral("▲"));
     m_prev->setToolTip(QStringLiteral("Previous match (Shift+Enter)"));
     m_prev->setAutoRaise(true);
     m_next = new QToolButton(this);
-    m_next->setText(QStringLiteral("▼"));
     m_next->setToolTip(QStringLiteral("Next match (Enter)"));
     m_next->setAutoRaise(true);
+    for(QToolButton *b : {m_case, m_prev, m_next}) {
+        b->setObjectName(QStringLiteral("flatTool"));
+        b->setFixedSize(30, 28);
+    }
+    m_case->setFont([this] {
+        QFont f = font();
+        f.setBold(true);
+        return f;
+    }());
+    m_prev->setIconSize(QSize(16, 16));
+    m_next->setIconSize(QSize(16, 16));
+    applyIcons();
     m_count = new QLabel(this);
     m_count->setMinimumWidth(80);
+    setStyleSheet(NavIcons::flatToolSheet());
 
     auto *bar = new QHBoxLayout;
-    bar->setContentsMargins(4, 3, 4, 3);
+    bar->setContentsMargins(6, 5, 6, 5);
+    bar->setSpacing(4);
     bar->addWidget(m_field, 1);
     bar->addWidget(m_case);
     bar->addWidget(m_prev);
@@ -60,6 +73,19 @@ InfoPanel::InfoPanel(QWidget *parent) : QWidget(parent)
     connect(m_prev, &QToolButton::clicked, this, [this] { step(-1); });
     connect(m_next, &QToolButton::clicked, this, [this] { step(+1); });
     rescan();
+}
+
+void InfoPanel::applyIcons()
+{
+    m_prev->setIcon(NavIcons::arrow(NavIcons::Up, palette()));
+    m_next->setIcon(NavIcons::arrow(NavIcons::Down, palette()));
+}
+
+void InfoPanel::changeEvent(QEvent *event)
+{
+    if(event->type() == QEvent::PaletteChange || event->type() == QEvent::ApplicationPaletteChange)
+        applyIcons(); /* live theme switch */
+    QWidget::changeEvent(event);
 }
 
 void InfoPanel::setHtml(const QString &html)
