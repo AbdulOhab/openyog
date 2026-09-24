@@ -697,6 +697,14 @@ void ConnectionTab::attachEditor(SqlEditor *ed, const QString &title)
     Q_UNUSED(title);
 }
 
+QString ConnectionTab::driverDisplayLabel() const
+{
+    if(m_params.driverType == SqlDriverType::Mysql && m_conn &&
+       m_conn->serverInfo().contains(QLatin1String("MariaDB"), Qt::CaseInsensitive))
+        return QStringLiteral("MariaDB");
+    return driverDisplayName(m_params.driverType);
+}
+
 QString ConnectionTab::defaultDb() const
 {
     if(m_params.driverType == SqlDriverType::Postgres)

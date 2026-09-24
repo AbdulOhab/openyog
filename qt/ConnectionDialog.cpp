@@ -72,7 +72,8 @@ ConnectionDialog::ConnectionDialog(QWidget *parent) : QDialog(parent)
     /* ---- driver picker --------------------------------------------- */
     m_driverCombo = new QComboBox(this);
     m_driverCombo->setObjectName(QStringLiteral("driverCombo")); /* --dialogdriver= selftest */
-    m_driverCombo->addItem(QStringLiteral("MySQL"), QVariant::fromValue(int(SqlDriverType::Mysql)));
+    m_driverCombo->addItem(QStringLiteral("MySQL/MariaDB"),
+                           QVariant::fromValue(int(SqlDriverType::Mysql)));
     m_driverCombo->addItem(QStringLiteral("SQLite"),
                            QVariant::fromValue(int(SqlDriverType::Sqlite)));
     m_driverCombo->addItem(QStringLiteral("PostgreSQL"),
@@ -315,7 +316,7 @@ ConnectionDialog::ConnectionDialog(QWidget *parent) : QDialog(parent)
 
     m_tabs = new QTabWidget(this);
     m_tabs->setObjectName(QStringLiteral("connectDialogTabs")); /* Theme.cpp styling */
-    m_tabs->addTab(m_mysqlTab, QStringLiteral("MySQL"));
+    m_tabs->addTab(m_mysqlTab, QStringLiteral("MySQL/MariaDB"));
     m_tabs->addTab(m_sqliteTab, QStringLiteral("SQLite"));
     m_tabs->addTab(m_postgresTab, QStringLiteral("PostgreSQL"));
     m_tabs->addTab(placeholderTab(QStringLiteral("HTTP tunnel")), QStringLiteral("HTTP"));
