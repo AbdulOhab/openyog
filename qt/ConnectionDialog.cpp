@@ -222,13 +222,10 @@ ConnectionDialog::ConnectionDialog(QWidget *parent) : QDialog(parent)
     pgForm->addRow(pgPwLabel, pgPwRow);
     pgForm->addRow(QStringLiteral("P&ort"), m_pgPort);
     pgForm->addRow(QStringLiteral("Data&base"), m_pgDatabase);
-    auto *pgHint = new QLabel(
-        QStringLiteral("(A PostgreSQL connection runs its queries in one database, but the "
-                       "object browser lists every database on the server — expand one for "
-                       "its schemas, double-click or right-click it to switch.)"),
-        this);
+    /* one line: the tree lists every database, and one click on it switches */
+    auto *pgHint =
+        new QLabel(QStringLiteral("(Click a database in the tree to switch to it.)"), this);
     pgHint->setEnabled(false);
-    pgHint->setWordWrap(true);
     pgForm->addRow(QString(), pgHint);
     pgForm->addRow(QString(), pgCompress);
 

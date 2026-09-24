@@ -5,5 +5,6 @@
     <file>resources/openyog-32.png</file>
     <file>resources/openyog-64.png</file>
     <file>resources/openyog-256.png</file>
+    <file>resources/check-white.png</file>
 </qresource>
 </RCC>
