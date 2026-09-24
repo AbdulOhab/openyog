@@ -1945,6 +1945,13 @@ QString MainWindow::selftestShowDataTab()
     return QString();
 }
 
+QString MainWindow::selftestInfoSearch(const QString &text)
+{
+    if(auto *tab = currentTab())
+        return tab->selftestInfoSearch(text);
+    return QString();
+}
+
 void MainWindow::selftestShowInfoTab()
 {
     if(auto *tab = currentTab())
