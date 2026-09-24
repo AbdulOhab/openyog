@@ -150,6 +150,8 @@ public:
     {
         return m_params.driverType;
     }
+    /* status-bar name: the MySQL driver serves both, so say which server this is */
+    QString driverDisplayLabel() const;
     const ConnectionParams &params() const
     {
         return m_params;

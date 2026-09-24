@@ -1508,7 +1508,7 @@ void MainWindow::syncToolbarToCurrentTab()
     if(tab) {
         setWindowTitle(QStringLiteral("OpenYog - [%1/%2 - %3]")
                            .arg(tab->title(), tab->defaultDb(), tab->hostLabel()));
-        m_driverLabel->setText(driverDisplayName(tab->driverType()));
+        m_driverLabel->setText(tab->driverDisplayLabel());
         m_connectionLabel->setText(tab->activeConnectionLabel());
     } else {
         setWindowTitle(QStringLiteral("OpenYog"));
