@@ -296,33 +296,6 @@ void ObjectBrowser::populateContextMenu(QMenu &menu, QTreeWidgetItem *item)
                 emit tableActivated(item->data(0, Qt::UserRole + 1).toString(), item->text(0),
                                     item->data(0, RolePhysDb).toString());
             });
-        /* Alter/Drop run their DDL on the tab's own connection, so on a
-         * foreign database's function/view/trigger they first make it the
-         * primary one (same switch as the "Switch to" entry above), then
-         * take the ordinary path — the label says so up front. The item
-         * pointer dies with the tree rebuild the switch triggers, hence
-         * the by-value captures; m_primaryDatabase is the switch's
-         * success check (a failed connect leaves it unchanged). */
-        if(kind == KLeaf && item->parent() && !folderObjType(item->parent()->text(0)).isEmpty()) {
-            const QString db = item->parent()->data(0, Qt::UserRole + 1).toString();
-            const QString t = folderObjType(item->parent()->text(0));
-            const QString name = item->text(0);
-            const QString nice = t.at(0) + t.mid(1).toLower();
-            const auto viaSwitch = [this, physDb, db, t, name](bool drop) {
-                emit switchDatabaseRequested(physDb);
-                if(m_primaryDatabase != physDb)
-                    return;
-                if(drop)
-                    emit dropObjectRequested(db, t, name);
-                else
-                    emit alterObjectRequested(db, t, name);
-            };
-            menu.addSeparator();
-            menu.addAction(QStringLiteral("&Alter %1… (switches to `%2`)").arg(nice, physDb), this,
-                           [viaSwitch] { viaSwitch(false); });
-            menu.addAction(QStringLiteral("&Drop %1… (switches to `%2`)").arg(nice, physDb), this,
-                           [viaSwitch] { viaSwitch(true); });
-        }
         if(kind == KDatabase || kind == KFolder || kind == KTable)
             menu.addAction(QStringLiteral("Re&fresh Node"), this, [this, item] {
                 item->takeChildren();
