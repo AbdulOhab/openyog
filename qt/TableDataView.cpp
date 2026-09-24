@@ -460,7 +460,6 @@ protected:
                     ho.position = QStyleOptionHeader::OnlyOneSection;
                     m_corner->style()->drawControl(QStyle::CE_Header, &ho, &p, m_corner);
                     p.setPen(m_corner->palette().color(QPalette::Mid));
-                    p.drawLine(br.topRight(), br.bottomRight());
                     p.drawLine(br.bottomLeft(), br.bottomRight());
 
                     const int sz = 14;
@@ -500,10 +499,6 @@ protected:
 
         /* just a checkbox, centred — no row number (SQLyog's leftmost column) */
         paintCheckIndicator(p, checkboxRect(rect), m_checked.contains(logical), palette());
-
-        /* subtle rule down the right edge, to set the column off from the grid */
-        p->setPen(palette().color(QPalette::Mid));
-        p->drawLine(rect.right(), rect.top(), rect.right(), rect.bottom());
 
         p->restore();
     }
