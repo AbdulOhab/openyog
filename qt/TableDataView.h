@@ -20,6 +20,7 @@
 
 class IDbConnection;
 
+class FormView;
 class QCheckBox;
 class QComboBox;
 class QLineEdit;
@@ -50,10 +51,12 @@ public slots:
     void insertRowWithValues();
     void applyPendingEdits();
     void revertPendingEdits();
-    /* SQLyog's Grid / Form / Text view toggle (ID_VIEW_GRIDVIEW/FORMVIEW/TEXTVIEW).
-     * Form view is a SQLyog Ultimate feature — the button is present but disabled,
-     * mirroring Community, where it only pops the upgrade dialog. */
-    void setViewMode(int mode); /* 0 = grid, 2 = text (1 = form, unused) */
+    /* Grid / Form / Text view toggle (SQLyog's ID_VIEW_GRIDVIEW/FORMVIEW/TEXTVIEW).
+     * Form is this port's own implementation: qt/FormView.h. */
+    void setViewMode(int mode); /* 0 = grid, 1 = form, 2 = text */
+    /* selftest: "form", "form:ROW", "formedit:COL:VALUE", "formnew", "formdel" */
+    void formTestCommand(const QString &cmd);
+    QString formFieldForTest(int col) const;
 
     bool hasStagedEdits() const; /* unsaved staged edits/inserts/deletes in the grid */
     QString loadedTable() const
@@ -104,6 +107,7 @@ private:
         bool nullable = true;
         bool autoInc = false;
         bool blob = false; /* declared type looks binary — see typeLooksBinary() */
+        QString type;      /* driver-native type text, for the form view's labels */
     };
 
     IDbConnection *m_conn = nullptr;
@@ -123,6 +127,11 @@ private:
     QTableView *m_grid = nullptr;
     class RowCheckHeader *m_checkHeader = nullptr; /* left checkbox column */
     QPlainTextEdit *m_textView = nullptr;
+    FormView *m_formView = nullptr;
+    void syncFormColumns();
+    void formNewRow();
+    void formDuplicateRow(int row);
+    void formDeleteRow(int row);
     class TableDataModel *m_model = nullptr;
 
     /* toolbar laid out like SQLyog's "2 Table Data" strip:
@@ -135,7 +144,7 @@ private:
     QToolButton *m_tbGrid = nullptr;   /* view toggles — exclusive, checkable */
     QToolButton *m_tbForm = nullptr;
     QToolButton *m_tbText = nullptr;
-    int m_viewMode = 0; /* 0 = grid, 2 = text */
+    int m_viewMode = 0; /* 0 = grid, 1 = form, 2 = text */
     /* one toolbar slot, upstream-style: funnel + "Custom Filter…" when no
      * filter is active, funnel-with-X + "Reset Filter" once one is — see
      * applyFilterWhere() */

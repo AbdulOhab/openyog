@@ -1954,6 +1954,10 @@ void ConnectionTab::setDataViewMode(const QString &mode)
             m_tableData->hexCellForTest(p[0].toInt(), p[1].toInt(), p[2]);
         return;
     }
+    if(mode.startsWith(QStringLiteral("form"))) {
+        m_tableData->formTestCommand(mode);
+        return;
+    }
     m_tableData->setViewMode(mode == QStringLiteral("text") ? 2 : 0);
 }
 
