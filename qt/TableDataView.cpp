@@ -1734,7 +1734,9 @@ void TableDataView::editCellInTextEditor()
 
 void TableDataView::refresh()
 {
-    if(m_valid)
+    /* same guard as the sort / re-query paths: reloading rebuilds the grid,
+     * which threw away unsaved staged edits without a word */
+    if(m_valid && discardStagedEdits(QStringLiteral("Refresh")))
         reload();
 }
 
