@@ -17,6 +17,7 @@
 #include <functional>
 
 class QCheckBox;
+class QPushButton;
 class QComboBox;
 class QLineEdit;
 class SqlEditor;
@@ -82,7 +83,7 @@ private:
      * read-only rather than inventing a second, plainer preview look. */
     SqlEditor *m_previewEdit = nullptr;
     QWidget *m_previewRow = nullptr;
-    QCheckBox *m_previewToggle = nullptr;
+    QPushButton *m_previewToggle = nullptr;
 
     std::function<QString(const QString &)> m_quoteIdent;
     std::function<QString(const QString &)> m_escapeValue;
