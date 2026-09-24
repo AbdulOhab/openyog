@@ -372,6 +372,7 @@ private:
     QStringList m_completions; /* schema identifiers for autocomplete (union) */
     QStringList m_tableNames;  /* offered after FROM / JOIN / INTO / UPDATE */
     QStringList m_columnNames; /* offered after SELECT / WHERE / ON / SET … */
+    QHash<QString, QStringList> m_columnCache; /* completion: db + table → columns */
     void updateCompletions();
     void selectSoleSchema(); /* Postgres: one schema → current, no click needed */
     /* defaultDb() (see public section above): the schema/database to

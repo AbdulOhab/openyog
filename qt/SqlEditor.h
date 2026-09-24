@@ -16,6 +16,9 @@
 
 #include <Qsci/qsciscintilla.h>
 #include <QStringList>
+#include <QVector>
+
+#include <functional>
 
 class SqlEditor : public QsciScintilla
 {
@@ -47,8 +50,16 @@ public:
      * columns after SELECT/WHERE/ON/SET/HAVING/GROUP BY/ORDER BY (and after
      * a "." qualifier). Empty buckets fall back to the generic list. */
     void setSchema(const QStringList &tables, const QStringList &columns);
+    /* one table's column names in ordinal order — lets the column lists put
+     * the columns of the statement's own tables first, and narrow "alias."
+     * to that table. Called lazily, only for tables the statement names. */
+    void setColumnLookup(std::function<QStringList(const QString &table)> lookup);
     void triggerCompletion();           /* force the popup now */
     int completionCountForTest() const; /* selftest only */
+    QStringList completionHitsForTest() const
+    {
+        return m_lastHits;
+    } /* selftest only */
 
 protected:
     void keyPressEvent(QKeyEvent *event) override;
@@ -58,6 +69,13 @@ private:
     enum ClauseCtx { CtxAll, CtxTable, CtxColumn };
     ClauseCtx clauseContextAtCursor() const;
     QStringList candidatesForContext() const;
+    struct StmtTable
+    {
+        QString table, alias;
+    };
+    QVector<StmtTable> tablesInStatement() const;
+    QStringList columnsOfTables(const QVector<StmtTable> &tables, const QString &qualifier) const;
+    QString qualifierBeforeCursor() const;
     QString wordUnderCursor() const;
     QString lineTextNoEol(int line) const;
     void popupCompleter(bool force);
@@ -67,7 +85,9 @@ private:
     QStringList m_generic; /* setCompletions() — fallback bucket */
     QStringList m_tables;  /* setSchema() tables */
     QStringList m_columns; /* setSchema() columns */
+    std::function<QStringList(const QString &)> m_columnLookup;
     int m_lastCompletionCount = 0;
+    QStringList m_lastHits;
     /* popup context: the partial word being completed (line, index, length) */
     int m_ctxLine = 0, m_ctxIndex = 0, m_ctxPrefixLen = 0;
 };

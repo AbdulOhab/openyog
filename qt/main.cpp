@@ -1541,7 +1541,37 @@ int main(int argc, char *argv[])
                                 << (okT ? "  PASS" : "  FAIL")
                                 << " | SELECT/WHERE->columns 'emp' = " << col << "/" << colW
                                 << (okC ? "  PASS\n" : "  FAIL\n");
-            return (ok && okT && okC) ? 0 : 1;
+            /* 3. columns of the statement's own tables lead, "alias." narrows */
+            ed.setSchema({QStringLiteral("employees"), QStringLiteral("orders")},
+                         {QStringLiteral("emp_id"), QStringLiteral("emp_name"),
+                          QStringLiteral("o_id"), QStringLiteral("o_total"),
+                          QStringLiteral("aaa_unrelated")});
+            ed.setColumnLookup([](const QString &t) {
+                return t == QStringLiteral("employees")
+                           ? QStringList{QStringLiteral("emp_id"), QStringLiteral("emp_name")}
+                           : QStringList{QStringLiteral("o_id"), QStringLiteral("o_total")};
+            });
+            const auto hitsFor = [&ed](const QString &sql) {
+                ed.setPlainText(sql);
+                ed.moveCursorToEnd();
+                ed.triggerCompletion();
+                return ed.completionHitsForTest();
+            };
+            const QStringList w1 = hitsFor(QStringLiteral("SELECT * FROM orders WHERE "));
+            const bool ok1 =
+                w1.mid(0, 2) == QStringList{QStringLiteral("o_id"), QStringLiteral("o_total")} &&
+                w1.contains(QStringLiteral("aaa_unrelated"));
+            ed.setPlainText(QStringLiteral("SELECT e. FROM employees e JOIN orders o ON 1=1"));
+            ed.setCursorPosition(0, 9);
+            ed.triggerCompletion();
+            const QStringList w3 = ed.completionHitsForTest();
+            const bool ok3 =
+                w3 == QStringList{QStringLiteral("emp_id"), QStringLiteral("emp_name")};
+            QTextStream(stdout) << "comptest: WHERE leads with own-table columns = "
+                                << w1.mid(0, 3).join(',') << (ok1 ? "  PASS" : "  FAIL")
+                                << " | 'e.' narrows to employees = " << w3.join(',')
+                                << (ok3 ? "  PASS\n" : "  FAIL\n");
+            return (ok && okT && okC && ok1 && ok3) ? 0 : 1;
         }
         if(a.startsWith(QStringLiteral("--opentable="))) {
             const QStringList parts = a.mid(12).split(':');
