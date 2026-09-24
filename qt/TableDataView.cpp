@@ -453,14 +453,12 @@ protected:
                 case QEvent::Paint: {
                     QPainter p(m_corner);
                     const QRect br = m_corner->rect();
-                    /* same themed grey as the header sections, + hairline right/bottom */
+                    /* same themed grey as the header sections */
                     QStyleOptionHeader ho;
                     ho.initFrom(m_corner);
                     ho.rect = br;
                     ho.position = QStyleOptionHeader::OnlyOneSection;
                     m_corner->style()->drawControl(QStyle::CE_Header, &ho, &p, m_corner);
-                    p.setPen(m_corner->palette().color(QPalette::Mid));
-                    p.drawLine(br.bottomLeft(), br.bottomRight());
 
                     const int sz = 14;
                     paintCheckIndicator(
