@@ -1714,7 +1714,6 @@ bool MainWindow::openAndRun(const ConnectionParams &params)
             [this](const ConnectionParams &p) { openAndRun(p); });
 
     syncToolbarToCurrentTab();
-    tab->runQuery(); /* run the editor's default query so the grid has data */
     return true;
 }
 
