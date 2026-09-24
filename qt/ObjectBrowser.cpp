@@ -11,6 +11,7 @@
 #include <QMenu>
 #include <QMouseEvent>
 #include <QStandardPaths>
+#include <QTimer>
 #include <QVBoxLayout>
 
 #include <functional>
@@ -158,6 +159,22 @@ ObjectBrowser::ObjectBrowser(QWidget *parent) : QWidget(parent)
             if(!objType.isEmpty())
                 emit objectSelected(item->parent()->data(0, Qt::UserRole + 1).toString(), objType,
                                     item->text(0), item->data(0, RolePhysDb).toString());
+        }
+
+        /* clicking another physical database's node makes it this tab's
+         * connection, no menu detour — that's what unlocks every action
+         * (Alter/Drop, Create, …) on its objects, which all run on the
+         * primary connection. Held back one double-click interval: the
+         * switch rebuilds the tree, and a double-click's second press
+         * would then land on whatever node now sits under the cursor
+         * (a double-click switches by itself first, which makes this a no-op) */
+        if(kind == KPgDatabase && item->text(0) != m_primaryDatabase) {
+            const QString target = item->text(0);
+            QTimer::singleShot(QApplication::doubleClickInterval(), this, [this, target] {
+                if(target != m_primaryDatabase)
+                    emit switchDatabaseRequested(target);
+            });
+            return;
         }
 
         if(kind != KDatabase || m_conn->driverType() == SqlDriverType::Sqlite)
