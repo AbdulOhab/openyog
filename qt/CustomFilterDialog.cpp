@@ -2,6 +2,7 @@
 #include "SqlEditor.h"
 
 #include <QCheckBox>
+#include <QPushButton>
 #include <QComboBox>
 #include <QDialogButtonBox>
 #include <QGridLayout>
@@ -60,14 +61,28 @@ CustomFilterDialog::CustomFilterDialog(const QStringList &columns, const QVector
     }
     grid->setColumnStretch(2, 1);
 
-    /* a QLabel styled as a clickable "Show/Hide SQL Preview" link looked
-     * right but was unreliable to actually click (Qt's rich-text link hit-
-     * testing on a plain QLabel — confirmed both by the owner on a real
-     * desktop and by a synthesized click here landing on nothing); a plain
-     * checkbox is completely reliable and just as compact */
-    m_previewToggle = new QCheckBox(QStringLiteral("Show SQL Preview"), this);
-    connect(m_previewToggle, &QCheckBox::toggled, this,
-            [this](bool on) { m_previewRow->setVisible(on); });
+    /* SQLyog's "Show SQL Preview" / "Hide SQL Preview" is a text link that
+     * flips (IDC_SHOWSQL in SQLyog.rc). A QLabel with rich-text link hit-
+     * testing proved unreliable to click, so it is a flat button drawn as a
+     * link: blue, underlined, hand cursor — a real widget, always clickable */
+    m_previewToggle = new QPushButton(QStringLiteral("Show SQL Preview"), this);
+    m_previewToggle->setFlat(true);
+    m_previewToggle->setCursor(Qt::PointingHandCursor);
+    m_previewToggle->setFocusPolicy(Qt::TabFocus);
+    const bool darkBase = palette().color(QPalette::Base).lightness() < 128;
+    m_previewToggle->setStyleSheet(
+        QStringLiteral("QPushButton { border: 0; padding: 2px 0; text-align: left;"
+                       " text-decoration: underline; background: transparent; color: %1; }"
+                       "QPushButton:hover { color: %2; }")
+            .arg(darkBase ? QStringLiteral("#7FB3E8") : QStringLiteral("#3B7DBB"),
+                 darkBase ? QStringLiteral("#A9CDF3") : QStringLiteral("#1E5A96")));
+    m_previewToggle->setAutoDefault(false); /* Enter must keep meaning OK */
+    connect(m_previewToggle, &QPushButton::clicked, this, [this] {
+        const bool on = !m_previewRow->isVisible();
+        m_previewRow->setVisible(on);
+        m_previewToggle->setText(on ? QStringLiteral("Hide SQL Preview")
+                                    : QStringLiteral("Show SQL Preview"));
+    });
 
     m_previewEdit = new SqlEditor(this);
     m_previewEdit->setReadOnly(true);
