@@ -72,6 +72,7 @@ signals:
 
 protected:
     bool eventFilter(QObject *watched, QEvent *event) override;
+    void changeEvent(QEvent *event) override;
 
 private:
     struct Field
@@ -83,6 +84,7 @@ private:
         bool blank = false; /* last loaded value was NULL */
     };
 
+    void applyNavIcons();
     void rebuild();
     void refresh();            /* model → widgets, for m_row */
     void commitField(int col); /* widget → model */
