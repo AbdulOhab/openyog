@@ -1314,18 +1314,42 @@ void TableDataView::reload()
         m_firstRow->blockSignals(false);
     }
 
-    QString sql = QStringLiteral("SELECT * FROM ") + qualified + whereSql;
-    if(!m_orderBy.isEmpty())
-        sql += QStringLiteral(" ORDER BY ") + m_orderBy;
-    if(limited)
-        sql += QStringLiteral(" LIMIT %1 OFFSET %2").arg(rc).arg(offset);
+    /* No ORDER BY means "any order" — and PostgreSQL uses it: a table
+     * bigger than a few blocks is read by synchronized scans that begin
+     * wherever another scan already is, and an UPDATE moves a row to the
+     * end of the heap, so every Refresh showed a different first row and
+     * paging (LIMIT/OFFSET) could repeat or skip rows. Unsorted grids on
+     * Postgres therefore order by the primary key (ctid, the physical
+     * position, when there is none). MySQL/SQLite already return primary-key
+     * / rowid order. A user's own header sort (m_orderBy) always wins. */
+    QString defaultOrder;
+    if(m_orderBy.isEmpty() && m_conn && m_conn->driverType() == SqlDriverType::Postgres) {
+        QStringList cols;
+        for(const QString &k : std::as_const(pkeys))
+            cols << m_conn->quoteIdent(k);
+        defaultOrder = cols.isEmpty() ? QStringLiteral("ctid") : cols.join(QStringLiteral(", "));
+    }
+    const auto buildSql = [&](const QString &order) {
+        QString q = QStringLiteral("SELECT * FROM ") + qualified + whereSql;
+        if(!order.isEmpty())
+            q += QStringLiteral(" ORDER BY ") + order;
+        if(limited)
+            q += QStringLiteral(" LIMIT %1 OFFSET %2").arg(rc).arg(offset);
+        return q;
+    };
 
     QStringList header;
     QVector<QStringList> rows;
     {
         DbResultSet rs;
         QString error;
-        if(!m_conn || !m_conn->query(sql, &rs, &error)) {
+        bool ok = m_conn && m_conn->query(buildSql(m_orderBy.isEmpty() ? defaultOrder : m_orderBy),
+                                          &rs, &error);
+        /* a relation with no ctid (a view) refuses the default order — fall
+         * back to the plain query rather than fail to open it */
+        if(!ok && m_conn && m_orderBy.isEmpty() && !defaultOrder.isEmpty())
+            ok = m_conn->query(buildSql(QString()), &rs, &error);
+        if(!ok) {
             emit statusMessage(QStringLiteral("query failed: %1").arg(error));
             return;
         }
