@@ -130,6 +130,7 @@ add_executable(openyog
     qt/SqlFormat.h         qt/SqlFormat.cpp
     qt/TableDataView.h     qt/TableDataView.cpp
     qt/FormView.h          qt/FormView.cpp
+    qt/InfoPanel.h         qt/InfoPanel.cpp
     qt/CustomFilterDialog.h qt/CustomFilterDialog.cpp
     qt/Theme.h             qt/Theme.cpp
 )

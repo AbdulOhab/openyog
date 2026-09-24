@@ -52,14 +52,15 @@ public:
     QStringList selftestTreeMenu(const QString &path);        /* --treemenu= selftest */
     QStringList selftestDumpEditor();                         /* --dumpeditor selftest */
     void selftestDoubleClickBrowserItem(const QString &path); /* --dblclicktreepath= selftest */
-    void copySelectedTableToHost();                 /* Table menu + --copytablehost selftest */
-    void selftestRunAgain();                        /* --runagain selftest: F9 a second time */
-    void selftestExplain(const QString &mode);      /* --explain=json|plain selftest */
-    QString selftestShowDataTab();                  /* --showdatatab selftest */
-    void selftestShowInfoTab();                     /* --showinfotab selftest */
-    QStringList selftestComboItems() const;         /* --dumpcombo selftest */
-    void selftestSwitchDatabase(const QString &db); /* --switchdb= selftest */
-    int selftestTabCount() const;                   /* --dumpcombo selftest */
+    void copySelectedTableToHost();                  /* Table menu + --copytablehost selftest */
+    void selftestRunAgain();                         /* --runagain selftest: F9 a second time */
+    void selftestExplain(const QString &mode);       /* --explain=json|plain selftest */
+    QString selftestShowDataTab();                   /* --showdatatab selftest */
+    QString selftestInfoSearch(const QString &text); /* --infosearch= */
+    void selftestShowInfoTab();                      /* --showinfotab selftest */
+    QStringList selftestComboItems() const;          /* --dumpcombo selftest */
+    void selftestSwitchDatabase(const QString &db);  /* --switchdb= selftest */
+    int selftestTabCount() const;                    /* --dumpcombo selftest */
     /* --dumpcombo selftest: simulates an actual combo click (not calling
      * useDatabaseFromCombo() directly, which wouldn't first update the
      * widget's own displayed text/selection the way a real click does) */

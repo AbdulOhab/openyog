@@ -86,6 +86,7 @@ int main(int argc, char *argv[])
     QString mkObj;         /* --mkobj=VIEW|PROCEDURE|… selftest */
     QString explainMode;   /* --explain=json|plain selftest: Explain "SELECT 1" */
     bool showDataTab = false;   /* --showdatatab selftest: switch to Table Data, print its table */
+    QString infoSearch;         /* --infosearch=TEXT selftest: type it into the Info tab's search */
     bool showInfoTab = false;   /* --showinfotab selftest: switch to the Info result tab */
     QString useDbArg;           /* --usedb=NAME selftest */
     QString expandPgDbArg;      /* --expandpgdb=NAME selftest */
@@ -1603,6 +1604,8 @@ int main(int argc, char *argv[])
             explainMode = a.mid(QStringLiteral("--explain=").size());
         if(a == QStringLiteral("--showinfotab"))
             showInfoTab = true;
+        if(a.startsWith(QStringLiteral("--infosearch=")))
+            infoSearch = a.mid(QStringLiteral("--infosearch=").size());
         if(a == QStringLiteral("--showdatatab"))
             showDataTab = true;
         if(a.startsWith(QStringLiteral("--usedb=")))
@@ -2049,6 +2052,9 @@ int main(int argc, char *argv[])
                     }
                     if(showInfoTab)
                         w->selftestShowInfoTab();
+                    if(!infoSearch.isEmpty())
+                        QTextStream(stdout)
+                            << "infosearch: " << w->selftestInfoSearch(infoSearch) << '\n';
                     if(showDataTab)
                         QTextStream(stdout) << "datatab: " << w->selftestShowDataTab() << '\n';
                     /* mkObj/runAgain/explain can pop a guard QMessageBox

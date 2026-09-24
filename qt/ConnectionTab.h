@@ -169,6 +169,7 @@ public slots:
     void explainCurrent(bool json); /* EXPLAIN [FORMAT=JSON] the current stmt */
     void selftestExplain(const QString &mode); /* --explain=json|plain selftest */
     QString selftestShowDataTab(); /* --showdatatab selftest: switch to Table Data; its table */
+    QString selftestInfoSearch(const QString &text); /* --infosearch=TEXT: "N matches; shown" */
     void selftestShowInfoTab();    /* --showinfotab selftest: switch to the Info result tab */
     void renameCurrentEditorTab(); /* Alt+F2 */
     void dumpTable(const QString &db, const QString &table); /* one-table SQL dump */
@@ -355,7 +356,7 @@ private:
      * whatever schema object was last single-clicked in the tree — an
      * HTML table + <pre> DDL block, not query output, hence QTextBrowser
      * (same widget m_history already uses) rather than a plain QLabel */
-    class QTextBrowser *m_info = nullptr;
+    class InfoPanel *m_info = nullptr;
     QTableView *m_lastGrid = nullptr;
 
     QVector<QWidget *>

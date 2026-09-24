@@ -8,6 +8,7 @@
 #include "SchemaSql.h"
 #include "SqlSplit.h"
 #include "FindBar.h"
+#include "InfoPanel.h"
 #include "SqlFormat.h"
 #include "UserManagerDialog.h"
 #include "IndexDialog.h"
@@ -468,11 +469,7 @@ ConnectionTab::ConnectionTab(const ConnectionParams &params, QWidget *parent)
     m_messages = new QPlainTextEdit(this);
     m_messages->setReadOnly(true);
 
-    m_info = new QTextBrowser(this);
-    m_info->setOpenLinks(false);
-    m_info->setHtml(
-        QStringLiteral("<p style='color:#8a8a8a'>Select a table, view, procedure, function, "
-                       "trigger, or event in the Object Browser to see its details here.</p>"));
+    m_info = new InfoPanel(this);
 
     m_resultTabs = new QTabWidget(this);
     m_resultTabs->setObjectName(QStringLiteral("resultTabs"));
@@ -1383,6 +1380,14 @@ QString ConnectionTab::selftestShowDataTab()
     return m_tableData->loadedTable();
 }
 
+QString ConnectionTab::selftestInfoSearch(const QString &text)
+{
+    m_info->setSearchForTest(text);
+    return QStringLiteral("%1 matches; label '%2'")
+        .arg(m_info->matchCountForTest())
+        .arg(m_info->countTextForTest());
+}
+
 void ConnectionTab::selftestShowInfoTab()
 {
     m_resultTabs->setCurrentWidget(m_info);
@@ -1770,6 +1775,12 @@ void ConnectionTab::doubleClickBrowserItem(const QString &path)
 
 void ConnectionTab::promptFind()
 {
+    /* Ctrl+F searches where the cursor is: the Info page when focus is in it
+     * (its search field always shows), else the query editor */
+    if(QWidget *fw = QApplication::focusWidget(); fw && m_info->isAncestorOf(fw)) {
+        m_info->focusSearch();
+        return;
+    }
     m_findBar->activate();
 }
 
