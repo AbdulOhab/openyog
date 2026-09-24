@@ -6,6 +6,7 @@
 #include <QApplication>
 #include <QDir>
 #include <QPalette>
+#include <QProxyStyle>
 #include <QStandardPaths>
 #include <QStyle>
 
@@ -174,6 +175,41 @@ QSplitter::handle:horizontal { width: 4px; }
 QSplitter::handle:vertical { height: 4px; }
 QTreeView::item { height: 18px; }
 )QSS";
+
+/* Checkbox indicators drawn explicitly. With a stylesheet active (every theme
+ * has one) the platform style — notably the GTK platform theme on XFCE —
+ * drew unchecked/disabled boxes with no visible frame at all, so "Use
+ * Compressed Protocol" looked like bare text. A bordered box in each state,
+ * checked = filled accent + white tick, works under any style/palette. */
+QString checkBoxSheet(const char *border, const char *bg, const char *accent,
+                      const char *disabledBorder, const char *disabledBg)
+{
+    return QStringLiteral(
+               "QCheckBox::indicator { width: 13px; height: 13px; border: 1px solid %1;"
+               " border-radius: 2px; background: %2; }"
+               "QCheckBox::indicator:hover { border-color: %3; }"
+               "QCheckBox::indicator:checked { background: %3; border-color: %3;"
+               " image: url(:/resources/check-white.png); }"
+               "QCheckBox::indicator:disabled { border-color: %4; background: %5; }"
+               "QCheckBox::indicator:checked:disabled { background: %4; border-color: %4; }")
+        .arg(QLatin1String(border), QLatin1String(bg), QLatin1String(accent),
+             QLatin1String(disabledBorder), QLatin1String(disabledBg));
+}
+
+/* the platform theme may ask for icons on OK/Cancel/… (GTK's button-images);
+ * this app's dialogs read cleaner as plain text buttons */
+class PlainButtonsStyle : public QProxyStyle
+{
+public:
+    using QProxyStyle::QProxyStyle;
+    int styleHint(StyleHint hint, const QStyleOption *option, const QWidget *widget,
+                  QStyleHintReturn *returnData) const override
+    {
+        if(hint == SH_DialogButtonBox_ButtonsHaveIcons)
+            return 0;
+        return QProxyStyle::styleHint(hint, option, widget, returnData);
+    }
+};
 } // namespace
 
 QString Theme::load()
@@ -193,6 +229,9 @@ void Theme::save(const QString &theme)
 
 void Theme::apply(QApplication &app, const QString &theme)
 {
+    /* once: keep the current base style, just answer the icon hint differently */
+    if(!dynamic_cast<PlainButtonsStyle *>(app.style()))
+        app.setStyle(new PlainButtonsStyle(app.style()->name()));
     if(theme == QStringLiteral("twilight")) {
         QPalette p;
         const QColor window(0x29, 0x39, 0x55), base(0x21, 0x2E, 0x44), text(0xE9, 0xEC, 0xEE),
@@ -213,7 +252,8 @@ void Theme::apply(QApplication &app, const QString &theme)
         p.setColor(QPalette::Disabled, QPalette::ButtonText, disabled);
         p.setColor(QPalette::Disabled, QPalette::WindowText, disabled);
         app.setPalette(p);
-        app.setStyleSheet(QString::fromUtf8(kTwilightTabSheet));
+        app.setStyleSheet(QString::fromUtf8(kTwilightTabSheet) +
+                          checkBoxSheet("#7A869C", "#212E44", "#3A5278", "#4A5A78", "#293955"));
     } else if(theme == QStringLiteral("dark")) {
         QPalette p;
         const QColor window(0x2B, 0x2B, 0x2B), base(0x1E, 0x1E, 0x1E), text(0xD4, 0xD4, 0xD4),
@@ -234,7 +274,8 @@ void Theme::apply(QApplication &app, const QString &theme)
         p.setColor(QPalette::Disabled, QPalette::ButtonText, disabled);
         p.setColor(QPalette::Disabled, QPalette::WindowText, disabled);
         app.setPalette(p);
-        app.setStyleSheet(QString::fromUtf8(kDarkTabSheet));
+        app.setStyleSheet(QString::fromUtf8(kDarkTabSheet) +
+                          checkBoxSheet("#8A8A8A", "#1E1E1E", "#2A5D9F", "#505050", "#2B2B2B"));
     } else {
         /* explicit light palette — never derive from the system style, which
          * may itself be dark (that's the "toggle stays dark" bug) */
@@ -257,6 +298,7 @@ void Theme::apply(QApplication &app, const QString &theme)
         p.setColor(QPalette::Disabled, QPalette::ButtonText, disabled);
         p.setColor(QPalette::Disabled, QPalette::WindowText, disabled);
         app.setPalette(p);
-        app.setStyleSheet(QString::fromUtf8(kLightSheet));
+        app.setStyleSheet(QString::fromUtf8(kLightSheet) +
+                          checkBoxSheet("#7F7F7F", "#FFFFFF", "#3B7DBB", "#BDBDBD", "#F0F0F0"));
     }
 }
