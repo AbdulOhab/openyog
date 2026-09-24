@@ -10,6 +10,8 @@
 #include <QDir>
 #include <QMenu>
 #include <QMouseEvent>
+#include <QRegularExpression>
+#include <QSet>
 #include <QStandardPaths>
 #include <QTimer>
 #include <QVBoxLayout>
@@ -75,6 +77,36 @@ QString folderObjType(const QString &folder)
     if(folder == QStringLiteral("Events"))
         return QStringLiteral("EVENT");
     return {};
+}
+
+/* Name as dropped into the editor by a double-click. MySQL/MariaDB keep
+ * SQLyog's backticks (its AppendBackQuotes default). PostgreSQL/SQLite reject
+ * backticks and a name in single quotes would be a string literal, so those
+ * get the identifier quoting they really take — but only when the name needs
+ * it: a plain lowercase name (public, employees) goes in bare, which is what
+ * anyone would type; anything with capitals, spaces, dashes or a reserved word
+ * gets double quotes. */
+QString insertableName(SqlDriverType driver, const QString &name)
+{
+    if(driver == SqlDriverType::Mysql)
+        return QLatin1Char('`') + name + QLatin1Char('`');
+    static const QRegularExpression plain(QStringLiteral("^[a-z_][a-z0-9_$]*$"));
+    static const QSet<QString> reserved = {
+        "all",        "analyse", "analyze", "and",     "any",      "array",      "as",
+        "asc",        "both",    "case",    "cast",    "check",    "collate",    "column",
+        "constraint", "create",  "default", "desc",    "distinct", "do",         "else",
+        "end",        "except",  "false",   "fetch",   "for",      "foreign",    "from",
+        "grant",      "group",   "having",  "in",      "index",    "initially",  "intersect",
+        "into",       "leading", "limit",   "not",     "null",     "offset",     "on",
+        "only",       "or",      "order",   "placing", "primary",  "references", "returning",
+        "select",     "some",    "table",   "then",    "to",       "trailing",   "true",
+        "union",      "unique",  "user",    "using",   "when",     "where",      "window",
+        "with"};
+    if(plain.match(name).hasMatch() && !reserved.contains(name))
+        return name;
+    QString escaped = name;
+    escaped.replace(QLatin1Char('"'), QStringLiteral("\"\""));
+    return QLatin1Char('"') + escaped + QLatin1Char('"');
 }
 
 /* extra = db name for KDatabase/KFolder/KTable; the folder's leaf query lives
@@ -203,13 +235,14 @@ ObjectBrowser::ObjectBrowser(QWidget *parent) : QWidget(parent)
          * click = make this tab's connection that database) */
         if(kind == KPgDatabase)
             emit switchDatabaseRequested(item->text(0));
-        else if(insertOnDbl && (kind == KDatabase || kind == KTable || kind == KLeaf)) {
-            QString name = item->text(0);
-            if(m_conn->driverType() == SqlDriverType::Mysql)
-                name = QLatin1Char('`') + name + QLatin1Char('`');
-            else
-                name = QLatin1Char('"') + name + QLatin1Char('"');
-            emit insertNameRequested(name);
+        else if(insertOnDbl &&
+                (kind == KTable || kind == KLeaf ||
+                 /* SQLyog drops a MySQL database's name into the editor; a
+                  * PostgreSQL schema / SQLite "main" node is something you
+                  * double-click to open, and typing "public" into the script
+                  * every time was just noise */
+                 (kind == KDatabase && m_conn->driverType() == SqlDriverType::Mysql))) {
+            emit insertNameRequested(insertableName(m_conn->driverType(), item->text(0)));
         } else if(kind == KTable)
             /* open the clicked table's data — on EITHER database.
              * The table under a non-primary database used to route
