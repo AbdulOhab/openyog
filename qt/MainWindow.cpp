@@ -1392,7 +1392,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
     m_totalLabel = new QLabel(QStringLiteral("Total: 0 sec"), this);
     m_cursorLabel = new QLabel(QStringLiteral("Ln 1, Col 1"), this);
     m_connectionsLabel = new QLabel(QStringLiteral("Connections: 0"), this);
-    for(QLabel *l : {m_driverLabel, m_execLabel, m_totalLabel, m_cursorLabel, m_connectionsLabel}) {
+    for(QLabel *l : {m_driverLabel, m_connectionsLabel, m_execLabel, m_totalLabel, m_cursorLabel}) {
         l->setMinimumWidth(90);
         l->setFrameStyle(QFrame::Panel | QFrame::Sunken);
         statusBar()->addPermanentWidget(l);
