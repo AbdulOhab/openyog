@@ -15,7 +15,9 @@
 #include "CustomFilterDialog.h"
 
 #include <QLabel>
+#include <QPoint>
 #include <QTableView>
+#include <QTimer>
 #include <QWidget>
 
 class IDbConnection;
@@ -36,6 +38,9 @@ class TableDataView : public QWidget
     Q_OBJECT
 public:
     explicit TableDataView(QWidget *parent = nullptr);
+
+protected:
+    bool eventFilter(QObject *o, QEvent *e) override;
 
 public slots:
     void load(IDbConnection *conn, const QString &db, const QString &table);
@@ -104,6 +109,12 @@ private:
     void copyAllRows();                      /* "Copy All Rows To Clipboard…" */
     void copySelectedRows();                 /* "Copy Selected Row(s) To Clipboard…" */
     void copyRowsFrom(const QList<int> &rows, bool withHeader); /* shared writer */
+
+    /* left click on a data cell opens that same menu (owner ask) — after the
+     * double-click interval, so double-click-to-edit isn't eaten by a popup */
+    QTimer *m_clickMenuTimer = nullptr;
+    QPoint m_clickMenuPos;
+    QPoint m_pressPos;
 
     QString quoteValue(const QString &v) const; /* quoted literal or NULL */
     /* row identity from the model's ORIGINAL values: "`pk`='v' and …" */
