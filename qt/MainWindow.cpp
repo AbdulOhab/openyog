@@ -66,7 +66,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
      * window manager draws a title-bar icon (SQLyog shows one here too) */
     auto *menuIcon = new QLabel(this);
     menuIcon->setPixmap(QPixmap(QStringLiteral(":/resources/openyog-24.png")));
-    menuIcon->setContentsMargins(6, 2, 6, 2);
+    menuIcon->setContentsMargins(12, 2, 8, 2);
     menuBar()->setCornerWidget(menuIcon, Qt::TopLeftCorner);
 
     m_tabs = new QTabWidget(this);
