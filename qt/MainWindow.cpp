@@ -1287,7 +1287,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
      * (one action = one shortcut, one enable-state, icon in both places). */
     auto *toolbar = addToolBar(QStringLiteral("main"));
     toolbar->setMovable(false);
-    constexpr int kToolbarIcon = 20;
+    constexpr int kToolbarIcon = 18;
     toolbar->setIconSize(QSize(kToolbarIcon, kToolbarIcon));
 
     newConn->setIcon(Icons::get(QStringLiteral("connect_16.ico")));
@@ -1421,8 +1421,8 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
     wireShortcuts(menuBar()->actions());
 
     /* The bundled toolbar bitmaps are 16px-only and Qt never upscales an icon
-     * past its largest pixmap, so the 20px buttons would just centre a tiny
-     * glyph. Give each icon a smooth-scaled 20px pixmap next to the original:
+     * past its largest pixmap, so the 18px buttons would just centre a tiny
+     * glyph. Give each icon a smooth-scaled 18px pixmap next to the original:
      * the toolbar picks the big one, menus sharing the action keep the crisp
      * 16px. */
     for(QAction *a : toolbar->actions()) {
