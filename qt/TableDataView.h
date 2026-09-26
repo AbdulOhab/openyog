@@ -100,14 +100,14 @@ private:
      * own extras (cell/hex editor, typed insert, check-all, refresh) below
      * a separator. Split build/exec so a selftest can dump it unopened. */
     QMenu *buildContextMenu(const QModelIndex &at);
-    void showContextMenu(const QPoint &pos); /* viewport coords */
-    void setCellEmpty();                     /* "Set To Empty String" — stages '' (not NULL) */
-    void setCellDefault();                   /* "Set To Default" — stages the DEFAULT keyword */
-    void unsort();                           /* "Unsort" — drop the header-click ORDER BY */
-    void quickFilter(const QString &where);  /* Filter ▸ Field-op-Value items */
-    void copyCellData();                     /* "Copy Cell Data To Clipboard" */
-    void copyAllRows();                      /* "Copy All Rows To Clipboard…" */
-    void copySelectedRows();                 /* "Copy Selected Row(s) To Clipboard…" */
+    void showContextMenu(const QPoint &pos, const QModelIndex &cell = {}); /* viewport coords */
+    void setCellEmpty();                    /* "Set To Empty String" — stages '' (not NULL) */
+    void setCellDefault();                  /* "Set To Default" — stages the DEFAULT keyword */
+    void unsort();                          /* "Unsort" — drop the header-click ORDER BY */
+    void quickFilter(const QString &where); /* Filter ▸ Field-op-Value items */
+    void copyCellData();                    /* "Copy Cell Data To Clipboard" */
+    void copyAllRows();                     /* "Copy All Rows To Clipboard…" */
+    void copySelectedRows();                /* "Copy Selected Row(s) To Clipboard…" */
     void copyRowsFrom(const QList<int> &rows, bool withHeader); /* shared writer */
 
     /* left click on a data cell opens that same menu (owner ask) — after the
