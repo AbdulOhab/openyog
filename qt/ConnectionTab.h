@@ -274,6 +274,7 @@ public slots:
     void openTableData(const QString &db, const QString &table);
     void setDataViewMode(const QString &mode);       /* selftest: "text" | "grid" */
     QString cellTextForTest(int row, int col) const; /* selftest: grid cell's displayed text */
+    QString tdMenuDumpForTest(int row, int col);     /* selftest: --tdmenu context-menu dump */
     void editTableCell(int row, int col, const QString &value, bool stageOnly = false);
     void openSqlFile(const QString &path);
     void saveEditor();

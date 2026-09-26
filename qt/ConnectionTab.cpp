@@ -1898,6 +1898,11 @@ QString ConnectionTab::cellTextForTest(int row, int col) const
     return m_tableData->cellTextForTest(row, col);
 }
 
+QString ConnectionTab::tdMenuDumpForTest(int row, int col)
+{
+    return m_tableData->contextMenuDumpForTest(row, col);
+}
+
 /* Loads a table into the Table Data grid through the right connection.
  * physDb routes PostgreSQL's multi-database tree: a table under a
  * non-primary database loads through that database's own (pooled) side
@@ -1967,6 +1972,17 @@ void ConnectionTab::setDataViewMode(const QString &mode)
     }
     if(mode.startsWith(QStringLiteral("form"))) {
         m_tableData->formTestCommand(mode);
+        return;
+    }
+    if(mode.startsWith(QStringLiteral("quickfilter:"))) {
+        m_tableData->quickFilterForTest(mode.mid(QStringLiteral("quickfilter:").size()));
+        return;
+    }
+    if(mode.startsWith(QStringLiteral("setdefault:"))) {
+        const QStringList p =
+            mode.mid(QStringLiteral("setdefault:").size()).split(QLatin1Char(':'));
+        if(p.size() == 2)
+            m_tableData->setCellDefaultForTest(p[0].toInt(), p[1].toInt());
         return;
     }
     m_tableData->setViewMode(mode == QStringLiteral("text") ? 2 : 0);

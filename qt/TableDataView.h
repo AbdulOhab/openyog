@@ -24,6 +24,7 @@ class FormView;
 class QCheckBox;
 class QComboBox;
 class QLineEdit;
+class QMenu;
 class QPlainTextEdit;
 class QPushButton;
 class QSpinBox;
@@ -43,7 +44,10 @@ public slots:
     void stageCellOnly(int row, int col, const QString &value); /* selftest: stage, no apply */
     void checkRowsForTest(const QString &csv); /* selftest: tick the row-select column */
     void hexCellForTest(int row, int col, const QString &hex); /* selftest: stage x'…' + apply */
-    QString cellTextForTest(int row, int col) const; /* selftest: the grid's DisplayRole text */
+    QString cellTextForTest(int row, int col) const;  /* selftest: the grid's DisplayRole text */
+    QString contextMenuDumpForTest(int row, int col); /* selftest: --tdmenu label/enabled dump */
+    void quickFilterForTest(const QString &where); /* selftest: run a Filter ▸ clause end-to-end */
+    void setCellDefaultForTest(int row, int col);  /* selftest: stage + Apply the DEFAULT expr */
     void setCellNull();
     void editCellInTextEditor(); /* big multi-line editor for the current cell */
     void refresh();
@@ -84,6 +88,23 @@ private slots:
     void sortByColumn(int section); /* header click → ORDER BY, toggles dir */
 
 private:
+    /* the grid's right-click menu — upstream DataView::ShowContextMenu's
+     * exact IDR_QUERYLISTMENU shape (see include/SQLyog.rc): DML quartet,
+     * Set To Empty/NULL/Default, Unsort, Filter ▸ (clause-labelled quick
+     * filters + Custom/Reset), Export, Copy ▸, Duplicate — plus this port's
+     * own extras (cell/hex editor, typed insert, check-all, refresh) below
+     * a separator. Split build/exec so a selftest can dump it unopened. */
+    QMenu *buildContextMenu(const QModelIndex &at);
+    void showContextMenu(const QPoint &pos); /* viewport coords */
+    void setCellEmpty();                     /* "Set To Empty String" — stages '' (not NULL) */
+    void setCellDefault();                   /* "Set To Default" — stages the DEFAULT keyword */
+    void unsort();                           /* "Unsort" — drop the header-click ORDER BY */
+    void quickFilter(const QString &where);  /* Filter ▸ Field-op-Value items */
+    void copyCellData();                     /* "Copy Cell Data To Clipboard" */
+    void copyAllRows();                      /* "Copy All Rows To Clipboard…" */
+    void copySelectedRows();                 /* "Copy Selected Row(s) To Clipboard…" */
+    void copyRowsFrom(const QList<int> &rows, bool withHeader); /* shared writer */
+
     QString quoteValue(const QString &v) const; /* quoted literal or NULL */
     /* row identity from the model's ORIGINAL values: "`pk`='v' and …" */
     QString whereFromOrigRow(int row) const;
@@ -106,8 +127,9 @@ private:
         QString name;
         bool nullable = true;
         bool autoInc = false;
-        bool blob = false; /* declared type looks binary — see typeLooksBinary() */
-        QString type;      /* driver-native type text, for the form view's labels */
+        bool blob = false;       /* declared type looks binary — see typeLooksBinary() */
+        bool hasDefault = false; /* listColumns() Default(4) is neither empty nor "NULL" */
+        QString type;            /* driver-native type text, for the form view's labels */
     };
 
     IDbConnection *m_conn = nullptr;

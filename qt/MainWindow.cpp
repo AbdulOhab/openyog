@@ -1911,6 +1911,13 @@ QString MainWindow::selftestCellText(int row, int col) const
     return QString();
 }
 
+QString MainWindow::selftestTdMenuDump(int row, int col)
+{
+    if(auto *tab = currentTab())
+        return tab->tdMenuDumpForTest(row, col);
+    return QString();
+}
+
 void MainWindow::openSchemaObjectTab(const QString &objType)
 {
     if(auto *tab = currentTab())
