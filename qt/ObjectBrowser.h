@@ -175,6 +175,7 @@ private slots:
     void applyFilter(const QString &text);
 
 private:
+    void reapplyFilter();
     void copyCreateTable(const QString &db, const QString &table, const QString &physDb);
     void copyColumnNames(QTreeWidgetItem *tableItem);
     /* builds the right-click context menu for one tree item — factored out
