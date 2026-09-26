@@ -525,6 +525,13 @@ void ObjectBrowser::loadDatabases(IDbConnection *conn, const QString &currentDb,
         }
     }
     m_tree->expandItem(root);
+    reapplyFilter();
+}
+
+void ObjectBrowser::reapplyFilter()
+{
+    if(!m_filter->text().isEmpty())
+        applyFilter(m_filter->text());
 }
 
 QStringList ObjectBrowser::currentTableInfo() const
@@ -547,6 +554,18 @@ void ObjectBrowser::onItemExpanded(QTreeWidgetItem *item)
     const int kind = item->data(0, Qt::UserRole).toInt();
     if(!m_conn || item->childCount() > 0)
         return; /* already populated, or not connected */
+
+    /* freshly added children are visible by default — an active filter
+     * text must hide the non-matching ones again (populating is lazy, so
+     * this runs on every expand/refresh, not only in loadDatabases()) */
+    struct ReapplyFilter
+    {
+        ObjectBrowser *self;
+        ~ReapplyFilter()
+        {
+            self->reapplyFilter();
+        }
+    } reapplyFilter{this};
 
     const QString db = item->data(0, Qt::UserRole + 1).toString();
     const QString physDb = item->data(0, RolePhysDb).toString();
