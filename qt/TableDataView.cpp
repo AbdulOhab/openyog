@@ -782,6 +782,20 @@ TableDataView::TableDataView(QWidget *parent) : QWidget(parent)
     m_grid->horizontalHeader()->setSortIndicatorShown(true);
     connect(m_grid->horizontalHeader(), &QHeaderView::sectionClicked, this,
             &TableDataView::sortByColumn);
+    /* …and the same menu opens under the clicked header, aimed at that
+     * column (current row's cell) so Filter/Set-To act on it. Deferred one
+     * turn: sortByColumn() above reloads the grid first. */
+    connect(m_grid->horizontalHeader(), &QHeaderView::sectionClicked, this, [this](int section) {
+        QTimer::singleShot(0, this, [this, section] {
+            if(!m_valid || section >= m_model->columnCount())
+                return;
+            const int row = m_grid->currentIndex().isValid() ? m_grid->currentIndex().row() : 0;
+            const QModelIndex cell =
+                row < m_model->rowCount() ? m_model->index(row, section) : QModelIndex();
+            showContextMenu(QPoint(m_grid->horizontalHeader()->sectionViewportPosition(section), 0),
+                            cell);
+        });
+    });
 
     /* row-select checkbox column on the left (SQLyog's leftmost grid column) */
     m_checkHeader = new RowCheckHeader(m_grid);
@@ -867,11 +881,11 @@ bool TableDataView::eventFilter(QObject *o, QEvent *e)
 
 /* ---------------- grid context menu (upstream IDR_QUERYLISTMENU) ---------- */
 
-void TableDataView::showContextMenu(const QPoint &pos)
+void TableDataView::showContextMenu(const QPoint &pos, const QModelIndex &cell)
 {
     if(!m_valid)
         return;
-    QMenu *menu = buildContextMenu(m_grid->indexAt(pos));
+    QMenu *menu = buildContextMenu(cell.isValid() ? cell : m_grid->indexAt(pos));
     menu->exec(m_grid->viewport()->mapToGlobal(pos));
     menu->deleteLater();
 }
