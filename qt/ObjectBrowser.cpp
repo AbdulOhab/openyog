@@ -12,6 +12,7 @@
 #include <QMouseEvent>
 #include <QStandardPaths>
 #include <QTimer>
+#include <QScrollBar>
 #include <QVBoxLayout>
 
 #include <functional>
@@ -462,6 +463,30 @@ void ObjectBrowser::loadDatabases(IDbConnection *conn, const QString &currentDb,
     if(!root || !m_conn)
         return;
 
+    /* the rebuild below throws every item away, so remember what the user
+     * had open (pre-order: a parent always precedes its children) and put
+     * it back afterwards — a database switch or any DDL refresh must not
+     * fold the rest of the tree */
+    const auto pathOf = [](const QTreeWidgetItem *item) {
+        QStringList parts;
+        for(; item; item = item->parent())
+            parts.prepend(item->text(0));
+        return parts;
+    };
+    QList<QStringList> expandedPaths;
+    std::function<void(QTreeWidgetItem *)> collect = [&](QTreeWidgetItem *item) {
+        if(!item->isExpanded())
+            return; /* collapsed: its children (if any) are irrelevant */
+        expandedPaths << pathOf(item);
+        for(int i = 0; i < item->childCount(); ++i)
+            collect(item->child(i));
+    };
+    for(int i = 0; i < root->childCount(); ++i)
+        collect(root->child(i));
+    const QStringList selectedPath =
+        m_tree->currentItem() ? pathOf(m_tree->currentItem()) : QStringList();
+    const int scrollPos = m_tree->verticalScrollBar()->value();
+
     root->takeChildren();
 
     /* schema-level population, shared by both branches below: fills `dbItem`
@@ -525,7 +550,29 @@ void ObjectBrowser::loadDatabases(IDbConnection *conn, const QString &currentDb,
         }
     }
     m_tree->expandItem(root);
+
+    const auto findByPath = [&](const QStringList &path) -> QTreeWidgetItem * {
+        QTreeWidgetItem *cur = root;
+        for(int p = 1; cur && p < path.size(); ++p) { /* [0] is the root node itself */
+            QTreeWidgetItem *next = nullptr;
+            for(int i = 0; i < cur->childCount(); ++i)
+                if(cur->child(i)->text(0) == path.at(p)) {
+                    next = cur->child(i);
+                    break;
+                }
+            cur = next;
+        }
+        return cur;
+    };
+    for(const QStringList &path : expandedPaths)
+        if(QTreeWidgetItem *item = findByPath(path); item && !item->isExpanded())
+            item->setExpanded(true);         /* lazy folders fill via itemExpanded */
+    if(autoDrill && !selectedPath.isEmpty()) /* a switch highlights its own target */
+        if(QTreeWidgetItem *item = findByPath(selectedPath))
+            m_tree->setCurrentItem(item);
     reapplyFilter();
+    QTimer::singleShot(0, this,
+                       [this, scrollPos] { m_tree->verticalScrollBar()->setValue(scrollPos); });
 }
 
 void ObjectBrowser::reapplyFilter()
