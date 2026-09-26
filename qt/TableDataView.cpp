@@ -823,6 +823,46 @@ TableDataView::TableDataView(QWidget *parent) : QWidget(parent)
     connect(m_model, &TableDataModel::pendingChanged, this, &TableDataView::updateApplyBar);
     connect(m_grid, &QTableView::customContextMenuRequested, this,
             [this](const QPoint &pos) { showContextMenu(pos); });
+
+    m_clickMenuTimer = new QTimer(this);
+    m_clickMenuTimer->setSingleShot(true);
+    connect(m_clickMenuTimer, &QTimer::timeout, this, [this] {
+        /* the menu is modal — skip it if the pointer has since left the grid */
+        if(m_grid->viewport()->rect().contains(m_clickMenuPos))
+            showContextMenu(m_clickMenuPos);
+    });
+    m_grid->viewport()->installEventFilter(this);
+}
+
+bool TableDataView::eventFilter(QObject *o, QEvent *e)
+{
+    if(o != m_grid->viewport())
+        return QWidget::eventFilter(o, e);
+    switch(e->type()) {
+        case QEvent::MouseButtonPress:
+        case QEvent::MouseButtonDblClick:
+            m_clickMenuTimer->stop(); /* a second click means "edit", not "menu" */
+            if(e->type() == QEvent::MouseButtonPress)
+                m_pressPos = static_cast<QMouseEvent *>(e)->position().toPoint();
+            break;
+        case QEvent::MouseButtonRelease: {
+            auto *me = static_cast<QMouseEvent *>(e);
+            const QPoint pos = me->position().toPoint();
+            /* plain left click on a data cell: not a drag-select, not a
+             * Ctrl/Shift multi-select gesture, and not while an editor is open */
+            if(m_valid && me->button() == Qt::LeftButton && me->modifiers() == Qt::NoModifier &&
+               (pos - m_pressPos).manhattanLength() < QApplication::startDragDistance() &&
+               m_grid->indexAt(pos).isValid() &&
+               !m_grid->viewport()->isAncestorOf(QApplication::focusWidget())) {
+                m_clickMenuPos = pos;
+                m_clickMenuTimer->start(QApplication::doubleClickInterval() + 50);
+            }
+            break;
+        }
+        default:
+            break;
+    }
+    return QWidget::eventFilter(o, e);
 }
 
 /* ---------------- grid context menu (upstream IDR_QUERYLISTMENU) ---------- */
