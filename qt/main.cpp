@@ -83,6 +83,8 @@ int main(int argc, char *argv[])
     QStringList cellTexts; /* --celltext=row:col selftest (repeatable): print the cell's displayed
                             * text — asserts the <BLOB> placeholder for binary columns, the
                             * post-edit display, … */
+    QStringList tdMenus;   /* --tdmenu=row:col selftest (repeatable): dump the Table Data
+                            * context menu's labels + enabled states over that cell */
     QString mkObj;         /* --mkobj=VIEW|PROCEDURE|… selftest */
     QString explainMode;   /* --explain=json|plain selftest: Explain "SELECT 1" */
     bool showDataTab = false;   /* --showdatatab selftest: switch to Table Data, print its table */
@@ -1596,6 +1598,10 @@ int main(int argc, char *argv[])
          * <BLOB> placeholder for binary columns, the post-edit display, …) */
         if(a.startsWith(QStringLiteral("--celltext=")))
             cellTexts << a.mid(QStringLiteral("--celltext=").size());
+        /* --tdmenu=row:col : dump the grid context menu over that cell
+         * (labels + enabled — asserts the upstream IDR_QUERYLISTMENU shape) */
+        if(a.startsWith(QStringLiteral("--tdmenu=")))
+            tdMenus << a.mid(QStringLiteral("--tdmenu=").size());
         /* --mkobj=VIEW : open the Create <obj> editor tab */
         if(a.startsWith(QStringLiteral("--mkobj=")))
             mkObj = a.mid(QStringLiteral("--mkobj=").size());
@@ -2009,6 +2015,13 @@ int main(int argc, char *argv[])
                             QTextStream(stdout)
                                 << "celltext: " << w->selftestCellText(ct[0].toInt(), ct[1].toInt())
                                 << '\n';
+                    }
+                    for(const QString &oneMenu : std::as_const(tdMenus)) {
+                        const QStringList tm = oneMenu.split(QLatin1Char(':'));
+                        if(tm.size() == 2)
+                            QTextStream(stdout)
+                                << "tdmenu:\n"
+                                << w->selftestTdMenuDump(tm[0].toInt(), tm[1].toInt()) << '\n';
                     }
                     if(!useDbArg.isEmpty())
                         w->selftestUseDatabase(useDbArg);

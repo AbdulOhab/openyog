@@ -821,45 +821,175 @@ TableDataView::TableDataView(QWidget *parent) : QWidget(parent)
     layout->addWidget(m_label); /* row-count caption sits under the grid, SQLyog-style */
 
     connect(m_model, &TableDataModel::pendingChanged, this, &TableDataView::updateApplyBar);
-    connect(m_grid, &QTableView::customContextMenuRequested, this, [this](const QPoint &pos) {
-        if(!m_valid || !m_grid->indexAt(pos).isValid())
-            return;
-        const int ops = m_model->pendingOps();
-        const int row = m_grid->currentIndex().row();
-        const bool del = row >= 0 && m_model->rowState(row) == TableDataModel::Deleted;
-        QMenu menu(this);
-        QAction *setNull = menu.addAction(QStringLiteral("Set Cell Value to &NULL"), this,
-                                          &TableDataView::setCellNull);
-        setNull->setEnabled(m_grid->currentIndex().isValid() && !del);
-        menu.addSeparator();
-        QAction *apply = menu.addAction(QStringLiteral("A&pply Changes"), this,
-                                        &TableDataView::applyPendingEdits);
-        QAction *revert = menu.addAction(QStringLiteral("Re&vert Changes"), this,
-                                         &TableDataView::revertPendingEdits);
-        apply->setEnabled(ops > 0);
-        revert->setEnabled(ops > 0);
-        QAction *bigEdit = menu.addAction(QStringLiteral("&Edit Cell in Text Editor…"), this,
-                                          &TableDataView::editCellInTextEditor);
-        bigEdit->setEnabled(m_grid->currentIndex().isValid() && !del);
-        menu.addSeparator();
-        const int nchecked = checkedRows().size();
-        menu.addAction(nchecked > 0
-                           ? QStringLiteral("Mark %1 Checked Row(s) for &Deletion").arg(nchecked)
-                           : (del ? QStringLiteral("&Undelete Row")
-                                  : QStringLiteral("Mark Row for &Deletion")),
-                       this, &TableDataView::deleteSelectedRow);
-        menu.addAction(QStringLiteral("&Add Row"), this, &TableDataView::addRow);
-        menu.addAction(QStringLiteral("Add Row (with &values…)"), this,
-                       &TableDataView::insertRowWithValues);
-        menu.addSeparator();
-        menu.addAction(QStringLiteral("&Check All Rows"), this, [this] { checkAllRows(true); });
-        QAction *uncheck = menu.addAction(QStringLiteral("&Uncheck All Rows"), this,
-                                          [this] { checkAllRows(false); });
-        uncheck->setEnabled(nchecked > 0);
-        menu.addSeparator();
-        menu.addAction(QStringLiteral("&Refresh"), this, &TableDataView::refresh);
-        menu.exec(m_grid->viewport()->mapToGlobal(pos));
-    });
+    connect(m_grid, &QTableView::customContextMenuRequested, this,
+            [this](const QPoint &pos) { showContextMenu(pos); });
+}
+
+/* ---------------- grid context menu (upstream IDR_QUERYLISTMENU) ---------- */
+
+void TableDataView::showContextMenu(const QPoint &pos)
+{
+    if(!m_valid)
+        return;
+    QMenu *menu = buildContextMenu(m_grid->indexAt(pos));
+    menu->exec(m_grid->viewport()->mapToGlobal(pos));
+    menu->deleteLater();
+}
+
+QMenu *TableDataView::buildContextMenu(const QModelIndex &at)
+{
+    /* upstream CustomGrid moves the active cell on right-click, so the
+     * Set-To/filter/copy items all target the cell under the cursor; a
+     * click outside the data (or the keyboard menu key) keeps the current
+     * cell — DataView::OnContextMenu's (-1,-1) fallback */
+    QModelIndex cell = at;
+    if(!cell.isValid())
+        cell = m_grid->currentIndex();
+    if(cell.isValid())
+        m_grid->setCurrentIndex(cell);
+
+    const int row = cell.isValid() ? cell.row() : -1;
+    const int col = cell.isValid() ? cell.column() : -1;
+    const bool cellOk = row >= 0 && row < m_model->rowCount() && col >= 0 && col < m_columns.size();
+    const bool del = cellOk && m_model->rowState(row) == TableDataModel::Deleted;
+    const ColumnInfo ci = m_colInfo.value(col); /* defaults when !cellOk */
+    const int ops = m_model->pendingOps();
+    const int nchecked = checkedRows().size();
+
+    QMenu *menu = new QMenu(this);
+
+    /* -- exactly upstream's list, in .rc order, with DataView's enable rules */
+    menu->addAction(QStringLiteral("Insert New Row"), this, &TableDataView::addRow);
+    QAction *save =
+        menu->addAction(QStringLiteral("Save Changes"), this, &TableDataView::applyPendingEdits);
+    QAction *delrows = menu->addAction(QStringLiteral("Delete Selected Row(s)"), this,
+                                       &TableDataView::deleteSelectedRow);
+    QAction *cancel =
+        menu->addAction(QStringLiteral("Cancel Changes"), this, &TableDataView::revertPendingEdits);
+    save->setEnabled(ops > 0);
+    delrows->setEnabled(m_model->rowCount() > 0 && (nchecked > 0 || cell.isValid()));
+    cancel->setEnabled(ops > 0);
+
+    menu->addSeparator();
+
+    QAction *setEmpty =
+        menu->addAction(QStringLiteral("Set To Empty String"), this, &TableDataView::setCellEmpty);
+    QAction *setNull =
+        menu->addAction(QStringLiteral("Set To NULL"), this, &TableDataView::setCellNull);
+    QAction *setDef =
+        menu->addAction(QStringLiteral("Set To Default"), this, &TableDataView::setCellDefault);
+    setEmpty->setEnabled(cellOk && !del);
+    /* upstream keeps NULL usable on a non-nullable TIMESTAMP column: writing
+     * NULL there makes MySQL store the CURRENT_TIMESTAMP instead */
+    setNull->setEnabled(
+        cellOk && !del &&
+        (ci.nullable || ci.type.compare(QLatin1String("timestamp"), Qt::CaseInsensitive) == 0));
+    setDef->setEnabled(cellOk && !del && ci.hasDefault);
+
+    menu->addSeparator();
+
+    QAction *unsort = menu->addAction(QStringLiteral("Unsort"), this, &TableDataView::unsort);
+    unsort->setEnabled(m_sortColumn >= 0 || !m_orderBy.isEmpty());
+
+    menu->addSeparator();
+
+    /* Filter ▸ — upstream DataView::SetFilterMenu: every item's LABEL is the
+     * clause it will run, built from the cell under the cursor. Upstream's
+     * own label rule truncates the value at 20 chars + "..."; the clause
+     * that actually executes keeps the full, driver-escaped value (upstream
+     * filters on the truncated text too — a bug not worth replicating). A
+     * NULL cell turns =/<> into IS [NOT] NULL and disables the other five;
+     * binary-typed columns disable all seven (upstream's IsDataBinary). */
+    QMenu *filter = menu->addMenu(QStringLiteral("Filter"));
+    const QString qcol = m_conn ? m_conn->quoteIdent(m_columns.value(col))
+                                : QStringLiteral("`%1`").arg(m_columns.value(col));
+    const QString raw = cellOk ? m_model->cur(row, col) : QString();
+    const bool nullCell = raw == QStringLiteral("NULL");
+    const QString shown = nullCell            ? QStringLiteral("NULL")
+                          : raw.length() > 20 ? raw.left(20) + QStringLiteral("...")
+                                              : raw;
+    const QString escv =
+        nullCell || !m_conn ? raw : QString::fromUtf8(m_conn->escape(raw.toUtf8()));
+    const bool filterable = cellOk && !ci.blob;
+    const auto quickItem = [&](const QString &label, const QString &where, bool on) {
+        QAction *a = filter->addAction(label, this, [this, where] { quickFilter(where); });
+        a->setEnabled(on);
+    };
+    quickItem(nullCell ? QStringLiteral("%1 IS NULL").arg(qcol)
+                       : QStringLiteral("%1 = '%2'").arg(qcol, shown),
+              nullCell ? QStringLiteral("%1 IS NULL").arg(qcol)
+                       : QStringLiteral("%1 = '%2'").arg(qcol, escv),
+              filterable);
+    quickItem(nullCell ? QStringLiteral("%1 IS NOT NULL").arg(qcol)
+                       : QStringLiteral("%1 <> '%2'").arg(qcol, shown),
+              nullCell ? QStringLiteral("%1 IS NOT NULL").arg(qcol)
+                       : QStringLiteral("%1 <> '%2'").arg(qcol, escv),
+              filterable);
+    filter->addSeparator();
+    quickItem(QStringLiteral("%1 > '%2'").arg(qcol, shown),
+              QStringLiteral("%1 > '%2'").arg(qcol, escv), filterable && !nullCell);
+    quickItem(QStringLiteral("%1 < '%2'").arg(qcol, shown),
+              QStringLiteral("%1 < '%2'").arg(qcol, escv), filterable && !nullCell);
+    filter->addSeparator();
+    /* LIKE patterns are built by concatenation, not .arg(): QString::arg
+     * has no %% escape, so a '%2%%' format renders two literal percents —
+     * upstream's three variants are ends-with / begins-with / contains */
+    quickItem(qcol + QStringLiteral(" LIKE '%") + shown + QLatin1Char('\''),
+              qcol + QStringLiteral(" LIKE '%") + escv + QLatin1Char('\''),
+              filterable && !nullCell);
+    quickItem(qcol + QStringLiteral(" LIKE '") + shown + QStringLiteral("%'"),
+              qcol + QStringLiteral(" LIKE '") + escv + QStringLiteral("%'"),
+              filterable && !nullCell);
+    quickItem(qcol + QStringLiteral(" LIKE '%") + shown + QStringLiteral("%'"),
+              qcol + QStringLiteral(" LIKE '%") + escv + QStringLiteral("%'"),
+              filterable && !nullCell);
+    filter->addSeparator();
+    filter->addAction(QStringLiteral("Custom Filter…"), this, &TableDataView::openCustomFilter);
+    filter->addSeparator();
+    QAction *reset =
+        filter->addAction(QStringLiteral("Reset Filter"), this, &TableDataView::resetFilter);
+    reset->setEnabled(!m_where.isEmpty());
+
+    menu->addSeparator();
+
+    /* the Ctrl+Shift+E hint mirrors upstream's accelerator label; the key
+     * itself is already bound window-wide (Tools menu) and re-binding it
+     * here would make the shortcut ambiguous */
+    menu->addAction(QStringLiteral("Export All Rows Of Table Data/Result As…\tCtrl+Shift+E"), this,
+                    &TableDataView::exportRows);
+
+    QMenu *copy = menu->addMenu(QStringLiteral("Copy"));
+    QAction *copyCell = copy->addAction(QStringLiteral("Copy Cell Data To Clipboard"), this,
+                                        &TableDataView::copyCellData);
+    QAction *copyAll = copy->addAction(QStringLiteral("Copy All Rows To Clipboard…"), this,
+                                       &TableDataView::copyAllRows);
+    QAction *copySel = copy->addAction(QStringLiteral("Copy Selected Row(s) To Clipboard…"), this,
+                                       &TableDataView::copySelectedRows);
+    copyCell->setEnabled(cellOk);
+    copyAll->setEnabled(m_model->rowCount() > 0);
+    copySel->setEnabled(nchecked > 0 || cell.isValid());
+
+    QAction *dup = menu->addAction(QStringLiteral("Duplicate Current Row"), this,
+                                   &TableDataView::duplicateRow);
+    dup->setEnabled(cell.isValid());
+
+    /* -- this port's own extras (not in upstream's menu; all pre-existing):
+     * the cell/hex editor's only menu entry, the typed-VALUES insert, the
+     * row-check column's select-all, refresh -- */
+    menu->addSeparator();
+    QAction *bigEdit = menu->addAction(QStringLiteral("&Edit Cell in Text Editor…"), this,
+                                       &TableDataView::editCellInTextEditor);
+    bigEdit->setEnabled(cellOk && !del);
+    menu->addAction(QStringLiteral("Add Row (with &values…)"), this,
+                    &TableDataView::insertRowWithValues);
+    menu->addAction(QStringLiteral("&Check All Rows"), this, [this] { checkAllRows(true); });
+    QAction *uncheck =
+        menu->addAction(QStringLiteral("&Uncheck All Rows"), this, [this] { checkAllRows(false); });
+    uncheck->setEnabled(nchecked > 0);
+    menu->addSeparator();
+    menu->addAction(QStringLiteral("&Refresh"), this, &TableDataView::refresh);
+
+    return menu;
 }
 
 void TableDataView::load(IDbConnection *conn, const QString &db, const QString &table)
@@ -1215,6 +1345,50 @@ QString TableDataView::cellTextForTest(int row, int col) const
     return m_model->data(m_model->index(row, col), Qt::DisplayRole).toString();
 }
 
+/* selftest: a Filter ▸ quick clause, end to end (discard-prompt is a no-op
+ * with nothing staged) — asserts the rebuilt grid through the same reload()
+ * the funnel button drives */
+void TableDataView::quickFilterForTest(const QString &where)
+{
+    quickFilter(where);
+}
+
+/* selftest: "Set To Default" on one cell, then Apply — the UPDATE writes
+ * the raw DEFAULT keyword and the reload shows the column's default */
+void TableDataView::setCellDefaultForTest(int row, int col)
+{
+    m_grid->setCurrentIndex(m_model->index(row, col));
+    setCellDefault();
+    applyPendingEdits();
+}
+
+/* --tdmenu=row:col — build (without exec) the grid's context menu over that
+ * cell and dump every item's label + enabled state, submenus flattened with
+ * a ▸ marker, so the upstream-shape checks run headlessly */
+QString TableDataView::contextMenuDumpForTest(int row, int col)
+{
+    if(!m_valid || row < 0 || row >= m_model->rowCount() || col < 0 || col >= m_columns.size())
+        return QStringLiteral("tdmenu: bad cell\n");
+    QMenu *menu = buildContextMenu(m_model->index(row, col));
+    QString out;
+    std::function<void(const QMenu *)> walk = [&](const QMenu *m) {
+        for(QAction *a : m->actions()) {
+            if(a->isSeparator())
+                out += QStringLiteral("--\n");
+            else if(a->menu()) {
+                out += a->text() + QStringLiteral(" ▸\n");
+                walk(a->menu());
+            } else {
+                out += a->text() +
+                       (a->isEnabled() ? QStringLiteral("  [on]\n") : QStringLiteral("  [off]\n"));
+            }
+        }
+    };
+    walk(menu);
+    menu->deleteLater();
+    return out;
+}
+
 void TableDataView::checkRowsForTest(const QString &csv)
 {
     if(!m_checkHeader)
@@ -1277,23 +1451,15 @@ QString TableDataView::renderTextView() const
     return out.join(QLatin1Char('\n'));
 }
 
-/* copy the selected rows (or all, if nothing is selected) as TSV */
-void TableDataView::copyRows(bool withHeader)
+/* the shared tab-separated clipboard writer behind the toolbar copy button
+ * (checks ▸ selection ▸ all) and the context menu's Copy ▸ items (explicit
+ * scopes) — upstream IDM_DATATOCLIPBOARD / IDM_SELDATATOCLIPBOARD */
+void TableDataView::copyRowsFrom(const QList<int> &rowsIn, bool withHeader)
 {
     if(!m_valid)
         return;
     const QStringList cols = m_model->columns();
-    /* checkbox column wins; then the QTableView selection; then every row */
-    QList<int> rows = checkedRows();
-    if(rows.isEmpty()) {
-        const auto sel =
-            m_grid->selectionModel() ? m_grid->selectionModel()->selectedRows() : QModelIndexList();
-        for(const QModelIndex &idx : sel)
-            rows << idx.row();
-    }
-    if(rows.isEmpty())
-        for(int r = 0; r < m_model->rowCount(); ++r)
-            rows << r;
+    QList<int> rows = rowsIn;
     std::sort(rows.begin(), rows.end());
 
     QStringList lines;
@@ -1307,6 +1473,58 @@ void TableDataView::copyRows(bool withHeader)
     }
     QApplication::clipboard()->setText(lines.join(QLatin1Char('\n')));
     emit statusMessage(QStringLiteral("Copied %1 row(s) to the clipboard").arg(rows.size()));
+}
+
+/* copy the selected rows (or all, if nothing is selected) as TSV */
+void TableDataView::copyRows(bool withHeader)
+{
+    if(!m_valid)
+        return;
+    QList<int> rows = checkedRows();
+    if(rows.isEmpty()) {
+        const auto sel =
+            m_grid->selectionModel() ? m_grid->selectionModel()->selectedRows() : QModelIndexList();
+        for(const QModelIndex &idx : sel)
+            rows << idx.row();
+    }
+    if(rows.isEmpty())
+        for(int r = 0; r < m_model->rowCount(); ++r)
+            rows << r;
+    copyRowsFrom(rows, withHeader);
+}
+
+void TableDataView::copyAllRows()
+{
+    QList<int> rows;
+    for(int r = 0; r < m_model->rowCount(); ++r)
+        rows << r;
+    copyRowsFrom(rows, false);
+}
+
+void TableDataView::copySelectedRows()
+{
+    QList<int> rows = checkedRows();
+    if(rows.isEmpty()) {
+        const auto sel =
+            m_grid->selectionModel() ? m_grid->selectionModel()->selectedRows() : QModelIndexList();
+        for(const QModelIndex &idx : sel)
+            rows << idx.row();
+    }
+    if(rows.isEmpty()) {
+        const QModelIndex cur = m_grid->currentIndex();
+        if(cur.isValid())
+            rows << cur.row();
+    }
+    copyRowsFrom(rows, false);
+}
+
+void TableDataView::copyCellData()
+{
+    const QModelIndex idx = m_grid->currentIndex();
+    if(!idx.isValid())
+        return;
+    QApplication::clipboard()->setText(m_model->cur(idx.row(), idx.column()));
+    emit statusMessage(QStringLiteral("Copied cell to clipboard"));
 }
 
 /* dump every loaded row to a CSV file (SQLyog's IDM_IMEX_EXPORTDATA, minus
@@ -1369,6 +1587,11 @@ void TableDataView::reload()
         ci.nullable = row.value(2) != QStringLiteral("NO");
         ci.autoInc = row.value(5).contains(QStringLiteral("auto_increment"));
         ci.blob = typeLooksBinary(row.value(1));
+        /* Default(4): the seam's canonical SHOW COLUMNS shape encodes a
+         * NULL default as the literal "NULL" — anything non-empty besides
+         * that (including MySQL's DEFAULT '') means "Set To Default" can
+         * run (upstream's iscolhasdefault gate) */
+        ci.hasDefault = !row.value(4).isEmpty() && row.value(4) != QStringLiteral("NULL");
         ci.type = row.value(1);
         m_colInfo << ci;
     }
@@ -1672,6 +1895,55 @@ void TableDataView::setCellNull()
     if(!m_valid || !idx.isValid())
         return;
     m_model->stage(idx.row(), idx.column(), QStringLiteral("NULL"));
+}
+
+/* "Set To Empty String" — upstream IDC_SETEMPTY (SetValue("")): an empty
+ * string is NOT a NULL; on Apply it writes '' */
+void TableDataView::setCellEmpty()
+{
+    const QModelIndex idx = m_grid->currentIndex();
+    if(!m_valid || !idx.isValid())
+        return;
+    m_model->stage(idx.row(), idx.column(), QString());
+}
+
+/* "Set To Default" — upstream IDC_SETDEF (SetValue("(DEFAULT)")): SQLyog
+ * shows the literal "(DEFAULT)" in the cell and rewrites it to the DEFAULT
+ * keyword on save; the model's raw-expression path does exactly that for
+ * both the UPDATE and the INSERT arms of Apply */
+void TableDataView::setCellDefault()
+{
+    const QModelIndex idx = m_grid->currentIndex();
+    if(!m_valid || !idx.isValid())
+        return;
+    m_model->stageExpr(idx.row(), idx.column(), QStringLiteral("(DEFAULT)"),
+                       QStringLiteral("DEFAULT"));
+}
+
+/* "Unsort" — upstream ID_UNSORT: drop the header-click ORDER BY and
+ * re-query (back to the driver's natural/primary-key order) */
+void TableDataView::unsort()
+{
+    if(!m_valid || (m_orderBy.isEmpty() && m_sortColumn < 0))
+        return;
+    if(!discardStagedEdits(QStringLiteral("Re-sort")))
+        return;
+    m_orderBy.clear();
+    m_sortColumn = -1;
+    m_sortDesc = false;
+    m_grid->horizontalHeader()->setSortIndicator(-1, Qt::AscendingOrder);
+    reload();
+}
+
+/* Filter ▸ quick items — upstream's ID_FILTER_FIELD_* handlers: the clause
+ * from the menu item becomes the WHERE, same pipeline as Custom Filter's OK */
+void TableDataView::quickFilter(const QString &where)
+{
+    if(!m_valid || where.isEmpty())
+        return;
+    if(!discardStagedEdits(QStringLiteral("Re-query")))
+        return;
+    applyFilterWhere(where);
 }
 
 QByteArray TableDataView::fetchCellBytes(int row, int col) const
