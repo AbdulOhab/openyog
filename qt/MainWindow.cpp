@@ -1287,7 +1287,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
      * (one action = one shortcut, one enable-state, icon in both places). */
     auto *toolbar = addToolBar(QStringLiteral("main"));
     toolbar->setMovable(false);
-    toolbar->setIconSize(QSize(16, 16));
+    toolbar->setIconSize(QSize(24, 24));
 
     newConn->setIcon(Icons::get(QStringLiteral("connect_16.ico")));
     toolbar->addAction(newConn);
@@ -1418,6 +1418,24 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
             }
         };
     wireShortcuts(menuBar()->actions());
+
+    /* The bundled toolbar bitmaps are 16px-only and Qt never upscales an icon
+     * past its largest pixmap, so the 24px buttons would just centre a tiny
+     * glyph. Give each icon a smooth-scaled 24px pixmap next to the original:
+     * the toolbar picks the big one, menus sharing the action keep the crisp
+     * 16px. */
+    for(QAction *a : toolbar->actions()) {
+        const QIcon src = a->icon();
+        if(src.isNull())
+            continue;
+        QIcon big;
+        big.addPixmap(src.pixmap(16, 16));
+        const QSize best =
+            src.availableSizes().isEmpty() ? QSize(16, 16) : src.availableSizes().constLast();
+        big.addPixmap(
+            src.pixmap(best).scaled(24, 24, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+        a->setIcon(big);
+    }
 
     /* Toolbar buttons duplicate a menu action's job; strip the "\t<keys>" from
      * their text (it would show literally in the tooltip) and fold it into a
