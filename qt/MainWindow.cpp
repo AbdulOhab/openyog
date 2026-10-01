@@ -68,6 +68,12 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
     menuIcon->setPixmap(QPixmap(QStringLiteral(":/resources/openyog-24.png")));
     menuIcon->setContentsMargins(12, 2, 8, 2);
     menuBar()->setCornerWidget(menuIcon, Qt::TopLeftCorner);
+    /* balances the icon's left margin above — without this, a narrow window
+     * leaves the last menu ("Help") flush against the right edge while the
+     * left side keeps its padding, a visible asymmetry */
+    auto *menuRightSpacer = new QWidget(this);
+    menuRightSpacer->setFixedWidth(10);
+    menuBar()->setCornerWidget(menuRightSpacer, Qt::TopRightCorner);
 
     m_tabs = new QTabWidget(this);
     m_tabs->setObjectName(QStringLiteral("connTabs"));
