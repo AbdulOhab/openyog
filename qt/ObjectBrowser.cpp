@@ -486,26 +486,36 @@ void ObjectBrowser::loadDatabases(IDbConnection *conn, const QString &currentDb,
     const QStringList selectedPath =
         m_tree->currentItem() ? pathOf(m_tree->currentItem()) : QStringList();
     const int scrollPos = m_tree->verticalScrollBar()->value();
+    const QString rootText = root->text(0);
 
     root->takeChildren();
 
     /* schema-level population, shared by both branches below: fills `dbItem`
      * (a KDatabase node) with the standard six folders, then — if it's the
-     * one matching currentDb — selects/expands it and opens its Tables
-     * folder straight away, like SQLyog. `physDb` is what every descendant
-     * inherits (empty for MySQL/SQLite, the owning physical database for
-     * Postgres). */
+     * one matching currentDb AND the user hasn't browsed into it yet (no
+     * entry for it in expandedPaths) — selects/expands it and opens its
+     * Tables folder straight away, like SQLyog does for a fresh connect or
+     * database switch. Once the database has its own expand state (say,
+     * Functions open and Tables deliberately left collapsed), a later
+     * refresh must not override that — the expandedPaths restore loop
+     * below already reproduces whatever was actually open. `physDb` is
+     * what every descendant inherits (empty for MySQL/SQLite, the owning
+     * physical database for Postgres). */
     const auto populateSchema = [&](QTreeWidgetItem *dbItem, const QString &dbName,
                                     const QString &physDb) {
-        if(autoDrill && currentDb == dbName) {
-            dbItem->setSelected(true);
-            dbItem->setExpanded(true);
-            onItemExpanded(dbItem);
-            if(dbItem->childCount() > 0) {
-                QTreeWidgetItem *tablesFolder = dbItem->child(0);
-                tablesFolder->setExpanded(true);
-                onItemExpanded(tablesFolder);
-            }
+        if(!autoDrill || currentDb != dbName)
+            return;
+        dbItem->setSelected(true);
+        const QStringList dbPath = physDb.isEmpty() ? QStringList{rootText, dbName}
+                                                    : QStringList{rootText, physDb, dbName};
+        if(expandedPaths.contains(dbPath))
+            return; /* already browsed — leave its own state to the restore loop */
+        dbItem->setExpanded(true);
+        onItemExpanded(dbItem);
+        if(dbItem->childCount() > 0) {
+            QTreeWidgetItem *tablesFolder = dbItem->child(0);
+            tablesFolder->setExpanded(true);
+            onItemExpanded(tablesFolder);
         }
     };
 
