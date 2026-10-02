@@ -495,11 +495,8 @@ ConnectionTab::ConnectionTab(const ConnectionParams &params, QWidget *parent)
     /* the connection label tracks which result page is in front: a side
      * connection is only "the active connection" while its Table Data
      * grid is the visible one (see m_tableDataPhysDb) */
-    connect(m_resultTabs, &QTabWidget::currentChanged, this, [this](int) {
-        if(m_resultTabs->currentWidget() == m_tableData)
-            showPendingTable();
-        updateActiveConnectionLabel();
-    });
+    connect(m_resultTabs, &QTabWidget::currentChanged, this,
+            [this](int) { updateActiveConnectionLabel(); });
 
     m_findBar = new FindBar([this] { return currentEditor(); }, this);
 
@@ -556,20 +553,26 @@ ConnectionTab::ConnectionTab(const ConnectionParams &params, QWidget *parent)
         m_keepAliveTimer->start();
     }
 
-    /* a click shows the object in Info, and — for a table — in Table Data
-     * too (SQLyog keeps both right-pane tabs on the selected object). The
-     * grid is loaded lazily: only if Table Data is the tab in front, else
-     * when the user switches to it, so browsing tables never runs a
-     * SELECT nobody looks at. */
+    /* a click shows the object in Info AND — for a table — loads its
+     * Table Data grid immediately, so both right-pane tabs sit on the
+     * same object at the same time (owner directive: the old lazy path
+     * parked the click in m_pendingTable and only loaded the grid if
+     * Table Data happened to be in front, leaving Info on the new table
+     * while the grid still showed the previous one — "আলাদা লোড").
+     * Two guards survive from the old flow: never reload the table the
+     * grid already shows (keeps its sort/filter) and never clobber
+     * staged grid edits with a browse click. */
     connect(m_browser, &ObjectBrowser::objectSelected, this,
             [this](const QString &db, const QString &objType, const QString &name,
                    const QString &physDb) {
                 updateInfoTab(db, objType, name, physDb);
                 if(objType != QStringLiteral("TABLE"))
                     return;
-                m_pendingTable = {db, name, physDb};
-                if(m_resultTabs->currentWidget() == m_tableData)
-                    showPendingTable();
+                if(m_tableData->hasStagedEdits())
+                    return;
+                if(QStringList{physDb, db, name}.join(QLatin1Char('\x1f')) == m_loadedTableKey)
+                    return;
+                loadTableData(db, name, physDb, false);
             });
     connect(m_browser, &ObjectBrowser::insertNameRequested, this, [this](const QString &text) {
         SqlEditor *ed = currentEditor();
@@ -1932,22 +1935,6 @@ void ConnectionTab::loadTableData(const QString &db, const QString &table, const
     if(activate)
         m_resultTabs->setCurrentWidget(m_tableData);
     updateActiveConnectionLabel();
-}
-
-/* the table last clicked in the tree, loaded now that Table Data is in
- * front. Skipped when it's already the one on screen (keeps its sort/filter)
- * or when the grid holds staged edits — a click must never throw those away. */
-void ConnectionTab::showPendingTable()
-{
-    if(m_pendingTable.table.isEmpty())
-        return;
-    const PendingTable t = m_pendingTable;
-    m_pendingTable = {};
-    if(m_tableData->hasStagedEdits())
-        return;
-    if(QStringList{t.physDb, t.db, t.table}.join(QLatin1Char('\x1f')) == m_loadedTableKey)
-        return;
-    loadTableData(t.db, t.table, t.physDb, false);
 }
 
 void ConnectionTab::openTableData(const QString &db, const QString &table)
