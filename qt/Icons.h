@@ -19,6 +19,8 @@
 #include <QFile>
 #include <QHash>
 #include <QIcon>
+#include <QPainter>
+#include <QPixmap>
 
 namespace Icons {
 inline QString dir()
@@ -40,5 +42,27 @@ inline QIcon get(const QString &file)
     if(!cache.contains(file))
         cache.insert(file, QIcon(path(file)));
     return cache.value(file);
+}
+
+/* a handful of the bundled 16x16 .ico files draw their artwork edge-to-edge
+ * (no breathing room inside the canvas), so next to any normally-padded
+ * sibling icon in the same menu they look flush/clipped against the
+ * menu's left border. Re-renders the icon shrunk by marginPx on a
+ * transparent 16x16 canvas so it reads consistently with the rest. */
+inline QIcon getInset(const QString &file, int marginPx = 2)
+{
+    const QString key = file + QStringLiteral("@inset%1").arg(marginPx);
+    static QHash<QString, QIcon> cache;
+    if(cache.contains(key))
+        return cache.value(key);
+    constexpr int kSize = 16;
+    QPixmap canvas(kSize, kSize);
+    canvas.fill(Qt::transparent);
+    QPainter p(&canvas);
+    get(file).paint(&p, QRect(marginPx, marginPx, kSize - 2 * marginPx, kSize - 2 * marginPx));
+    p.end();
+    const QIcon result(canvas);
+    cache.insert(key, result);
+    return result;
 }
 } // namespace Icons
