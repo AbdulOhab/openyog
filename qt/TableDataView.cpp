@@ -819,8 +819,24 @@ TableDataView::TableDataView(QWidget *parent) : QWidget(parent)
     m_viewStack->addWidget(m_grid);     /* index 0 — grid */
     m_viewStack->addWidget(m_textView); /* index 1 — text */
     m_formView = new FormView(this);
-    m_formView->setModel(m_model, {[this](int r) { return int(m_model->rowState(r)); },
-                                   [this](int r, int col) { return m_model->dirty(r, col); }});
+    m_formView->setModel(
+        m_model, {[this](int r) { return int(m_model->rowState(r)); },
+                  [this](int r, int col) { return m_model->dirty(r, col); },
+                  /* Form view BLOB preview/file-io: raw bytes via the same streamed
+                   * re-query the Hex tab uses; staging back as a driver hex literal
+                   * through the same stageExpr path its OK button uses */
+                  [this](int r, int c) { return fetchCellBytes(r, c); },
+                  [this](int r, int c, const QByteArray &bytes) {
+                      const QString h = bytes.toHex();
+                      const SqlDriverType drv =
+                          m_conn ? m_conn->driverType() : SqlDriverType::Mysql;
+                      const QString expr = hexLiteral(drv, h);
+                      const QString disp = h.size() > 32
+                                               ? hexLiteral(drv, h.left(32) + QStringLiteral("…")) +
+                                                     QStringLiteral(" (%1 bytes)").arg(h.size() / 2)
+                                               : expr;
+                      m_model->stageExpr(r, c, disp, expr);
+                  }});
     m_viewStack->addWidget(m_formView); /* index 2 — form */
     connect(m_formView, &FormView::newRowRequested, this, &TableDataView::formNewRow);
     connect(m_formView, &FormView::duplicateRequested, this, &TableDataView::formDuplicateRow);
@@ -1027,6 +1043,16 @@ QMenu *TableDataView::buildContextMenu(const QModelIndex &at)
                                    &TableDataView::duplicateRow);
     dup->setEnabled(cell.isValid());
 
+    /* FK jump-to-parent: only offered when the cell's column is a foreign
+     * key's local column (information_schema / pragma lookup above) */
+    const QPair<QString, QString> fk = cellOk ? fkTarget(col) : QPair<QString, QString>();
+    if(cellOk && !fk.first.isEmpty()) {
+        QAction *jump =
+            menu->addAction(QStringLiteral("Jump to Referenced Row (`%1`)…").arg(fk.first), this,
+                            [this, row, col, fk] { jumpToReferenced(row, col, fk); });
+        jump->setEnabled(!del);
+    }
+
     /* -- this port's own extras (not in upstream's menu; all pre-existing):
      * the cell/hex editor's only menu entry, the typed-VALUES insert, the
      * row-check column's select-all, refresh -- */
@@ -1138,6 +1164,72 @@ void TableDataView::resetFilter()
         return;
     m_filterRows.clear();
     applyFilterWhere(QString());
+}
+
+/* (parentTable, parentColumn) of the single-column foreign key that has
+ * `col` as its local column, or ("", "") when none — Table Data's
+ * Jump-to-Referenced-Row needs no other FK detail. MySQL and PostgreSQL
+ * both speak information_schema.key_column_usage; SQLite has its pragma. */
+QPair<QString, QString> TableDataView::fkTarget(int col) const
+{
+    QPair<QString, QString> out;
+    if(!m_conn || col < 0 || col >= m_columns.size())
+        return out;
+    const QString column = m_columns.value(col);
+    DbResultSet rs;
+    QString msg;
+    if(m_conn->driverType() == SqlDriverType::Sqlite) {
+        if(!m_conn->query(
+               QStringLiteral("PRAGMA foreign_key_list(%1)").arg(m_conn->quoteIdent(m_table)), &rs,
+               &msg))
+            return out;
+        /* id, seq, table, from, to — `to` is empty when the parent's key is
+         * its PRIMARY KEY; fall back to that below */
+        for(const QStringList &r : rs.rows) {
+            if(r.size() >= 5 && r.value(3).compare(column, Qt::CaseInsensitive) == 0) {
+                out = {r.value(2), r.value(4)};
+                break;
+            }
+        }
+    } else {
+        /* MySQL: schema = the table's database. PostgreSQL: the schema the
+         * connection's search_path resolves to (its "current schema"). */
+        const QString schemaTest = m_conn->driverType() == SqlDriverType::Postgres
+                                       ? QStringLiteral("current_schema()")
+                                       : QStringLiteral("'%1'").arg(m_db);
+        if(!m_conn->query(
+               QStringLiteral(
+                   "SELECT referenced_table_name, referenced_column_name"
+                   " FROM information_schema.key_column_usage"
+                   " WHERE table_schema = %1 AND table_name = '%2' AND column_name = '%3'"
+                   " AND referenced_table_name IS NOT NULL LIMIT 1")
+                   .arg(schemaTest, m_table, column),
+               &rs, &msg))
+            return out;
+        if(!rs.rows.isEmpty() && rs.rows.first().size() >= 2)
+            out = {rs.rows.first().value(0), rs.rows.first().value(1)};
+    }
+    if(out.second.isEmpty() && !out.first.isEmpty())
+        out.second = QStringLiteral("id"); /* SQLite's implicit parent key */
+    return out;
+}
+
+/* context menu's jump: reopen this same view on the parent table, the
+ * referencing value as the WHERE — the practical "show me the row this
+ * points at" (FEATURES.md's FK jump-to-parent, grid form) */
+void TableDataView::jumpToReferenced(int row, int col, const QPair<QString, QString> &fk)
+{
+    if(!m_conn || fk.first.isEmpty())
+        return;
+    const QString v = m_model->cur(row, col);
+    const QString where = v == QStringLiteral("NULL")
+                              ? QStringLiteral("%1 IS NULL").arg(m_conn->quoteIdent(fk.second))
+                              : QStringLiteral("%1 = '%2'")
+                                    .arg(m_conn->quoteIdent(fk.second),
+                                         QString::fromUtf8(m_conn->escape(v.toUtf8())));
+    const QString db = m_db;
+    load(m_conn, db, fk.first);
+    applyFilterWhere(where);
 }
 
 void TableDataView::applyFilterWhere(const QString &where)
@@ -1353,12 +1445,27 @@ void TableDataView::formTestCommand(const QString &script)
         if(m_viewMode != 1)
             setViewMode(1);
         m_formView->setNullForTest(cmd.mid(9).toInt(), true);
+    } else if(cmd.startsWith(QStringLiteral("formblob:"))) {
+        /* formblob:<col>:<hex> — the Form-view Load button's payload without
+         * the file dialog: stages raw bytes through the same hook */
+        const QStringList p = cmd.mid(9).split(QLatin1Char(':'));
+        if(p.size() >= 2)
+            m_formView->setBlobForTest(p[0].toInt(),
+                                       QByteArray::fromHex(p.mid(1).join(QString()).toUtf8()));
     } else if(cmd == QStringLiteral("formapply")) {
         applyPendingEdits();
     } else if(cmd == QStringLiteral("formdel")) {
         if(m_viewMode != 1)
             setViewMode(1);
         formDeleteRow(m_formView->currentRow());
+    } else if(cmd.startsWith(QStringLiteral("jump:"))) {
+        /* jump:<row>:<col> — the context menu's FK jump, without the click */
+        const QStringList p = cmd.mid(5).split(QLatin1Char(':'));
+        if(p.size() >= 2) {
+            const auto fk = fkTarget(p[1].toInt());
+            if(!fk.first.isEmpty())
+                jumpToReferenced(p[0].toInt(), p[1].toInt(), fk);
+        }
     }
 }
 
