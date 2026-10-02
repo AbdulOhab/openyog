@@ -1,0 +1,8 @@
+# clangd config — the build's compile_commands.json is generated with
+# CMAKE_EXPORT_COMPILE_COMMANDS=ON (symlinked from the repo root; it is
+# gitignored). Arch's GCC emits flags clang doesn't know; without stripping
+# them clangd rejects the whole command line and every include lookup fails
+# ("'QMainWindow' file not found" cascades) even though the real build is
+# clean.
+CompileFlags:
+  Remove: [-mno-direct-extern-access, -fno-delete-null-pointer-checks]
