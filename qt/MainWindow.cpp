@@ -631,13 +631,13 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
     addDisabled(dbBackup, QStringLiteral("&Scheduled Backups…\tCtrl+Alt+S"));
     QAction *dbDump =
         dbBackup->addAction(QStringLiteral("&Backup Database As SQL Dump…\tCtrl+Alt+E"));
-    dbDump->setIcon(Icons::get(QStringLiteral("export_data_16.ico")));
+    dbDump->setIcon(Icons::getInset(QStringLiteral("export_data_16.ico")));
     connect(dbDump, &QAction::triggered, this, [this] { dumpDatabase(); });
     QMenu *dbImport = database->addMenu(QStringLiteral("&Import "));
     addDisabled(dbImport, QStringLiteral("Import E&xternal Data…\tCtrl+Alt+O"));
     QAction *dbRunScript =
         dbImport->addAction(QStringLiteral("&Execute SQL Script…\tCtrl+Shift+Q"));
-    dbRunScript->setIcon(Icons::get(QStringLiteral("execbatch_16.ico")));
+    dbRunScript->setIcon(Icons::getInset(QStringLiteral("execbatch_16.ico")));
     connect(dbRunScript, &QAction::triggered, this, [this] {
         if(auto *t = currentTab()) {
             const QString f =
@@ -775,7 +775,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
     addDisabled(tblBackup, QStringLiteral("&Scheduled Backups…\tCtrl+Alt+S"));
     QAction *dumpTblAct =
         tblBackup->addAction(QStringLiteral("&Backup Table(s) As SQL Dump…\tCtrl+Alt+E"));
-    dumpTblAct->setIcon(Icons::get(QStringLiteral("export_data_16.ico")));
+    dumpTblAct->setIcon(Icons::getInset(QStringLiteral("export_data_16.ico")));
     connect(dumpTblAct, &QAction::triggered, this,
             [onSelectedTable] { onSelectedTable(&ConnectionTab::dumpTable); });
     QAction *expTblData =
@@ -851,7 +851,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
     });
     QAction *toolsDump =
         tools->addAction(QStringLiteral("&Backup Database As SQL Dump…\tCtrl+Alt+E"));
-    toolsDump->setIcon(Icons::get(QStringLiteral("export_data_16.ico")));
+    toolsDump->setIcon(Icons::getInset(QStringLiteral("export_data_16.ico")));
     connect(toolsDump, &QAction::triggered, this, [this] { dumpDatabase(); });
     QAction *runScript = tools->addAction(QStringLiteral("Execute &SQL Script…\tCtrl+Shift+Q"));
     connect(runScript, &QAction::triggered, this, [this] {
@@ -1355,9 +1355,9 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
     /* second-toolbar buttons reusing their menu actions, in upstream's
      * order — manage indexes / relationships need a table selected in
      * the browser and export-table-data reuses that same flow */
-    exportRows->setIcon(Icons::get(QStringLiteral("export_data_16.ico")));
+    exportRows->setIcon(Icons::getInset(QStringLiteral("export_data_16.ico")));
     toolbar->addAction(exportRows);
-    runScript->setIcon(Icons::get(QStringLiteral("execbatch_16.ico")));
+    runScript->setIcon(Icons::getInset(QStringLiteral("execbatch_16.ico")));
     toolbar->addAction(runScript);
     copyDb->setIcon(Icons::get(QStringLiteral("copy_data_16.ico")));
     toolbar->addAction(copyDb);
