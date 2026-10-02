@@ -921,7 +921,14 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
             QMessageBox::information(this, QStringLiteral("User Manager"),
                                      QStringLiteral("Open a connection first."));
     });
+    /* every top-level Tools item carries an icon (owner directive);
+     * icons follow upstream's id→bitmap map where one exists
+     * (ConnectionCommunity::CreateIconList: Export All→IDI_XMLHTML_16,
+     * Backup→IDI_EXPORTDATA_16, …) and pick a bundled bitmap for the
+     * port-only / upstream-iconless rows. Submenu children stay plain —
+     * upstream's Show/Theme/language children have no icons either */
     QMenu *show = tools->addMenu(QStringLiteral("Sho&w"));
+    show->menuAction()->setIcon(Icons::get(QStringLiteral("view.ico")));
     /* SQLite has none of these concepts at all (no server, no runtime
      * parameters, no other connections to list) — guarded with a plain
      * message; PostgreSQL has real equivalents, just different statements,
@@ -955,8 +962,10 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
                 QStringLiteral("Status"));
     });
     tools->addSeparator();
-    addDisabled(tools, QStringLiteral("Change &Language\tAlt+Shift+L"));
+    QAction *changeLang = addDisabled(tools, QStringLiteral("Change &Language\tAlt+Shift+L"));
+    changeLang->setIcon(Icons::get(QStringLiteral("user-globe.ico")));
     QMenu *connDetails = tools->addMenu(QStringLiteral("Export/I&mport Connection Details"));
+    connDetails->menuAction()->setIcon(Icons::get(QStringLiteral("export_result.ico")));
     QAction *exportConn = connDetails->addAction(QStringLiteral("&Export Connection Details…"));
     connect(exportConn, &QAction::triggered, this, [this] {
         auto *t = currentTab();
@@ -1076,6 +1085,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
         ObjectBrowserColor::save(browserColor);
     });
     QAction *queryTimeout = tools->addAction(QStringLiteral("Query &Timeout…"));
+    queryTimeout->setIcon(Icons::get(QStringLiteral("schdexport_16.ico")));
     connect(queryTimeout, &QAction::triggered, this, [this] {
         bool ok = false;
         const int cur = ConnectionTab::queryTimeoutSecs();
@@ -1088,6 +1098,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
             ConnectionTab::setQueryTimeoutSecs(secs);
     });
     QMenu *themeMenu = tools->addMenu(QStringLiteral("&Theme"));
+    themeMenu->menuAction()->setIcon(Icons::get(QStringLiteral("colorpicker.ico")));
     auto *themeGroup = new QActionGroup(this);
     themeGroup->setExclusive(true);
     const QString curTheme = Theme::load();
@@ -1357,7 +1368,10 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
     /* second-toolbar buttons reusing their menu actions, in upstream's
      * order — manage indexes / relationships need a table selected in
      * the browser and export-table-data reuses that same flow */
-    exportRows->setIcon(Icons::get(QStringLiteral("export_data_16.ico")));
+    /* upstream maps Export All Rows to IDI_XMLHTML_16 and Backup to
+     * IDI_EXPORTDATA_16 (CreateIconList) — two distinct glyphs so the
+     * menu rows read apart; the toolbar shares these actions */
+    exportRows->setIcon(Icons::get(QStringLiteral("exportxmlhtml_16.ico")));
     toolbar->addAction(exportRows);
     runScript->setIcon(Icons::get(QStringLiteral("execbatch_16.ico")));
     toolbar->addAction(runScript);
