@@ -187,14 +187,19 @@ QTreeView::item { height: 18px; }
  * has one) the platform style — notably the GTK platform theme on XFCE —
  * drew unchecked/disabled boxes with no visible frame at all, so "Use
  * Compressed Protocol" looked like bare text. A bordered box in each state,
- * checked = filled accent + white tick, works under any style/palette. */
+ * checked = filled accent + white tick, works under any style/palette.
+ * QMenu::indicator covers the checkable rows of menus (Edit's double-click
+ * toggle, Set Autocommit): without a rule there, the unchecked state drew
+ * NOTHING next to the label on the styled menu, so a checkable row was
+ * indistinguishable from a plain command. */
 QString checkBoxSheet(const char *border, const char *bg, const char *accent,
                       const char *disabledBorder, const char *disabledBg)
 {
-    /* QCheckBox widgets, and the checkable rows of item views (the column
-     * checklists in the Foreign Keys / Index dialogs) */
+    /* QCheckBox widgets, the checkable rows of item views (the column
+     * checklists in the Foreign Keys / Index dialogs), and checkable menu
+     * items */
     QString out;
-    for(const char *sel : {"QCheckBox", "QAbstractItemView"})
+    for(const char *sel : {"QCheckBox", "QAbstractItemView", "QMenu"})
         out +=
             QStringLiteral("%6::indicator { width: 13px; height: 13px; border: 1px solid %1;"
                            " border-radius: 2px; background: %2; }"
