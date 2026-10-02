@@ -71,11 +71,14 @@ QTabBar::tab:!selected { margin-top: 0; }
 /* connection tabs — white strip with the SQLyog blue underline */
 QTabWidget#connTabs > QTabBar { background: #FFFFFF; qproperty-drawBase: 0;
     border-bottom: 2px solid #3B7DBB; }
-QTabWidget#connTabs > QTabBar::tab { background: #F0F0F0; color: #3B7DBB;
+QTabWidget#connTabs > QTabBar::tab { background: #F0F0F0; color: #1E1E1E;
     border: 1px solid #C8C8C8; border-bottom: 0; margin-right: 0;
     padding: 3px 6px; }
+/* owner taste (2026-10-02): the ACTIVE tab carries the SQLyog blue, the
+ * inactive ones go dark — the previous black-active/blue-rest made the
+ * front tab read as the quiet one */
 QTabWidget#connTabs > QTabBar::tab:selected { background: #FFFFFF;
-    color: #1E1E1E; }
+    color: #3B7DBB; }
 
 /* ConnectionDialog's own driver tabs (MySQL/SQLite/PostgreSQL/HTTP/SSH/
  * SSL/Advanced) — same treatment as #connTabs above; without a name of
@@ -102,10 +105,10 @@ QTabWidget#connectDialogTabs > QTabBar::tab:selected { background: #FFFFFF;
 /* editor tabs (Query N / History) — white strip */
 QTabWidget#editorTabs > QTabBar { background: #FFFFFF; qproperty-drawBase: 0;
     border-bottom: 1px solid #C8D6E5; }
-QTabWidget#editorTabs > QTabBar::tab { background: #FFFFFF; color: #3B7DBB;
+QTabWidget#editorTabs > QTabBar::tab { background: #FFFFFF; color: #1E1E1E;
     border-right: 1px solid #E0E0E0; padding: 3px 14px; }
 QTabWidget#editorTabs > QTabBar::tab:selected { background: #FFFFFF;
-    color: #1E1E1E; border-bottom: 2px solid #3B7DBB; }
+    color: #3B7DBB; border-bottom: 2px solid #3B7DBB; }
 
 /* result tabs (Messages / Table Data / Info + result grids) — solid blue */
 QTabWidget#resultTabs > QTabBar { background: #3B7DBB; qproperty-drawBase: 0; }
