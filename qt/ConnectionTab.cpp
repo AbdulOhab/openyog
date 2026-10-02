@@ -1964,6 +1964,10 @@ void ConnectionTab::setDataViewMode(const QString &mode)
         m_tableData->formTestCommand(mode);
         return;
     }
+    if(mode.startsWith(QStringLiteral("jump:"))) {
+        m_tableData->formTestCommand(mode); /* jump:<row>:<col> lives there */
+        return;
+    }
     if(mode.startsWith(QStringLiteral("quickfilter:"))) {
         m_tableData->quickFilterForTest(mode.mid(QStringLiteral("quickfilter:").size()));
         return;

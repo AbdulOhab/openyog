@@ -127,6 +127,8 @@ private:
     void applyFilterWhere(const QString &where);
     void reload();
     QByteArray fetchCellBytes(int row, int col) const; /* raw bytes for hex view */
+    QPair<QString, QString> fkTarget(int col) const;   /* (parentTable, parentCol) */
+    void jumpToReferenced(int row, int col, const QPair<QString, QString> &fk);
     QString renderTextView() const; /* column-aligned dump, upstream FormatResultSet */
     void refreshTextViewIfShown();
     /* checked rows from the row-select column (falls back to nothing);

@@ -19,6 +19,7 @@ class QCheckBox;
 class QLabel;
 class QLineEdit;
 class QPlainTextEdit;
+class QPushButton;
 class QScrollArea;
 class QSpinBox;
 class QToolButton;
@@ -42,6 +43,13 @@ public:
     {
         std::function<int(int row)> rowState;        /* RowState of a model row */
         std::function<bool(int row, int col)> dirty; /* cell differs from the loaded value */
+        /* BLOB support (session 112): the model stores strings, so the raw
+         * bytes of a binary cell aren't in it — the view re-queries them.
+         * Staging writes back as a driver hex literal, the same expr path
+         * the grid's Hex tab uses. Either hook may be null → the field's
+         * Load/Save/preview simply degrade to size-only display. */
+        std::function<QByteArray(int row, int col)> blobBytes;
+        std::function<void(int row, int col, const QByteArray &bytes)> stageBlob;
     };
 
     explicit FormView(QWidget *parent = nullptr);
@@ -63,6 +71,7 @@ public:
     void setFieldForTest(int col, const QString &text);
     QString fieldTextForTest(int col) const;
     void setNullForTest(int col, bool on);
+    void setBlobForTest(int col, const QByteArray &bytes); /* Load button, no dialog */
 
 signals:
     void newRowRequested();
@@ -82,12 +91,19 @@ private:
         QPlainTextEdit *multi = nullptr;
         QCheckBox *nullBox = nullptr;
         bool blank = false; /* last loaded value was NULL */
+        /* BLOB columns only: thumbnail/size preview + file in/out */
+        QLabel *blobPreview = nullptr;
+        QPushButton *blobLoad = nullptr;
+        QPushButton *blobSave = nullptr;
     };
 
     void applyNavIcons();
     void rebuild();
-    void refresh();            /* model → widgets, for m_row */
-    void commitField(int col); /* widget → model */
+    void refresh();                              /* model → widgets, for m_row */
+    void commitField(int col);                   /* widget → model */
+    void loadBlobFromFile(int col);              /* BLOB field's Load button */
+    void saveBlobToFile(int col);                /* BLOB field's Save button */
+    void refreshBlobPreview(int col, int state); /* thumbnail/size for m_row */
     void updateNav();
     QString fieldText(const Field &f) const;
     void styleField(const Field &f, int col, int state);

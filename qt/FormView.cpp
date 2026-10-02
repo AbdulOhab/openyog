@@ -4,16 +4,20 @@
 
 #include <QCheckBox>
 #include <QEvent>
+#include <QFileDialog>
 #include <QFontMetrics>
 #include <QGridLayout>
 #include <QHBoxLayout>
+#include <QImage>
 #include <QLabel>
 #include <QEvent>
 #include <QIcon>
 #include <QLineEdit>
+#include <QMessageBox>
 #include <QPainter>
 #include <QPixmap>
 #include <QPlainTextEdit>
+#include <QPushButton>
 #include <QScrollArea>
 #include <QIntValidator>
 #include <QToolButton>
@@ -260,6 +264,34 @@ void FormView::rebuild()
         f.nullBox = new QCheckBox(QStringLiteral("NULL"), m_body);
         f.nullBox->setEnabled(col.nullable && !col.blob);
         f.nullBox->setVisible(!col.blob);
+
+        /* BLOB columns get a preview row under the (locked) value line: a
+         * thumbnail when the bytes decode as an image (else a size note),
+         * with file in/out beside it — the Form-view twin of the grid's
+         * Hex-tab Load/Save, against the same staged-edit pipeline */
+        if(col.blob) {
+            auto *box = new QWidget(m_body);
+            auto *col0 = new QVBoxLayout(box);
+            col0->setContentsMargins(0, 0, 0, 0);
+            col0->setSpacing(4);
+            auto *strip = new QWidget(box);
+            auto *cols = new QHBoxLayout(strip);
+            cols->setContentsMargins(0, 0, 0, 0);
+            cols->setSpacing(8);
+            f.blobPreview = new QLabel(strip);
+            f.blobPreview->setMinimumHeight(68);
+            f.blobPreview->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+            f.blobPreview->setStyleSheet(
+                QStringLiteral("border: 1px solid #D9D9D9; background: #FAFAFA; padding: 4px;"));
+            cols->addWidget(f.blobPreview, 1);
+            f.blobLoad = new QPushButton(QStringLiteral("Load from File…"), strip);
+            f.blobSave = new QPushButton(QStringLiteral("Save to File…"), strip);
+            cols->addWidget(f.blobLoad);
+            cols->addWidget(f.blobSave);
+            col0->addWidget(strip);
+            connect(f.blobLoad, &QPushButton::clicked, this, [this, c] { loadBlobFromFile(c); });
+            connect(f.blobSave, &QPushButton::clicked, this, [this, c] { saveBlobToFile(c); });
+        }
         connect(f.nullBox, &QCheckBox::toggled, this, [this, c](bool on) {
             if(m_loading || !m_model || m_row >= m_model->rowCount())
                 return;
@@ -273,8 +305,18 @@ void FormView::rebuild()
         });
 
         QWidget *editor = f.line ? static_cast<QWidget *>(f.line) : static_cast<QWidget *>(f.multi);
+        QWidget *cell = editor;
+        if(col.blob) { /* value line on top, preview strip under it */
+            auto *box = new QWidget(m_body);
+            auto *v = new QVBoxLayout(box);
+            v->setContentsMargins(0, 0, 0, 0);
+            v->setSpacing(2);
+            v->addWidget(editor);
+            v->addWidget(f.blobPreview->parentWidget());
+            cell = box;
+        }
         grid->addWidget(f.label, c, 0, Qt::AlignTop);
-        grid->addWidget(editor, c, 1);
+        grid->addWidget(cell, c, 1);
         grid->addWidget(f.nullBox, c, 2, Qt::AlignTop);
         m_fields << f;
     }
@@ -345,6 +387,8 @@ void FormView::refresh()
             f.nullBox->setChecked(isNull);
             f.nullBox->setEnabled(col.nullable && !col.blob && state != Deleted);
             styleField(f, c, state);
+            if(col.blob)
+                refreshBlobPreview(c, state);
         }
         m_loading = false;
         if(state == Inserted) {
@@ -415,6 +459,110 @@ void FormView::commit()
 {
     for(int c = 0; c < m_fields.size(); ++c)
         commitField(c);
+}
+
+/* ---- BLOB fields: preview + file in/out (grid Hex tab's siblings) ------ */
+
+void FormView::refreshBlobPreview(int col, int state)
+{
+    Field &f = m_fields[col];
+    const bool dirty = m_hooks.dirty && m_hooks.dirty(m_row, col);
+    if(state == Deleted) {
+        f.blobPreview->setPixmap(QPixmap());
+        f.blobPreview->setText(QStringLiteral("row marked for deletion"));
+        f.blobLoad->setEnabled(false);
+        f.blobSave->setEnabled(false);
+        return;
+    }
+    f.blobLoad->setEnabled(true);
+    f.blobSave->setEnabled(state == Normal && !dirty && m_hooks.blobBytes);
+    if(state == Inserted || dirty) {
+        /* staged bytes live in the model only as a hex-literal string — no
+         * image to decode; the line above already shows that expression */
+        f.blobPreview->setPixmap(QPixmap());
+        f.blobPreview->setText(dirty ? QStringLiteral("staged edit — Apply to write")
+                                     : QStringLiteral("new row — Load from File… to fill"));
+        return;
+    }
+    if(modelText(m_row, col) == kNull) {
+        f.blobPreview->setPixmap(QPixmap());
+        f.blobPreview->setText(QStringLiteral("NULL"));
+        return;
+    }
+    if(!m_hooks.blobBytes) {
+        f.blobPreview->setText(QStringLiteral("(binary — no preview available)"));
+        return;
+    }
+    const QByteArray bytes = m_hooks.blobBytes(m_row, col);
+    if(bytes.isEmpty()) {
+        f.blobPreview->setPixmap(QPixmap());
+        f.blobPreview->setText(QStringLiteral("(empty)"));
+        return;
+    }
+    const QImage img = QImage::fromData(bytes);
+    if(!img.isNull()) {
+        const QSize box(220, 64);
+        f.blobPreview->setPixmap(
+            QPixmap::fromImage(img.scaled(box, Qt::KeepAspectRatio, Qt::SmoothTransformation)));
+        f.blobPreview->setText(QString());
+        f.blobPreview->setToolTip(QStringLiteral("%1×%2 image, %3 bytes")
+                                      .arg(img.width())
+                                      .arg(img.height())
+                                      .arg(bytes.size()));
+    } else {
+        f.blobPreview->setPixmap(QPixmap());
+        f.blobPreview->setText(QStringLiteral("binary content, %1 byte(s)").arg(bytes.size()));
+        f.blobPreview->setToolTip(QString());
+    }
+}
+
+void FormView::loadBlobFromFile(int col)
+{
+    if(!m_model || m_row >= m_model->rowCount() || !m_hooks.stageBlob)
+        return;
+    const QString file = QFileDialog::getOpenFileName(this, QStringLiteral("Load binary content"),
+                                                      QString(), QStringLiteral("All files (*)"));
+    if(file.isEmpty())
+        return;
+    QFile in(file);
+    if(!in.open(QIODevice::ReadOnly)) {
+        QMessageBox::warning(this, QStringLiteral("Load"), in.errorString());
+        return;
+    }
+    const QByteArray bytes = in.readAll();
+    m_hooks.stageBlob(m_row, col, bytes);
+    /* the staged hex-literal lands in the model; refresh() repainting the
+     * line + preview below picks up the dirty state */
+    refreshBlobPreview(col, m_hooks.rowState ? m_hooks.rowState(m_row) : Normal);
+}
+
+void FormView::saveBlobToFile(int col)
+{
+    if(!m_hooks.blobBytes)
+        return;
+    const QByteArray bytes = m_hooks.blobBytes(m_row, col);
+    if(bytes.isEmpty()) {
+        QMessageBox::information(this, QStringLiteral("Save"),
+                                 QStringLiteral("Nothing to save (NULL or empty cell)."));
+        return;
+    }
+    const QString file = QFileDialog::getSaveFileName(this, QStringLiteral("Save binary content"),
+                                                      QString(), QStringLiteral("All files (*)"));
+    if(file.isEmpty())
+        return;
+    QFile out(file);
+    if(!out.open(QIODevice::WriteOnly)) {
+        QMessageBox::warning(this, QStringLiteral("Save"), out.errorString());
+        return;
+    }
+    out.write(bytes);
+}
+
+void FormView::setBlobForTest(int col, const QByteArray &bytes)
+{
+    if(m_hooks.stageBlob && col >= 0 && col < m_fields.size())
+        m_hooks.stageBlob(m_row, col, bytes);
+    refreshBlobPreview(col, m_hooks.rowState ? m_hooks.rowState(m_row) : Normal);
 }
 
 bool FormView::eventFilter(QObject *watched, QEvent *event)
