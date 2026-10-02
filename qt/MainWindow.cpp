@@ -33,6 +33,7 @@
 #include <QJsonValue>
 #include <QLabel>
 #include <QLineEdit>
+#include <QCheckBox>
 #include <QSpinBox>
 #include <QMenuBar>
 #include <QMessageBox>
@@ -367,6 +368,22 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
     connect(collapseAll, &QAction::triggered, this, [this] {
         if(auto *t = currentTab())
             t->collapseBrowser();
+    });
+    /* owner-requested toggle over the tree's double-click gesture, backed
+     * by upstream's own GetTextOnDBClick key (see ObjectBrowserDoubleClick).
+     * Checked = double-click opens Table Data directly; unchecked = the
+     * upstream default, the object's name drops into the editor. The
+     * Preferences dialog writes the same key, so re-sync on every open. */
+    QAction *openDataOnDbl = edit->addAction(QStringLiteral("Open Table Data on Dou&ble-Click"));
+    /* checkable → no icon: Qt paints EITHER the glyph or the check
+     * indicator in the icon column, never both — the tick is the point
+     * here (upstream's checkable rows are icon-less for the same reason).
+     * State is set here and re-synced from the Preferences save below —
+     * NOT in QMenu::aboutToShow, which a plain show() never emits */
+    openDataOnDbl->setCheckable(true);
+    openDataOnDbl->setChecked(!ObjectBrowserDoubleClick::pasteNameInEditor());
+    connect(openDataOnDbl, &QAction::triggered, this, [openDataOnDbl] {
+        ObjectBrowserDoubleClick::setPasteNameInEditor(!openDataOnDbl->isChecked());
     });
     edit->addSeparator();
     QMenu *execMenu = edit->addMenu(QStringLiteral("Execute Quer&y"));
@@ -1070,7 +1087,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
     });
     QAction *preferences = tools->addAction(QStringLiteral("&Preferences…"));
     preferences->setIcon(Icons::get(QStringLiteral("preferences.ico")));
-    connect(preferences, &QAction::triggered, this, [this] {
+    connect(preferences, &QAction::triggered, this, [this, openDataOnDbl] {
         /* one dialog over the same settings the Theme submenu, Query
          * Timeout… action and Change Object Browser Color already expose
          * individually — a single stop for the handful of app-wide (not
@@ -1087,6 +1104,14 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
         timeoutSpin->setSpecialValueText(QStringLiteral("never"));
         timeoutSpin->setLocale(QLocale::c());
         QColor browserColor = ObjectBrowserColor::load();
+        /* upstream's Preferences checkbox (SQLyog.rc "Paste object name in
+         * &editor on double-click", key GetTextOnDBClick) — checked keeps
+         * the name-into-editor gesture, unchecked makes a table's
+         * double-click open its Table Data (same key the Edit-menu toggle
+         * and the tree's own handler use) */
+        auto *dblClickBox =
+            new QCheckBox(QStringLiteral("Paste object name in editor on double-click"), &dlg);
+        dblClickBox->setChecked(ObjectBrowserDoubleClick::pasteNameInEditor());
         auto *colorBtn = new QPushButton(
             browserColor.isValid() ? browserColor.name() : QStringLiteral("(theme default)"), &dlg);
         connect(colorBtn, &QPushButton::clicked, &dlg, [&] {
@@ -1102,6 +1127,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
         form->addRow(QStringLiteral("Theme"), themeCombo);
         form->addRow(QStringLiteral("Query timeout (seconds)"), timeoutSpin);
         form->addRow(QStringLiteral("Object browser selection color"), colorBtn);
+        form->addRow(QString(), dblClickBox);
         auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
         connect(buttons, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
         connect(buttons, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
@@ -1116,6 +1142,8 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
         Theme::apply(*qApp, theme);
         ConnectionTab::setQueryTimeoutSecs(timeoutSpin->value());
         ObjectBrowserColor::save(browserColor);
+        ObjectBrowserDoubleClick::setPasteNameInEditor(dblClickBox->isChecked());
+        openDataOnDbl->setChecked(!dblClickBox->isChecked());
     });
     QAction *queryTimeout = tools->addAction(QStringLiteral("Query &Timeout…"));
     queryTimeout->setIcon(Icons::get(QStringLiteral("schdexport_16.ico")));
@@ -1216,7 +1244,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
     };
 
     QAction *autocommit = transactions->addAction(QStringLiteral("Set Autocommit"));
-    autocommit->setIcon(Icons::get(QStringLiteral("entmenu.ico")));
+    autocommit->setCheckable(true);
     autocommit->setCheckable(true);
     autocommit->setChecked(true);
     connect(autocommit, &QAction::toggled, this, [mysqlOnlyTx](bool on) {

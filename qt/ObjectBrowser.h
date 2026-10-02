@@ -24,6 +24,20 @@ QColor load();
 void save(const QColor &c);
 } // namespace ObjectBrowserColor
 
+/* Double-click behaviour on a tree node, backed by OpenYog.ini
+ * [UserInterface] GetTextOnDBClick — upstream's own key (SQLyog's
+ * Preferences checkbox "Paste object name in editor on double-click").
+ * true  (default, upstream's 1): double-click drops the object's name
+ *       into the active editor at the caret;
+ * false (upstream's 0):        double-click opens a table's Table Data
+ *       directly (other node kinds keep their gestures either way).
+ * One shared read/write so the Edit-menu toggle and the Preferences
+ * checkbox always agree with what the tree actually does. */
+namespace ObjectBrowserDoubleClick {
+bool pasteNameInEditor();
+void setPasteNameInEditor(bool paste);
+} // namespace ObjectBrowserDoubleClick
+
 class ObjectBrowser : public QWidget
 {
     Q_OBJECT

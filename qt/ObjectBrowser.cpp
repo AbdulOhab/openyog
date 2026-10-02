@@ -41,6 +41,19 @@ void ObjectBrowserColor::save(const QColor &c)
                           settingsIniPath().toUtf8());
 }
 
+bool ObjectBrowserDoubleClick::pasteNameInEditor()
+{
+    /* upstream's default is 1 (paste the name); 0 = open Table Data */
+    return wyIni::IniGetInt("UserInterface", "GetTextOnDBClick", 1, settingsIniPath().toUtf8()) !=
+           0;
+}
+
+void ObjectBrowserDoubleClick::setPasteNameInEditor(bool paste)
+{
+    wyIni::IniWriteInt("UserInterface", "GetTextOnDBClick", paste ? 1 : 0,
+                       settingsIniPath().toUtf8());
+}
+
 namespace {
 constexpr int KConnection = 1001;
 constexpr int KDatabase = 1002;
@@ -211,8 +224,7 @@ ObjectBrowser::ObjectBrowser(QWidget *parent) : QWidget(parent)
          * right-click menu / single click. Turning the key to 0 restores
          * those gestures on double-click, which is upstream's own alternate
          * branch (ShowTable). */
-        const bool insertOnDbl = wyIni::IniGetInt("UserInterface", "GetTextOnDBClick", 1,
-                                                  settingsIniPath().toUtf8()) != 0;
+        const bool insertOnDbl = ObjectBrowserDoubleClick::pasteNameInEditor();
         /* the database node itself is the switch gesture (double-
          * click = make this tab's connection that database) */
         if(kind == KPgDatabase)
