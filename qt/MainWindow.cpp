@@ -63,10 +63,12 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
     resize(1200, 760);
 
     /* app icon at the left of the menu bar — visible regardless of whether the
-     * window manager draws a title-bar icon (SQLyog shows one here too) */
+     * window manager draws a title-bar icon (SQLyog shows one here too).
+     * 16px, matching the 9pt menu text height: a 24px pixmap here grew the
+     * whole bar (the corner widget sets its height) and dwarfed the labels */
     auto *menuIcon = new QLabel(this);
-    menuIcon->setPixmap(QPixmap(QStringLiteral(":/resources/openyog-24.png")));
-    menuIcon->setContentsMargins(12, 2, 8, 2);
+    menuIcon->setPixmap(QPixmap(QStringLiteral(":/resources/openyog-16.png")));
+    menuIcon->setContentsMargins(12, 1, 8, 1);
     menuBar()->setCornerWidget(menuIcon, Qt::TopLeftCorner);
     /* balances the icon's left margin above — without this, a narrow window
      * leaves the last menu ("Help") flush against the right edge while the
