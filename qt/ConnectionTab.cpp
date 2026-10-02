@@ -1,5 +1,6 @@
 #include "ConnectionTab.h"
 #include "ObjectBrowser.h"
+#include "RecentFiles.h"
 #include "TableDataView.h"
 
 #include "CreateTableDialog.h"
@@ -1656,6 +1657,7 @@ void ConnectionTab::openSqlFile(const QString &path)
     if(auto *ed = currentEditor())
         ed->setPlainText(QString::fromUtf8(f.readAll()));
     m_editorTabs->setCurrentIndex(0);
+    RecentFiles::push(path); /* every open path feeds File > Recent Files */
 }
 
 void ConnectionTab::saveEditor()
@@ -1669,6 +1671,7 @@ void ConnectionTab::saveEditor()
     if(auto *ed = currentEditor())
         if(file.open(QIODevice::WriteOnly | QIODevice::Text))
             file.write(ed->toPlainText().toUtf8());
+    RecentFiles::push(f); /* upstream records saves too (WriteLatestFile) */
 }
 
 void ConnectionTab::showHistory()
