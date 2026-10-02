@@ -173,9 +173,12 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
         if(auto *t = currentTab())
             t->addEditorTab();
     });
-    addDisabled(file, QStringLiteral("New Query &Builder\tCtrl+K"));
-    addDisabled(file, QStringLiteral("Ne&w Schema Designer\tCtrl+Alt+D"));
+    addDisabled(file, QStringLiteral("New Query &Builder\tCtrl+K"))
+        ->setIcon(Icons::get(QStringLiteral("entmenu.ico")));
+    addDisabled(file, QStringLiteral("Ne&w Schema Designer\tCtrl+Alt+D"))
+        ->setIcon(Icons::get(QStringLiteral("entmenu.ico")));
     QAction *dataSearch = file->addAction(QStringLiteral("New Data Searc&h\tCtrl+Shift+D"));
+    dataSearch->setIcon(Icons::get(QStringLiteral("entmenu.ico")));
     connect(dataSearch, &QAction::triggered, this, [this] {
         if(auto *t = currentTab())
             t->promptDataSearch({});
@@ -334,6 +337,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
     });
     file->addSeparator();
     QMenu *recent = file->addMenu(QStringLiteral("&Recent Files"));
+    recent->menuAction()->setIcon(Icons::get(QStringLiteral("foldericon.ico")));
     recent->addAction(QStringLiteral("(no recent files)"))->setEnabled(false);
     file->addSeparator();
     QAction *quit = file->addAction(QStringLiteral("E&xit\tAlt+F4"));
@@ -358,13 +362,15 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
             this, QStringLiteral("Object Browser Color"),
             QStringLiteral("Saved — applies to connections opened from now on."));
     });
-    connect(edit->addAction(QStringLiteral("Collapse All in Object Browser")), &QAction::triggered,
-            this, [this] {
-                if(auto *t = currentTab())
-                    t->collapseBrowser();
-            });
+    QAction *collapseAll = edit->addAction(QStringLiteral("Collapse All in Object Browser"));
+    collapseAll->setIcon(Icons::get(QStringLiteral("object.ico")));
+    connect(collapseAll, &QAction::triggered, this, [this] {
+        if(auto *t = currentTab())
+            t->collapseBrowser();
+    });
     edit->addSeparator();
     QMenu *execMenu = edit->addMenu(QStringLiteral("Execute Quer&y"));
+    execMenu->menuAction()->setIcon(Icons::get(QStringLiteral("execute_16.ico")));
     QAction *execQuery = execMenu->addAction(QStringLiteral("Exe&cute Query\tF9"));
     execQuery->setIcon(Icons::get(QStringLiteral("execute_16.ico")));
     connect(execQuery, &QAction::triggered, this, &MainWindow::executeCurrentTab);
@@ -381,6 +387,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
             t->runAndEdit();
     });
     QMenu *explain = edit->addMenu(QStringLiteral("Execute Explain"));
+    explain->menuAction()->setIcon(Icons::get(QStringLiteral("tablediag.ico")));
     connect(explain->addAction(QStringLiteral("&EXPLAIN Current Query")), &QAction::triggered, this,
             [this] {
                 if(auto *t = currentTab())
@@ -393,6 +400,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
             });
     edit->addSeparator();
     QMenu *formatter = edit->addMenu(QStringLiteral("S&QL Formatter"));
+    formatter->menuAction()->setIcon(Icons::get(QStringLiteral("formatall.ico")));
     const auto wireFormat = [this, formatter](const QString &label, QKeySequence sc, int scope) {
         QAction *a = formatter->addAction(label);
         a->setShortcut(sc);
@@ -407,6 +415,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
     wireFormat(QStringLiteral("Format &All Queries\tShift+F12"),
                QKeySequence(Qt::SHIFT | Qt::Key_F12), 2);
     QMenu *insertTpl = edit->addMenu(QStringLiteral("&Insert Templates…\tCtrl+Shift+T"));
+    insertTpl->menuAction()->setIcon(Icons::get(QStringLiteral("templatesm.ico")));
     for(const auto &[label, kind] :
         {std::pair{QStringLiteral("&INSERT INTO <tablename>…"), 0},
          std::pair{QStringLiteral("&UPDATE <tablename> SET…"), 1},
@@ -431,20 +440,23 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
     QAction *copy = edit->addAction(QStringLiteral("&Copy\tCtrl+C"));
     copy->setIcon(Icons::get(QStringLiteral("Copy.ico")));
     connect(copy, &QAction::triggered, this, [this] { editClipboard(QStringLiteral("copy")); });
-    connect(edit->addAction(QStringLiteral("Copy With Normalized &Whitespace\tAlt+C")),
-            &QAction::triggered, this, [this] {
-                if(auto *t = currentTab())
-                    t->editorCopyNormalizedWhitespace();
-            });
+    QAction *copyNorm = edit->addAction(QStringLiteral("Copy With Normalized &Whitespace\tAlt+C"));
+    copyNorm->setIcon(Icons::get(QStringLiteral("text_View.ico")));
+    connect(copyNorm, &QAction::triggered, this, [this] {
+        if(auto *t = currentTab())
+            t->editorCopyNormalizedWhitespace();
+    });
     QAction *paste = edit->addAction(QStringLiteral("&Paste\tCtrl+V"));
     paste->setIcon(Icons::get(QStringLiteral("paste.ico")));
     connect(paste, &QAction::triggered, this, [this] { editClipboard(QStringLiteral("paste")); });
-    connect(edit->addAction(QStringLiteral("Insert From Fi&le…")), &QAction::triggered, this,
-            [this] {
-                if(auto *t = currentTab())
-                    t->editorInsertFromFile();
-            });
+    QAction *insertFromFile = edit->addAction(QStringLiteral("Insert From Fi&le…"));
+    insertFromFile->setIcon(Icons::get(QStringLiteral("import_data.ico")));
+    connect(insertFromFile, &QAction::triggered, this, [this] {
+        if(auto *t = currentTab())
+            t->editorInsertFromFile();
+    });
     QAction *selAll = edit->addAction(QStringLiteral("Select &All\tCtrl+A"));
+    selAll->setIcon(Icons::get(QStringLiteral("grid_view.ico")));
     connect(selAll, &QAction::triggered, this,
             [this] { editClipboard(QStringLiteral("selectall")); });
     edit->addSeparator();
@@ -458,6 +470,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
     connect(findAct, &QAction::triggered, this,
             [onEditor] { onEditor(&ConnectionTab::promptFind); });
     QAction *findNextAct = edit->addAction(QStringLiteral("Find Next\tF3"));
+    findNextAct->setIcon(Icons::get(QStringLiteral("search.ico")));
     findNextAct->setShortcut(QKeySequence::FindNext);
     connect(findNextAct, &QAction::triggered, this,
             [onEditor] { onEditor(&ConnectionTab::findNext); });
@@ -467,43 +480,52 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
     connect(replaceAct, &QAction::triggered, this,
             [onEditor] { onEditor(&ConnectionTab::promptReplace); });
     QAction *gotoAct = edit->addAction(QStringLiteral("&Go To…\tCtrl+G"));
+    gotoAct->setIcon(Icons::get(QStringLiteral("arrow_down.ico")));
     gotoAct->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_G));
     connect(gotoAct, &QAction::triggered, this,
             [onEditor] { onEditor(&ConnectionTab::promptGoto); });
     edit->addSeparator();
     QAction *listTags = edit->addAction(QStringLiteral("Li&st All Tags\tCtrl+Space"));
+    listTags->setIcon(Icons::get(QStringLiteral("entmenu.ico")));
     /* no setShortcut — the editor handles Ctrl+Space itself */
     connect(listTags, &QAction::triggered, this, [this] {
         if(auto *t = currentTab())
             t->listTags();
     });
     QAction *listMatching = edit->addAction(QStringLiteral("List &Matching Tags\tCtrl+Enter"));
+    listMatching->setIcon(Icons::get(QStringLiteral("entmenu.ico")));
     connect(listMatching, &QAction::triggered, this, [this] {
         if(auto *t = currentTab())
             t->listTags();
     });
     edit->addSeparator();
     QAction *hideBrowser = edit->addAction(QStringLiteral("Hide Object &Browser\tCtrl+Shift+1"));
+    hideBrowser->setIcon(Icons::get(QStringLiteral("closetab.ico")));
     connect(hideBrowser, &QAction::triggered, this, [this] {
         if(auto *t = currentTab())
             t->toggleBrowserPane();
     });
     QAction *hideResult = edit->addAction(QStringLiteral("Hide Result Pa&ne\tCtrl+Shift+2"));
+    hideResult->setIcon(Icons::get(QStringLiteral("closetab.ico")));
     connect(hideResult, &QAction::triggered, this, [this] {
         if(auto *t = currentTab())
             t->toggleResultPane();
     });
     QAction *hideEditor = edit->addAction(QStringLiteral("&Hide SQL Editor\tCtrl+Shift+3"));
+    hideEditor->setIcon(Icons::get(QStringLiteral("closetab.ico")));
     connect(hideEditor, &QAction::triggered, this, [this] {
         if(auto *t = currentTab())
             t->toggleEditorPane();
     });
     QAction *prevTab = edit->addAction(QStringLiteral("Switch To Pre&vious Tab\tCtrl+PgUp"));
+    prevTab->setIcon(Icons::get(QStringLiteral("Up.ico")));
     connect(prevTab, &QAction::triggered, this, [this] { switchTab(-1); });
     QAction *nextTab = edit->addAction(QStringLiteral("Switch To Ne&xt Tab\tCtrl+PgDown"));
+    nextTab->setIcon(Icons::get(QStringLiteral("Down.ico")));
     connect(nextTab, &QAction::triggered, this, [this] { switchTab(1); });
     edit->addSeparator();
     QMenu *advanced = edit->addMenu(QStringLiteral("A&dvanced"));
+    advanced->menuAction()->setIcon(Icons::get(QStringLiteral("preferences.ico")));
     QAction *upper = advanced->addAction(QStringLiteral("Make Selection &Uppercase\tCtrl+Shift+U"));
     connect(upper, &QAction::triggered, this, [this] { editClipboard(QStringLiteral("upper")); });
     QAction *lower = advanced->addAction(QStringLiteral("Make Selection &Lowercase\tCtrl+Shift+L"));
@@ -582,6 +604,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
             t->promptAlterDatabase({});
     });
     QMenu *create = database->addMenu(QStringLiteral("C&reate"));
+    create->menuAction()->setIcon(Icons::get(QStringLiteral("new_data.ico")));
     QAction *createTblFromDb = create->addAction(QStringLiteral("&Table"));
     createTblFromDb->setIcon(Icons::get(QStringLiteral("createtableindata.ico")));
     connect(createTblFromDb, &QAction::triggered, this, [this] { createTable(); });
@@ -610,6 +633,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
         });
     }
     QMenu *dbOps = database->addMenu(QStringLiteral("More Database &Operations"));
+    dbOps->menuAction()->setIcon(Icons::get(QStringLiteral("database.ico")));
     QAction *dropDbAct = dbOps->addAction(QStringLiteral("Dro&p Database…\tDel"));
     dropDbAct->setIcon(Icons::get(QStringLiteral("dropdatabase.ico")));
     connect(dropDbAct, &QAction::triggered, this, [this] {
@@ -630,12 +654,14 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
     });
     database->addSeparator();
     QMenu *dbBackup = database->addMenu(QStringLiteral("&Backup/Export"));
+    dbBackup->menuAction()->setIcon(Icons::get(QStringLiteral("backup.ico")));
     addDisabled(dbBackup, QStringLiteral("&Scheduled Backups…\tCtrl+Alt+S"));
     QAction *dbDump =
         dbBackup->addAction(QStringLiteral("&Backup Database As SQL Dump…\tCtrl+Alt+E"));
     dbDump->setIcon(Icons::get(QStringLiteral("export_data_16.ico")));
     connect(dbDump, &QAction::triggered, this, [this] { dumpDatabase(); });
     QMenu *dbImport = database->addMenu(QStringLiteral("&Import "));
+    dbImport->menuAction()->setIcon(Icons::get(QStringLiteral("import_data.ico")));
     addDisabled(dbImport, QStringLiteral("Import E&xternal Data…\tCtrl+Alt+O"));
     QAction *dbRunScript =
         dbImport->addAction(QStringLiteral("&Execute SQL Script…\tCtrl+Shift+Q"));
@@ -661,6 +687,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
     /* ================= Table ======================================== */
     QMenu *table = menuBar()->addMenu(QStringLiteral("T&able"));
     QMenu *pasteSql = table->addMenu(QStringLiteral("&Paste SQL Statement"));
+    pasteSql->menuAction()->setIcon(Icons::get(QStringLiteral("templatesm.ico")));
     QAction *pasteIns =
         pasteSql->addAction(QStringLiteral("&INSERT INTO <tablename>…\tAlt+Shift+I"));
     QAction *pasteUpd =
@@ -697,6 +724,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
             t->openSelectedTable();
     });
     QAction *openTableNewTab = table->addAction(QStringLiteral("Open Table in &New Tab\tCtrl+F11"));
+    openTableNewTab->setIcon(Icons::get(QStringLiteral("open_in_new_tab.ico")));
     connect(openTableNewTab, &QAction::triggered, this, [this] {
         auto *t = currentTab();
         if(!t)
@@ -749,6 +777,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
     connect(manageFk, &QAction::triggered, this,
             [onSelectedTable] { onSelectedTable(&ConnectionTab::promptManageForeignKeys); });
     QMenu *moreTable = table->addMenu(QStringLiteral("Mo&re Table Operations"));
+    moreTable->menuAction()->setIcon(Icons::get(QStringLiteral("Addtables.ico")));
     QAction *renameTbl = moreTable->addAction(QStringLiteral("&Rename Table\tF2"));
     renameTbl->setIcon(Icons::get(QStringLiteral("rename.ico")));
     renameTbl->setShortcut(QKeySequence(Qt::Key_F2));
@@ -774,6 +803,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
             [onSelectedTable] { onSelectedTable(&ConnectionTab::showTableProperties); });
     table->addSeparator();
     QMenu *tblBackup = table->addMenu(QStringLiteral("&Backup/Export"));
+    tblBackup->menuAction()->setIcon(Icons::get(QStringLiteral("backup.ico")));
     addDisabled(tblBackup, QStringLiteral("&Scheduled Backups…\tCtrl+Alt+S"));
     QAction *dumpTblAct =
         tblBackup->addAction(QStringLiteral("&Backup Table(s) As SQL Dump…\tCtrl+Alt+E"));
@@ -785,6 +815,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
     connect(expTblData, &QAction::triggered, this,
             [onSelectedTable] { onSelectedTable(&ConnectionTab::exportTableData); });
     QMenu *tblImport = table->addMenu(QStringLiteral("&Import "));
+    tblImport->menuAction()->setIcon(Icons::get(QStringLiteral("import_data.ico")));
     addDisabled(tblImport, QStringLiteral("Import E&xternal Data…\tCtrl+Alt+O"));
     QAction *importCsv =
         tblImport->addAction(QStringLiteral("&Import CSV Data Using LOAD LOCAL…\tCtrl+Shift+M"));
@@ -812,6 +843,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
     /* ================= Others ======================================= */
     QMenu *others = menuBar()->addMenu(QStringLiteral("&Others"));
     QMenu *columns = others->addMenu(QStringLiteral("&Columns"));
+    columns->menuAction()->setIcon(Icons::get(QStringLiteral("column.ico")));
     QAction *dropCol = columns->addAction(QStringLiteral("Drop &Column…\tDel"));
     dropCol->setIcon(Icons::get(QStringLiteral("dropcolumn.ico")));
     connect(dropCol, &QAction::triggered, this,
@@ -821,6 +853,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
     connect(manageCols, &QAction::triggered, this,
             [onSelectedTable] { onSelectedTable(&ConnectionTab::promptAlterTable); });
     QMenu *indexes = others->addMenu(QStringLiteral("&Indexes"));
+    indexes->menuAction()->setIcon(Icons::get(QStringLiteral("manage_index_16.ico")));
     QAction *createIdx = indexes->addAction(QStringLiteral("Create &Index\tF4"));
     createIdx->setIcon(Icons::get(QStringLiteral("indexcreate.ico")));
     connect(createIdx, &QAction::triggered, this,
@@ -1117,17 +1150,25 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
 
     /* ================= Powertools =================================== */
     QMenu *powertools = menuBar()->addMenu(QStringLiteral("&Powertools"));
-    addDisabled(powertools, QStringLiteral("Database S&ynchronization Wizard…\tCtrl+Alt+W"));
-    addDisabled(powertools, QStringLiteral("&Visual Data Comparison Wizard…\tCtrl+Alt+Q"));
-    addDisabled(powertools, QStringLiteral("Schema &Synchronization Tool…\tCtrl+Q"));
+    addDisabled(powertools, QStringLiteral("Database S&ynchronization Wizard…\tCtrl+Alt+W"))
+        ->setIcon(Icons::get(QStringLiteral("dbsync_16.ico")));
+    addDisabled(powertools, QStringLiteral("&Visual Data Comparison Wizard…\tCtrl+Alt+Q"))
+        ->setIcon(Icons::get(QStringLiteral("Sync_16.ico")));
+    addDisabled(powertools, QStringLiteral("Schema &Synchronization Tool…\tCtrl+Q"))
+        ->setIcon(Icons::get(QStringLiteral("schema.ico")));
     powertools->addSeparator();
-    addDisabled(powertools, QStringLiteral("Import E&xternal Data…\tCtrl+Alt+O"));
-    addDisabled(powertools, QStringLiteral("S&QL Scheduler and Reporting Wizard…\tCtrl+Alt+N"));
-    addDisabled(powertools, QStringLiteral("S&cheduled Backups…\tCtrl+Alt+S"));
+    addDisabled(powertools, QStringLiteral("Import E&xternal Data…\tCtrl+Alt+O"))
+        ->setIcon(Icons::get(QStringLiteral("odbc.ico")));
+    addDisabled(powertools, QStringLiteral("S&QL Scheduler and Reporting Wizard…\tCtrl+Alt+N"))
+        ->setIcon(Icons::get(QStringLiteral("notification_16.ico")));
+    addDisabled(powertools, QStringLiteral("S&cheduled Backups…\tCtrl+Alt+S"))
+        ->setIcon(Icons::get(QStringLiteral("schdexport.ico")));
     powertools->addSeparator();
-    addDisabled(powertools, QStringLiteral("Scheduled &Jobs…"));
+    addDisabled(powertools, QStringLiteral("Scheduled &Jobs…"))
+        ->setIcon(Icons::get(QStringLiteral("jobmanager_16.ico")));
     powertools->addSeparator();
     QAction *rebuildTags = powertools->addAction(QStringLiteral("&Rebuild tags"));
+    rebuildTags->setIcon(Icons::get(QStringLiteral("entmenu.ico")));
     connect(rebuildTags, &QAction::triggered, this, [this] {
         if(auto *t = currentTab())
             t->refreshBrowser(); /* re-syncs the object tree + autocomplete tags */
@@ -1175,6 +1216,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
     };
 
     QAction *autocommit = transactions->addAction(QStringLiteral("Set Autocommit"));
+    autocommit->setIcon(Icons::get(QStringLiteral("entmenu.ico")));
     autocommit->setCheckable(true);
     autocommit->setChecked(true);
     connect(autocommit, &QAction::toggled, this, [mysqlOnlyTx](bool on) {
@@ -1182,6 +1224,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
     });
 
     QMenu *isolation = transactions->addMenu(QStringLiteral("Isolation Level"));
+    isolation->menuAction()->setIcon(Icons::get(QStringLiteral("entmenu.ico")));
     auto *isoGroup = new QActionGroup(this);
     isoGroup->setExclusive(true);
     for(const auto &[label, level] :
@@ -1199,6 +1242,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
     transactions->addSeparator();
 
     QMenu *startTrx = transactions->addMenu(QStringLiteral("Start Transaction"));
+    startTrx->menuAction()->setIcon(Icons::get(QStringLiteral("start_transaction_16.ico")));
     QAction *startPlain = startTrx->addAction(QStringLiteral("With no modifier"));
     connect(startPlain, &QAction::triggered, this, [this, runTx] {
         auto *t = currentTab();
@@ -1233,6 +1277,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
     });
 
     QMenu *commit = transactions->addMenu(QStringLiteral("Commit"));
+    commit->menuAction()->setIcon(Icons::get(QStringLiteral("commit_16.ico")));
     QAction *commitPlain = commit->addAction(QStringLiteral("With no modifier"));
     connect(commitPlain, &QAction::triggered, this, [runTx] { runTx(QStringLiteral("COMMIT")); });
     commit->addSeparator();
@@ -1251,6 +1296,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
             [mysqlOnlyTx] { mysqlOnlyTx(QStringLiteral("COMMIT NO RELEASE")); });
 
     QMenu *rollback = transactions->addMenu(QStringLiteral("Rollback"));
+    rollback->menuAction()->setIcon(Icons::get(QStringLiteral("rollback_16.ico")));
     QAction *rollToSave = rollback->addAction(QStringLiteral("To Savepoint"));
     connect(rollToSave, &QAction::triggered, this, [this] {
         auto *t = currentTab();
@@ -1277,13 +1323,16 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
             closeTab(m_tabs->currentIndex());
     });
     QAction *winNext = window->addAction(QStringLiteral("&Next Tab\tCtrl+PgDown"));
+    winNext->setIcon(Icons::get(QStringLiteral("Down.ico")));
     connect(winNext, &QAction::triggered, this, [this] { switchTab(1); });
     QAction *winPrev = window->addAction(QStringLiteral("&Previous Tab\tCtrl+PgUp"));
+    winPrev->setIcon(Icons::get(QStringLiteral("Up.ico")));
     connect(winPrev, &QAction::triggered, this, [this] { switchTab(-1); });
 
     /* ================= Help ========================================= */
     QMenu *help = menuBar()->addMenu(QStringLiteral("&Help"));
     QAction *about = help->addAction(QStringLiteral("&About OpenYog"));
+    about->setIcon(QIcon(QPixmap(QStringLiteral(":/resources/openyog-16.png"))));
     connect(about, &QAction::triggered, this, [this] {
         QMessageBox::information(this, QStringLiteral("About OpenYog"),
                                  QStringLiteral("OpenYog — a cross-platform MySQL/MariaDB client.\n"
