@@ -195,11 +195,10 @@ QTreeView::item { height: 18px; }
 QString checkBoxSheet(const char *border, const char *bg, const char *accent,
                       const char *disabledBorder, const char *disabledBg)
 {
-    /* QCheckBox widgets, the checkable rows of item views (the column
-     * checklists in the Foreign Keys / Index dialogs), and checkable menu
-     * items */
+    /* QCheckBox widgets, and the checkable rows of item views (the column
+     * checklists in the Foreign Keys / Index dialogs) */
     QString out;
-    for(const char *sel : {"QCheckBox", "QAbstractItemView", "QMenu"})
+    for(const char *sel : {"QCheckBox", "QAbstractItemView"})
         out +=
             QStringLiteral("%6::indicator { width: 13px; height: 13px; border: 1px solid %1;"
                            " border-radius: 2px; background: %2; }"
@@ -210,6 +209,21 @@ QString checkBoxSheet(const char *border, const char *bg, const char *accent,
                            "%6::indicator:checked:disabled { background: %4; border-color: %4; }")
                 .arg(QLatin1String(border), QLatin1String(bg), QLatin1String(accent),
                      QLatin1String(disabledBorder), QLatin1String(disabledBg), QLatin1String(sel));
+    /* checkable MENU rows: same box/tick styling, but 16px overall (14px +
+     * border) and shifted by the same left:3px the icon column uses
+     * (kLightSheet's QMenu::icon rule) — the default indicator sat ~3px
+     * further left and 1px narrower, visibly breaking the column of icons
+     * above/below a checkable row (owner report: "edit এর icon alignment
+     * এর সাথে মিলে নাই") */
+    out += QStringLiteral("QMenu::indicator { width: 14px; height: 14px; left: 3px;"
+                          " border: 1px solid %1; border-radius: 2px; background: %2; }"
+                          "QMenu::indicator:hover { border-color: %3; }"
+                          "QMenu::indicator:checked { background: %3; border-color: %3;"
+                          " image: url(:/resources/check-white.png); }"
+                          "QMenu::indicator:disabled { border-color: %4; background: %5; }"
+                          "QMenu::indicator:checked:disabled { background: %4; border-color: %4; }")
+               .arg(QLatin1String(border), QLatin1String(bg), QLatin1String(accent),
+                    QLatin1String(disabledBorder), QLatin1String(disabledBg));
     return out;
 }
 
