@@ -374,21 +374,15 @@ private:
     class QTimer *m_keepAliveTimer = nullptr; /* Connect dialog's keep-alive */
 
     QStringList m_databases;
-    QString m_lastFind;        /* for Find Next / F3 */
-    QStringList m_completions; /* schema identifiers for autocomplete (union) */
-    QStringList m_tableNames;  /* offered after FROM / JOIN / INTO / UPDATE */
-    QStringList m_columnNames; /* offered after SELECT / WHERE / ON / SET … */
-    struct PendingTable
-    {
-        QString db, table, physDb;
-    };
-    PendingTable m_pendingTable;               /* last table clicked, not yet in the grid */
+    QString m_lastFind;                        /* for Find Next / F3 */
+    QStringList m_completions;                 /* schema identifiers for autocomplete (union) */
+    QStringList m_tableNames;                  /* offered after FROM / JOIN / INTO / UPDATE */
+    QStringList m_columnNames;                 /* offered after SELECT / WHERE / ON / SET … */
     QString m_loadedTableKey;                  /* physDb, db, table of the grid's content */
     QHash<QString, QStringList> m_columnCache; /* completion: db + table → columns */
     void updateCompletions();
     void loadTableData(const QString &db, const QString &table, const QString &physDb,
                        bool activate);
-    void showPendingTable();
     void selectSoleSchema(); /* Postgres: one schema → current, no click needed */
     /* defaultDb() (see public section above): the schema/database to
      * operate on when nothing more specific was selected (no table chosen
