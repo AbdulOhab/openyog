@@ -10,6 +10,7 @@
 #include "FavoritesStore.h"
 #include "Icons.h"
 #include "ObjectBrowser.h"
+#include "RecentFiles.h"
 #include "Theme.h"
 #include "db/IDbConnection.h"
 
@@ -339,7 +340,30 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
     file->addSeparator();
     QMenu *recent = file->addMenu(QStringLiteral("&Recent Files"));
     recent->menuAction()->setIcon(Icons::get(QStringLiteral("foldericon.ico")));
-    recent->addAction(QStringLiteral("(no recent files)"))->setEnabled(false);
+    /* rebuilt on every open (Favorites uses the same trick): upstream's
+     * recent list is also plain "&N path" rows read back from the ini,
+     * ten max (FrameWindow::InsertRecentMenuItems) */
+    connect(recent, &QMenu::aboutToShow, this, [this, recent] {
+        for(QAction *a : recent->actions())
+            if(a->data().toBool())
+                recent->removeAction(a);
+        const QStringList files = RecentFiles::load();
+        if(files.isEmpty()) {
+            QAction *none = recent->addAction(QStringLiteral("(no recent files)"));
+            none->setEnabled(false);
+            none->setData(true);
+            return;
+        }
+        for(int i = 0; i < files.size(); ++i) {
+            const QString path = files.at(i);
+            QAction *a = recent->addAction(QStringLiteral("&%1 %2").arg(i + 1).arg(path));
+            a->setData(true);
+            connect(a, &QAction::triggered, this, [this, path] {
+                if(auto *t = currentTab())
+                    t->openSqlFile(path);
+            });
+        }
+    });
     file->addSeparator();
     QAction *quit = file->addAction(QStringLiteral("E&xit\tAlt+F4"));
     quit->setIcon(Icons::get(QStringLiteral("exit.ico")));
