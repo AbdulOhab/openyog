@@ -6,6 +6,9 @@ project(sqlyog-community-port LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
+# clangd needs the compile database (symlink compile_commands.json from the
+# build dir to the repo root once; see .clangd for the flag-strip config)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # Upstream's vcxproj builds Unicode (CreateFile etc. resolve to the ...W
 # wide APIs); mingw defaults to ANSI, which breaks every wide-char Windows
