@@ -832,8 +832,16 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
     dropTbl->setIcon(Icons::get(QStringLiteral("drop_table.ico")));
     connect(dropTbl, &QAction::triggered, this,
             [onSelectedTable] { onSelectedTable(&ConnectionTab::dropTable); });
-    addDisabled(moreTable, QStringLiteral("Re&order Column(s)\tCtrl+Alt+R"))
-        ->setIcon(Icons::get(QStringLiteral("reordercol.ico")));
+    /* upstream's Reorder Column(s) is exactly this: open the table's
+     * column editor in alter mode (FrameWindow: CreateTableTabInterface
+     * …TABCOLUMNS — its dedicated CReorderColumn dialog is commented out
+     * there too) — Move Up/Down + FIRST/AFTER generation already live in
+     * CreateTableDialog::buildAlterSql */
+    QAction *reorderCols = moreTable->addAction(QStringLiteral("Re&order Column(s)\tCtrl+Alt+R"));
+    reorderCols->setIcon(Icons::get(QStringLiteral("reordercol.ico")));
+    reorderCols->setShortcut(QKeySequence(Qt::CTRL | Qt::ALT | Qt::Key_R));
+    connect(reorderCols, &QAction::triggered, this,
+            [onSelectedTable] { onSelectedTable(&ConnectionTab::promptAlterTable); });
     QAction *dupTbl = moreTable->addAction(QStringLiteral("Duplicate Table &Structure/Data…"));
     dupTbl->setIcon(Icons::get(QStringLiteral("copytable.ICO")));
     connect(dupTbl, &QAction::triggered, this,
