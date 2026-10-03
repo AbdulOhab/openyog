@@ -34,6 +34,7 @@ private:
     QLineEdit *m_path = nullptr;
     QLineEdit *m_delim = nullptr;
     QLineEdit *m_quote = nullptr;
+    QLineEdit *m_escape = nullptr;
     QLineEdit *m_null = nullptr;
     QLineEdit *m_sqlTable = nullptr;
     QCheckBox *m_header = nullptr;
@@ -43,6 +44,7 @@ private:
     QCheckBox *m_structure = nullptr;
     QLabel *m_delimLabel = nullptr;
     QLabel *m_quoteLabel = nullptr;
+    QLabel *m_escapeLabel = nullptr;
     QLabel *m_sqlTableLabel = nullptr;
     QString m_base;
 };

@@ -2006,7 +2006,8 @@ bool MainWindow::selftestSchemaHtml(const QString &outFile)
 }
 
 bool MainWindow::selftestCsvImportBatched(const QString &db, const QString &file,
-                                          const QString &table, const QString &onDup)
+                                          const QString &table, const QString &onDup,
+                                          const QStringList &onlyCols)
 {
     auto *tab = currentTab();
     if(!tab)
@@ -2015,7 +2016,7 @@ bool MainWindow::selftestCsvImportBatched(const QString &db, const QString &file
     QString err;
     const bool ok =
         tab->importCsvBatched(db, table, file, QStringLiteral(","), QStringLiteral("\""),
-                              QStringLiteral("\\"), true, 0, false, onDup, &rows, &err);
+                              QStringLiteral("\\"), true, 0, false, onDup, &rows, &err, onlyCols);
     if(!ok)
         qWarning("csvimport failed: %s", qPrintable(err));
     else

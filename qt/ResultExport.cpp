@@ -57,6 +57,28 @@ QString delimited(const QStringList &headers, const std::function<QString(int, i
 {
     const QString q = QString(opt.quote);
     const auto field = [&](QString s) {
+        if(!opt.escapeChar.isNull()) {
+            /* escaped-by mode (MySQL FIELDS ESCAPED BY convention): <esc>
+             * before every separator/quote/escape char, and CR/LF as the
+             * two-character \n / \r sequences — a raw newline would split
+             * the record when the file is read back */
+            QString e;
+            for(const QChar ch : std::as_const(s)) {
+                if(ch == sep || ch == opt.quote || ch == opt.escapeChar) {
+                    e += opt.escapeChar;
+                    e += ch;
+                } else if(ch == '\n') {
+                    e += opt.escapeChar;
+                    e += QLatin1Char('n');
+                } else if(ch == '\r') {
+                    e += opt.escapeChar;
+                    e += QLatin1Char('r');
+                } else {
+                    e += ch;
+                }
+            }
+            return e;
+        }
         if(!q.isEmpty() &&
            (s.contains(sep) || s.contains(opt.quote) || s.contains('\n') || s.contains('\r')))
             return q + s.replace(opt.quote, QString(opt.quote) + opt.quote) + q;

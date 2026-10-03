@@ -37,6 +37,13 @@ ExportDialog::ExportDialog(const QString &suggestedBaseName, const QString &sqlT
     m_quote = new QLineEdit(QStringLiteral("\""), this);
     m_quote->setMaxLength(1);
     m_quote->setFixedWidth(48);
+    m_escape = new QLineEdit(QStringLiteral("\\"), this);
+    m_escape->setMaxLength(1);
+    m_escape->setFixedWidth(48);
+    m_escape->setToolTip(
+        QStringLiteral("Escaped by: prefix the separator/quote/escape/newline inside field "
+                       "values with this character (MySQL FIELDS ESCAPED BY convention). "
+                       "Empty switches to ANSI quote-doubling."));
     m_null = new QLineEdit(QStringLiteral("NULL"), this);
     m_sqlTable = new QLineEdit(sqlTable.isEmpty() ? QStringLiteral("exported") : sqlTable, this);
     m_header = new QCheckBox(QStringLiteral("Write a header row"), this);
@@ -56,6 +63,8 @@ ExportDialog::ExportDialog(const QString &suggestedBaseName, const QString &sqlT
     form->addRow(m_delimLabel, m_delim);
     m_quoteLabel = new QLabel(QStringLiteral("Quote character"), this);
     form->addRow(m_quoteLabel, m_quote);
+    m_escapeLabel = new QLabel(QStringLiteral("Escape character"), this);
+    form->addRow(m_escapeLabel, m_escape);
     m_sqlTableLabel = new QLabel(QStringLiteral("INSERT table name"), this);
     form->addRow(m_sqlTableLabel, m_sqlTable);
     form->addRow(QStringLiteral("NULL shown as"), m_null);
@@ -88,6 +97,8 @@ void ExportDialog::syncForFormat()
     m_delim->setVisible(csvish);
     m_quoteLabel->setVisible(csvish);
     m_quote->setVisible(csvish);
+    m_escapeLabel->setVisible(csvish);
+    m_escape->setVisible(csvish);
     m_sqlTableLabel->setVisible(sql);
     m_sqlTable->setVisible(sql);
     m_structure->setVisible(sql);
@@ -145,6 +156,7 @@ ResultExport::Options ExportDialog::options() const
     ResultExport::Options o;
     o.delimiter = m_delim->text().isEmpty() ? QLatin1Char(',') : m_delim->text().at(0);
     o.quote = m_quote->text().isEmpty() ? QChar() : m_quote->text().at(0);
+    o.escapeChar = m_escape->text().isEmpty() ? QChar() : m_escape->text().at(0);
     o.nullText = m_null->text();
     o.header = m_header->isChecked();
     o.bom = m_bom->isChecked();

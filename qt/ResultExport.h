@@ -20,6 +20,12 @@ struct Options
 {
     QChar delimiter = QLatin1Char(','); /* CSV only */
     QChar quote = QLatin1Char('"');     /* CSV only */
+    /* upstream's "Escaped by": when set, separator/quote/escape/CR/LF
+     * inside a field are written as <esc><ch> instead of relying on
+     * quote-doubling — the MySQL FIELDS ESCAPED BY convention, so the
+     * file round-trips through LOAD DATA / our CSV import unchanged.
+     * Null (default) keeps the ANSI quote-doubling behavior. */
+    QChar escapeChar;
     QString lineEnd = QStringLiteral("\r\n");
     QString nullText = QStringLiteral("NULL");
     bool header = true;

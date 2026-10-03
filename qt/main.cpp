@@ -1854,13 +1854,16 @@ int main(int argc, char *argv[])
         return rc;
     }
 
-    /* --sqlitecsvimport=file.csv:table selftest (headless): autoconnect (via
-     * --autoconnectfile=), import the CSV, exit */
+    /* --sqlitecsvimport=file.csv:table[:col,col,…] selftest (headless):
+     * autoconnect (via --autoconnectfile=), import the CSV — optionally
+     * into a checked subset of columns (the dialog's checklist), exit */
     if(!sqliteCsvImportArg.isEmpty() && doAutoConnect) {
         const QStringList p = sqliteCsvImportArg.split(':');
         MainWindow w;
-        rc = (p.size() == 2 && w.openAndRun(autoConnect) &&
-              w.selftestCsvImportBatched({}, p[0], p[1], QStringLiteral("IGNORE")))
+        rc = (p.size() >= 2 && w.openAndRun(autoConnect) &&
+              w.selftestCsvImportBatched({}, p[0], p[1], QStringLiteral("IGNORE"),
+                                         p.size() > 2 ? p[2].split(QLatin1Char(','))
+                                                      : QStringList()))
                  ? 0
                  : 1;
         QThreadPool::globalInstance()->waitForDone();
@@ -1875,7 +1878,9 @@ int main(int argc, char *argv[])
         MainWindow w;
         rc = (p.size() >= 2 && w.openAndRun(autoConnect) &&
               w.selftestCsvImportBatched(QStringLiteral("public"), p[0], p[1],
-                                         p.size() > 2 ? p[2] : QStringLiteral("IGNORE")))
+                                         p.size() > 2 ? p[2] : QStringLiteral("IGNORE"),
+                                         p.size() > 3 ? p[3].split(QLatin1Char(','))
+                                                      : QStringList()))
                  ? 0
                  : 1;
         QThreadPool::globalInstance()->waitForDone();
