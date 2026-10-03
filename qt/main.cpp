@@ -28,6 +28,7 @@
 #include "ForeignKeyDialog.h"
 #include "IndexDialog.h"
 #include "ExportDialog.h"
+#include "SqlDumpDialog.h"
 #include "ResultExport.h"
 #include "SchemaSql.h"
 #include "SqlSplit.h"
@@ -74,7 +75,8 @@ int main(int argc, char *argv[])
     QString dialogDriver; /* --dialogdriver=sqlite : preselect a driver, --dialog selftest */
     bool shotCreateTable = false;
     bool shotIndexDlg = false;
-    bool shotFkDlg = false; /* --fkdlg: render the Foreign Keys dialog */
+    bool shotFkDlg = false;   /* --fkdlg: render the Foreign Keys dialog */
+    bool shotDumpDlg = false; /* --dumpdlg: render the SQL-dump options dialog */
     bool shotExportDlg = false;
     QPair<QString, QString> openTableParts;
     QString dataViewMode;  /* --dataview=text|grid selftest */
@@ -146,6 +148,8 @@ int main(int argc, char *argv[])
             shotIndexDlg = true;
         if(a == QStringLiteral("--fkdlg"))
             shotFkDlg = true;
+        if(a == QStringLiteral("--dumpdlg"))
+            shotDumpDlg = true;
         if(a == QStringLiteral("--runagain"))
             runAgain = true;
         if(a == QStringLiteral("--copytablehost"))
@@ -1890,7 +1894,8 @@ int main(int argc, char *argv[])
     }
 
     if(!screenshot.isEmpty()) {
-        if(shotDialog || shotCreateTable || shotIndexDlg || shotExportDlg || shotFkDlg) {
+        if(shotDialog || shotCreateTable || shotIndexDlg || shotExportDlg || shotFkDlg ||
+           shotDumpDlg) {
             QWidget *dlg = nullptr;
             if(shotExportDlg) {
                 auto *ed = new ExportDialog(QStringLiteral("employees"),
@@ -1920,6 +1925,10 @@ int main(int argc, char *argv[])
                     {QStringLiteral("id"), QStringLiteral("name"), QStringLiteral("salary"),
                      QStringLiteral("dept_id")},
                     {QStringLiteral("employees"), QStringLiteral("departments")}, nullptr);
+            } else if(shotDumpDlg) {
+                /* conn=nullptr renders with an empty table list — the
+                 * option set itself is what's being checked visually */
+                dlg = new SqlDumpDialog(nullptr, QStringLiteral("port_test"), {}, nullptr);
             } else if(shotCreateTable) {
                 dlg = new CreateTableDialog(QStringLiteral("port_test"));
             } else {

@@ -24,6 +24,16 @@ struct Options
     bool routines = false; /* forEachStatement: also views/procs/funcs/
                             * triggers/events (DEFINER stripped) */
     int rowsPerInsert = 100;
+    /* session 113 — upstream's SQL-dump dialog options (SQLyog.rc
+     * IDC_CHK_*): all default to upstream's own defaults */
+    bool fkChecksOff = true;        /* SET FOREIGN_KEY_CHECKS=0 / equivalents */
+    bool singleTransaction = false; /* one consistent read view for the dump */
+    bool lockTablesForRead = false; /* MySQL: LOCK TABLES … READ LOCAL around it */
+    bool flushLogs = false;         /* MySQL: FLUSH LOGS before dumping */
+    bool lockAroundInsert = false;  /* MySQL: LOCK TABLES t WRITE around INSERTs */
+    bool includeUseDb = false;      /* "USE `db`" (PG: SET search_path) header */
+    bool includeCreateDb = false;   /* CREATE DATABASE/SCHEMA IF NOT EXISTS */
+    bool blobToHex = false;         /* binary columns dumped as hex literals */
 };
 
 /* Dump `tables` (or every base table in `db` when empty) into `out`.

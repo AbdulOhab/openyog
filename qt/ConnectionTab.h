@@ -172,8 +172,9 @@ public slots:
     QString selftestInfoSearch(const QString &text); /* --infosearch=TEXT: "N matches; shown" */
     void selftestShowInfoTab();    /* --showinfotab selftest: switch to the Info result tab */
     void renameCurrentEditorTab(); /* Alt+F2 */
-    void dumpTable(const QString &db, const QString &table); /* one-table SQL dump */
-    void editorCopyNormalizedWhitespace();                   /* Alt+C */
+    void dumpTable(const QString &db, const QString &table);             /* one-table SQL dump */
+    void runDumpDialog(const QString &db, const QStringList &preselect); /* shared dump flow */
+    void editorCopyNormalizedWhitespace();                               /* Alt+C */
     void editorInsertFromFile();
     void collapseBrowser();
     void runStatements(const QStringList &statements, const QString &tabPrefix);

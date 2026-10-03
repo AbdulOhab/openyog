@@ -1,4 +1,5 @@
 #include "SqlDump.h"
+#include "ConnectionParams.h" /* SqlDriverType */
 #include "db/IDbConnection.h"
 
 #include <QDateTime>
@@ -23,8 +24,12 @@ QStringList baseTables(IDbConnection *c, const QString &db, QString *error)
     return out;
 }
 
-/* one INSERT tuple: NULL stays NULL, everything else single-quoted + escaped */
-QString tuple(IDbConnection *c, const QVector<QByteArray> &fields, const QVector<bool> &isNull)
+/* one INSERT tuple: NULL stays NULL, everything else single-quoted + escaped;
+ * with `hexCols` marking binary columns and blobToHex on, those emit a
+ * driver hex literal instead (x'…' / decode('…','hex')) — the same shape
+ * TableDataView's hexLiteral builds for staged grid edits */
+QString tuple(IDbConnection *c, const QVector<QByteArray> &fields, const QVector<bool> &isNull,
+              const QVector<bool> &hexCols = {})
 {
     QString s = QStringLiteral("(");
     for(int i = 0; i < fields.size(); ++i) {
@@ -34,12 +39,48 @@ QString tuple(IDbConnection *c, const QVector<QByteArray> &fields, const QVector
             s += QStringLiteral("NULL");
             continue;
         }
+        if(hexCols.value(i)) {
+            const QString h = QString::fromLatin1(fields[i].toHex());
+            s += c->driverType() == SqlDriverType::Postgres
+                     ? QStringLiteral("decode('%1','hex')").arg(h)
+                     : QStringLiteral("x'%1'").arg(h);
+            continue;
+        }
         s += QLatin1Char('\'');
         s += QString::fromUtf8(c->escape(fields[i]));
         s += QLatin1Char('\'');
     }
     s += QLatin1Char(')');
     return s;
+}
+
+/* binary-ness of every column in SHOW COLUMNS' Type (1) field — blob/
+ * binary/varbinary (MySQL), bytea (PG), BLOB (SQLite) */
+QVector<bool> binaryColumns(IDbConnection *c, const QString &db, const QString &table)
+{
+    QVector<bool> out;
+    for(const QStringList &row : c->listColumns(db, table).rows) {
+        const QString t = row.value(1).toLower();
+        out << (t.contains(QLatin1String("blob")) || t.contains(QLatin1String("binary")) ||
+                t.contains(QLatin1String("bytea")));
+    }
+    return out;
+}
+
+/* dump-time consistency: one transaction holding a stable read view —
+ * MySQL's WITH CONSISTENT SNAPSHOT, Postgres' REPEATABLE READ, SQLite's
+ * plain BEGIN (single writer, already serial) */
+QString consistentBegin(IDbConnection *c)
+{
+    switch(c->driverType()) {
+        case SqlDriverType::Mysql:
+            return QStringLiteral("START TRANSACTION WITH CONSISTENT SNAPSHOT");
+        case SqlDriverType::Postgres:
+            return QStringLiteral("BEGIN ISOLATION LEVEL REPEATABLE READ");
+        case SqlDriverType::Sqlite:
+            return QStringLiteral("BEGIN");
+    }
+    return QString();
 }
 
 } // namespace
@@ -65,12 +106,44 @@ bool SqlDump::write(IDbConnection *conn, const QString &db, const QStringList &t
         out->write("\n");
     };
 
+    /* dump-time statements run live on the connection (FLUSH/LOCK/
+     * transaction) — they belong to the dumping session, not the file; the
+     * USE/CREATE/FK lines below ARE the file's, so the dump replays the
+     * same environment */
+    const bool isMy = conn->driverType() == SqlDriverType::Mysql;
+    if(opt.flushLogs && isMy && !conn->query(QStringLiteral("FLUSH LOGS"), nullptr, error))
+        return false;
+    if(opt.lockTablesForRead && isMy) {
+        QStringList quoted;
+        for(const QString &t : std::as_const(list))
+            quoted << conn->qualify(db, t) + QStringLiteral(" READ LOCAL");
+        if(!conn->query(QStringLiteral("LOCK TABLES %1").arg(quoted.join(QStringLiteral(", "))),
+                        nullptr, error))
+            return false;
+    }
+    if(opt.singleTransaction && !conn->query(consistentBegin(conn), nullptr, error))
+        return false;
+
     put(QStringLiteral("-- OpenYog SQL dump"));
     put(QStringLiteral("-- Database: %1").arg(db));
     put(QStringLiteral("-- Generated: %1").arg(QDateTime::currentDateTime().toString(Qt::ISODate)));
-    const QString fkOff = conn->sqlFkChecks(false);
-    if(!fkOff.isEmpty())
-        put(fkOff + QLatin1Char(';'));
+    if(opt.includeCreateDb) {
+        if(isMy)
+            put(QStringLiteral("CREATE DATABASE IF NOT EXISTS %1;").arg(conn->quoteIdent(db)));
+        else if(conn->driverType() == SqlDriverType::Postgres)
+            put(QStringLiteral("CREATE SCHEMA IF NOT EXISTS %1;").arg(conn->quoteIdent(db)));
+    }
+    if(opt.includeUseDb) {
+        if(isMy)
+            put(QStringLiteral("USE %1;").arg(conn->quoteIdent(db)));
+        else if(conn->driverType() == SqlDriverType::Postgres)
+            put(QStringLiteral("SET search_path TO %1;").arg(conn->quoteIdent(db)));
+    }
+    if(opt.fkChecksOff) {
+        const QString fkOff = conn->sqlFkChecks(false);
+        if(!fkOff.isEmpty())
+            put(fkOff + QLatin1Char(';'));
+    }
     const QString names = conn->sqlSetNames(QStringLiteral("utf8mb4"));
     if(!names.isEmpty())
         put(names + QLatin1Char(';'));
@@ -94,6 +167,12 @@ bool SqlDump::write(IDbConnection *conn, const QString &db, const QStringList &t
         if(!opt.data)
             continue;
 
+        /* mysqldump/upstream style: the lock pair goes INTO the file, so the
+         * restore replays them around its own INSERTs */
+        if(opt.lockAroundInsert && isMy)
+            put(QStringLiteral("LOCK TABLES %1 WRITE;").arg(conn->qualify(db, t)));
+
+        const QVector<bool> hexCols = opt.blobToHex ? binaryColumns(conn, db, t) : QVector<bool>();
         const QString select = QStringLiteral("SELECT * FROM %1").arg(conn->qualify(db, t));
         int inBatch = 0;
         bool streamOk =
@@ -105,7 +184,7 @@ bool SqlDump::write(IDbConnection *conn, const QString &db, const QStringList &t
                                                      .toUtf8());
                                   else
                                       out->write(",\n");
-                                  out->write(tuple(conn, fields, isNull).toUtf8());
+                                  out->write(tuple(conn, fields, isNull, hexCols).toUtf8());
                                   if(++inBatch >= qMax(1, opt.rowsPerInsert)) {
                                       out->write(";\n");
                                       inBatch = 0;
@@ -117,11 +196,21 @@ bool SqlDump::write(IDbConnection *conn, const QString &db, const QStringList &t
         if(inBatch > 0)
             out->write(";\n");
         put(QString());
+
+        if(opt.lockAroundInsert && isMy)
+            put(QStringLiteral("UNLOCK TABLES;"));
     }
 
-    const QString fkOn = conn->sqlFkChecks(true);
-    if(!fkOn.isEmpty())
-        put(fkOn + QLatin1Char(';'));
+    if(opt.fkChecksOff) {
+        const QString fkOn = conn->sqlFkChecks(true);
+        if(!fkOn.isEmpty())
+            put(fkOn + QLatin1Char(';'));
+    }
+    if(opt.singleTransaction && !conn->query(QStringLiteral("COMMIT"), nullptr, error))
+        return false;
+    if(opt.lockTablesForRead && isMy &&
+       !conn->query(QStringLiteral("UNLOCK TABLES"), nullptr, error))
+        return false;
     return true;
 }
 
