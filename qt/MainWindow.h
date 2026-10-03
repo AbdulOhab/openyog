@@ -82,7 +82,7 @@ public:
     /* --sqlitecsvimport=file.csv:table / --pgcsvimport=file.csv:table[:onDup]
      * selftests (db is "" for SQLite, a schema for PostgreSQL) */
     bool selftestCsvImportBatched(const QString &db, const QString &file, const QString &table,
-                                  const QString &onDup);
+                                  const QString &onDup, const QStringList &onlyCols = {});
     /* --schemahtmltest=out.html selftest */
     bool selftestSchemaHtml(const QString &outFile);
 

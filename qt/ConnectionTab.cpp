@@ -1587,7 +1587,7 @@ void ConnectionTab::wireResultGrid(QTableView *grid)
 
         QMenu menu(grid);
         if(at.isValid())
-            menu.addAction(QStringLiteral("&View Cell…"), grid, [this, grid, at] {
+            menu.addAction(QStringLiteral("&View Cell…"), grid, [grid, at] {
                 QDialog d(grid);
                 d.setWindowTitle(
                     QStringLiteral("Cell — %1")
@@ -2682,7 +2682,8 @@ void ConnectionTab::promptCopyDatabase(const QString &database)
 bool ConnectionTab::importCsvBatched(const QString &db, const QString &table, const QString &file,
                                      const QString &sep, const QString &quote, const QString &escCh,
                                      bool hasHeader, int extraSkipLines, bool truncateFirst,
-                                     const QString &onDup, int *rowsInserted, QString *error)
+                                     const QString &onDup, int *rowsInserted, QString *error,
+                                     const QStringList &onlyCols)
 {
     if(!m_conn) {
         if(error)
@@ -2710,6 +2711,35 @@ bool ConnectionTab::importCsvBatched(const QString &db, const QString &table, co
         start = 1;
     }
     start += extraSkipLines;
+
+    /* the dialog's column checklist: which of the table's columns this
+     * import fills. With a header row the CSV fields are matched by NAME;
+     * without one, by POSITION against the table's own column order —
+     * exactly LOAD DATA's two mapping modes. Empty = every column (the
+     * previous behavior). */
+    QVector<int> sel;
+    if(!onlyCols.isEmpty()) {
+        if(!colNames.isEmpty()) {
+            QStringList keep;
+            for(int i = 0; i < colNames.size(); ++i) {
+                if(onlyCols.contains(colNames.at(i), Qt::CaseInsensitive)) {
+                    sel << i;
+                    keep << colNames.at(i);
+                }
+            }
+            colNames = keep;
+        } else {
+            QStringList all;
+            for(const QStringList &row : m_conn->listColumns(db, table).rows)
+                all << row.value(0);
+            for(const QString &c : onlyCols) {
+                const int idx = all.indexOf(c);
+                if(idx >= 0)
+                    sel << idx;
+            }
+            colNames = onlyCols;
+        }
+    }
 
     if(truncateFirst)
         m_conn->query(m_conn->sqlTruncateTable(db, table), nullptr, nullptr);
@@ -2780,8 +2810,13 @@ bool ConnectionTab::importCsvBatched(const QString &db, const QString &table, co
         if(row.size() == 1 && row.first().isEmpty())
             continue; /* trailing blank line */
         QStringList vals;
-        for(const QString &v : row)
-            vals << qv(v);
+        if(sel.isEmpty()) {
+            for(const QString &v : row)
+                vals << qv(v);
+        } else {
+            for(const int idx : sel)
+                vals << qv(row.value(idx));
+        }
         const QString sql =
             QStringLiteral("%1 INTO %2%3 VALUES (%4)%5")
                 .arg(verb, qualified, colClause, vals.join(QStringLiteral(", ")), conflictClause);
@@ -3819,6 +3854,23 @@ void ConnectionTab::promptImportCsv(const QString &database, const QString &tabl
     auto *truncate = new QCheckBox(QStringLiteral("Empty the table first"), &dlg);
     auto *onDup = importDupCombo(&dlg);
 
+    /* upstream's "Select Table and Columns To Import" checklist: which of
+     * the target table's columns this import fills (all checked = every
+     * column, the previous behavior). Rebuilt when the target table
+     * changes. */
+    auto *colPick = new QListWidget(&dlg);
+    colPick->setMaximumHeight(120);
+    const auto reloadCols = [this, db, tbl, colPick] {
+        colPick->clear();
+        for(const QStringList &row : m_conn->listColumns(db, tbl->currentText()).rows) {
+            auto *it = new QListWidgetItem(row.value(0), colPick);
+            it->setFlags(it->flags() | Qt::ItemIsUserCheckable);
+            it->setCheckState(Qt::Checked);
+        }
+    };
+    reloadCols();
+    connect(tbl, &QComboBox::currentTextChanged, reloadCols);
+
     auto *form = new QFormLayout;
     form->addRow(QStringLiteral("Target table"), tbl);
     form->addRow(QStringLiteral("Character set"), charset);
@@ -3837,6 +3889,8 @@ void ConnectionTab::promptImportCsv(const QString &database, const QString &tabl
     connect(buttons, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
     auto *lay = new QVBoxLayout(&dlg);
     lay->addLayout(form);
+    lay->addWidget(new QLabel(QStringLiteral("Columns to import (all, when none checked):"), &dlg));
+    lay->addWidget(colPick);
     lay->addWidget(new QLabel(QStringLiteral("File preview:"), &dlg));
     lay->addWidget(importFilePreview(&dlg, file));
     const bool noBulkLoader = m_params.driverType != SqlDriverType::Mysql;
@@ -3858,12 +3912,22 @@ void ConnectionTab::promptImportCsv(const QString &database, const QString &tabl
     };
     const int skip = (header->isChecked() ? 1 : 0) + skipLines->value();
 
+    /* the checklist's verdict: unchecked → every column (previous
+     * behavior); else the checked subset, name-matched when the file has a
+     * header and position-matched to the table's own order when not */
+    QStringList onlyCols;
+    for(int i = 0; i < colPick->count(); ++i)
+        if(colPick->item(i)->checkState() == Qt::Checked)
+            onlyCols << colPick->item(i)->text();
+    if(onlyCols.size() == colPick->count())
+        onlyCols.clear();
+
     if(noBulkLoader) {
         int rows = 0;
         QString err;
         const bool ok = importCsvBatched(
             db, target, file, sep, quote, escChar->text(), header->isChecked(), skipLines->value(),
-            truncate->isChecked(), onDup->currentData().toString(), &rows, &err);
+            truncate->isChecked(), onDup->currentData().toString(), &rows, &err, onlyCols);
         m_messages->setPlainText(ok ? QStringLiteral("Imported %1 row(s) into %2")
                                           .arg(rows)
                                           .arg(m_conn->qualify(db, target))
@@ -3876,7 +3940,10 @@ void ConnectionTab::promptImportCsv(const QString &database, const QString &tabl
     }
 
     /* when the file has a header row, map by name — otherwise LOAD DATA loads
-     * positionally into every column (wrong for an AUTO_INCREMENT-first table) */
+     * positionally into every column (wrong for an AUTO_INCREMENT-first table).
+     * The checklist narrows both modes: with a header the kept names are the
+     * CSV columns that are also checked; without one, the checked table
+     * columns in the table's own order (positional). */
     QString colList;
     if(header->isChecked()) {
         QFile f(file);
@@ -3887,11 +3954,18 @@ void ConnectionTab::promptImportCsv(const QString &database, const QString &tabl
                 c = c.trimmed();
                 if(!quote.isEmpty() && c.startsWith(quote) && c.endsWith(quote))
                     c = c.mid(quote.size(), c.size() - 2 * quote.size());
-                cols << QStringLiteral("`%1`").arg(c.replace('`', QStringLiteral("``")));
+                if(onlyCols.isEmpty() || onlyCols.contains(c, Qt::CaseInsensitive))
+                    cols << QStringLiteral("`%1`").arg(c.replace('`', QStringLiteral("``")));
             }
             if(!cols.isEmpty())
                 colList = QStringLiteral(" (%1)").arg(cols.join(QStringLiteral(", ")));
         }
+    } else if(!onlyCols.isEmpty()) {
+        QStringList q;
+        for(const QString &c : onlyCols)
+            q << m_conn->quoteIdent(c);
+        if(!q.isEmpty())
+            colList = QStringLiteral(" (%1)").arg(q.join(QStringLiteral(", ")));
     }
 
     if(truncate->isChecked())

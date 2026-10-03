@@ -225,7 +225,8 @@ public slots:
     bool importCsvBatched(const QString &db, const QString &table, const QString &file,
                           const QString &sep, const QString &quote, const QString &escCh,
                           bool hasHeader, int extraSkipLines, bool truncateFirst,
-                          const QString &onDup, int *rowsInserted, QString *error);
+                          const QString &onDup, int *rowsInserted, QString *error,
+                          const QStringList &onlyCols = {});
     /* export every row of a table (re-queries — not just the loaded page) */
     void exportTableData(const QString &database, const QString &table);
     /* Tools ▸ Export All Rows… — picks table-data vs result grid by context */
