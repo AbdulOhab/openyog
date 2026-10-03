@@ -15,6 +15,7 @@
 #include "IndexDialog.h"
 #include "ForeignKeyDialog.h"
 #include "SqlDump.h"
+#include "SqlDumpDialog.h"
 #include "FavoritesStore.h"
 #include "Icons.h"
 #include "wyIni.h"
@@ -1064,18 +1065,9 @@ void ConnectionTab::dumpTable(const QString &database, const QString &table)
     if(!m_conn || table.isEmpty())
         return;
     const QString db = database.isEmpty() ? defaultDb() : database;
-    const QString path = QFileDialog::getSaveFileName(
-        this, QStringLiteral("Backup `%1` as SQL dump").arg(table), table + QStringLiteral(".sql"),
-        QStringLiteral("SQL (*.sql);;All (*)"));
-    if(path.isEmpty())
-        return;
-    QApplication::setOverrideCursor(Qt::WaitCursor);
-    QString err;
-    const bool ok = dumpDatabaseToFile(db, path, {table}, SqlDump::Options{}, &err);
-    QApplication::restoreOverrideCursor();
-    m_messages->setPlainText(ok ? QStringLiteral("Dumped `%1`.`%2` → %3").arg(db, table, path)
-                                : QStringLiteral("Dump failed: %1").arg(err));
-    m_resultTabs->setCurrentWidget(m_messages);
+    /* same dialog as Backup Database, the table pre-checked — upstream's
+     * Backup Table(s) is the same wizard over a one-table selection */
+    runDumpDialog(db, {table});
 }
 
 SqlEditor *ConnectionTab::openEditorWithSql(const QString &title, const QString &sql)
@@ -4084,79 +4076,48 @@ void ConnectionTab::promptDumpDatabase(const QString &database)
                                  QStringLiteral("Select a database first."));
         return;
     }
-    /* table list for the "which tables" selector */
-    const QStringList allTables = m_conn->listTables(db, QStringLiteral("BASE TABLE"));
+    runDumpDialog(db, {});
+}
 
-    QDialog dlg(this);
-    dlg.setWindowTitle(QStringLiteral("Backup `%1` as SQL dump").arg(db));
-    auto *structure = new QCheckBox(QStringLiteral("Structure (CREATE TABLE)"), &dlg);
-    structure->setChecked(true);
-    auto *data = new QCheckBox(QStringLiteral("Data (INSERT statements)"), &dlg);
-    data->setChecked(true);
-    auto *drops = new QCheckBox(QStringLiteral("Add DROP TABLE before each CREATE"), &dlg);
-    drops->setChecked(true);
-    auto *routines = new QCheckBox(
-        QStringLiteral("Also views / procedures / functions / triggers / events"), &dlg);
-    auto *rowsPer = new QSpinBox(&dlg);
-    rowsPer->setRange(1, 100000);
-    rowsPer->setValue(100);
-    rowsPer->setLocale(QLocale::c());
-
-    auto *tableList = new QListWidget(&dlg);
-    tableList->setMaximumHeight(180);
-    for(const QString &t : allTables) {
-        auto *it = new QListWidgetItem(t, tableList);
-        it->setFlags(it->flags() | Qt::ItemIsUserCheckable);
-        it->setCheckState(Qt::Checked);
-    }
-
-    auto *form = new QFormLayout;
-    form->addRow(QString(), structure);
-    form->addRow(QString(), data);
-    form->addRow(QString(), drops);
-    form->addRow(QString(), routines);
-    form->addRow(QStringLiteral("Rows per INSERT"), rowsPer);
-    auto *bb = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
-    bb->button(QDialogButtonBox::Ok)->setText(QStringLiteral("Choose file…"));
-    connect(bb, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
-    connect(bb, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
-    auto *lay = new QVBoxLayout(&dlg);
-    lay->addLayout(form);
-    lay->addWidget(new QLabel(QStringLiteral("Tables (all, when none checked):"), &dlg));
-    lay->addWidget(tableList);
-    lay->addWidget(bb);
+/* the Backup … As SQL Dump flow shared by the Database, Table and Tools
+ * entries: one options dialog (upstream's own option set), then either one
+ * file or — "file per object" — one <table>.sql per table inside a directory */
+void ConnectionTab::runDumpDialog(const QString &db, const QStringList &preselect)
+{
+    SqlDumpDialog dlg(m_conn, db, preselect, this);
     if(dlg.exec() != QDialog::Accepted)
         return;
-
-    const QString path = QFileDialog::getSaveFileName(
-        this, QStringLiteral("Backup `%1` as SQL dump").arg(db), db + QStringLiteral(".sql"),
-        QStringLiteral("SQL (*.sql);;All (*)"));
+    const QString path = dlg.targetPath();
     if(path.isEmpty())
         return;
 
-    QStringList picked;
-    for(int i = 0; i < tableList->count(); ++i)
-        if(tableList->item(i)->checkState() == Qt::Checked)
-            picked << tableList->item(i)->text();
-    if(picked.size() == tableList->count())
-        picked.clear(); /* all → let SqlDump enumerate */
-
-    SqlDump::Options opt;
-    opt.structure = structure->isChecked();
-    opt.data = data->isChecked();
-    opt.addDropTable = drops->isChecked();
-    opt.routines = routines->isChecked();
-    opt.rowsPerInsert = rowsPer->value();
-
     QApplication::setOverrideCursor(Qt::WaitCursor);
     QString err;
-    const bool ok = dumpDatabaseToFile(db, path, picked, opt, &err);
+    bool ok;
+    QString done;
+    if(dlg.filePerObject()) {
+        QStringList tables = dlg.selectedTables();
+        if(tables.isEmpty())
+            tables = m_conn->listTables(db, QStringLiteral("BASE TABLE"));
+        QDir().mkpath(path);
+        const QString stamp = dlg.timestampPrefix();
+        int n = 0;
+        ok = true;
+        for(const QString &t : std::as_const(tables)) {
+            const QString file = QDir(path).filePath(stamp + t + QStringLiteral(".sql"));
+            if(!(ok = dumpDatabaseToFile(db, file, {t}, dlg.options(), &err)))
+                break;
+            ++n;
+        }
+        done = QStringLiteral("Dumped %1 table(s) of `%2` \u2192 %3").arg(n).arg(db, path);
+    } else {
+        ok = dumpDatabaseToFile(db, path, dlg.selectedTables(), dlg.options(), &err);
+        done = QStringLiteral("Dumped `%1` \u2192 %2  (%3 KB)")
+                   .arg(db, path)
+                   .arg((QFileInfo(path).size() + 1023) / 1024);
+    }
     QApplication::restoreOverrideCursor();
-
-    m_messages->setPlainText(ok ? QStringLiteral("Dumped `%1` → %2  (%3 KB)")
-                                      .arg(db, path)
-                                      .arg((QFileInfo(path).size() + 1023) / 1024)
-                                : QStringLiteral("Dump failed: %1").arg(err));
+    m_messages->setPlainText(ok ? done : QStringLiteral("Dump failed: %1").arg(err));
     m_resultTabs->setCurrentWidget(m_messages);
 }
 
