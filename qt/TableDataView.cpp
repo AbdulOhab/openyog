@@ -773,7 +773,6 @@ TableDataView::TableDataView(QWidget *parent) : QWidget(parent)
     m_model = new TableDataModel(this);
     m_grid = new QTableView(this);
     m_grid->setModel(m_model);
-    m_grid->horizontalHeader()->setStretchLastSection(true);
     m_grid->setAlternatingRowColors(true);
     m_grid->setContextMenuPolicy(Qt::CustomContextMenu);
 
@@ -1848,6 +1847,7 @@ void TableDataView::reload()
     for(const ColumnInfo &ci : std::as_const(m_colInfo))
         blobCols << ci.blob;
     m_model->setBlobColumns(blobCols);
+    m_grid->resizeColumnsToContents();
     syncFormColumns();
     if(m_checkHeader)
         m_checkHeader->clearChecks();
