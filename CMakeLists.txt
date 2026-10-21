@@ -102,6 +102,7 @@ configure_file("${CMAKE_CURRENT_BINARY_DIR}/bitmaps.qrc.in"
 
 add_executable(openyog
     qt/main.cpp
+    qt/Selftest.h qt/SelftestSqlite.cpp qt/SelftestServer.cpp qt/SelftestMisc.cpp # standalone --selftest flags
     qt/openyog.qrc
     "${CMAKE_CURRENT_BINARY_DIR}/bitmaps.qrc"
     qt/db/IDbDriver.h
