@@ -71,6 +71,13 @@
 
 int main(int argc, char *argv[])
 {
+    /* --version: for packagers and bug reports, before any Qt setup */
+    for(int i = 1; i < argc; ++i)
+        if(qstrcmp(argv[i], "--version") == 0) {
+            QTextStream(stdout) << "OpenYog " << OPENYOG_VERSION << '\n';
+            return 0;
+        }
+
     QString screenshot;
     bool shotDialog = false;
     QString dialogDriver; /* --dialogdriver=sqlite : preselect a driver, --dialog selftest */

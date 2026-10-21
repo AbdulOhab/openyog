@@ -56,8 +56,30 @@ ctest --test-dir build-cmake --output-on-failure   # unit tests + selftests
 ./build-cmake/openyog
 ```
 
-CI (`.github/workflows/ci.yml`) runs the same build, `ctest`, and a
-`clang-format` check on every push and pull request.
+CI (`.github/workflows/ci.yml`) runs the same build, `ctest` (including
+the live MySQL/PostgreSQL selftests against throwaway MariaDB and PostgreSQL
+containers), and a `clang-format` check on every push and pull request. To
+run the live selftests locally, point CMake at throwaway databases — their
+fixtures drop and recreate tables:
+
+```bash
+cmake -S . -B build-cmake -G Ninja \
+  -DOPENYOG_TEST_MYSQL=127.0.0.1:3306:root:secret:openyog_test \
+  -DOPENYOG_TEST_PG=127.0.0.1:5432:postgres:secret:openyog_test
+```
+
+## Install (Linux)
+
+```bash
+cmake --install build-cmake --prefix /usr/local   # binary, desktop entry, icons
+```
+
+On Arch / Manjaro, `packaging/arch/PKGBUILD` builds the latest commit as a
+package (`openyog-git`), running the test suite in `check()`:
+
+```bash
+cd packaging/arch && makepkg -si
+```
 
 ## Build (Windows, cross-compiled from Linux)
 
