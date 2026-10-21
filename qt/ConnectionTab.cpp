@@ -1273,17 +1273,18 @@ void ConnectionTab::runQuery()
     SqlEditor *ed = currentEditor();
     if(!ed)
         return;
-    const QString sql = ed->hasSelectedText()
-                            ? ed->selectedText()
-                            : statementAt(ed->toPlainText(), ed->cursorPosition());
-    runStatements(splitStatements(sql), QStringLiteral("Execute Query"));
+    const QString sql = ed->hasSelectedText() ? ed->selectedText()
+                                              : statementAt(ed->toPlainText(), ed->cursorPosition(),
+                                                            m_params.driverType);
+    runStatements(splitStatements(sql, m_params.driverType), QStringLiteral("Execute Query"));
 }
 
 /* Ctrl+F9 — run the whole editor */
 void ConnectionTab::runAll()
 {
     if(SqlEditor *ed = currentEditor())
-        runStatements(splitStatements(ed->toPlainText()), QStringLiteral("Execute Query"));
+        runStatements(splitStatements(ed->toPlainText(), m_params.driverType),
+                      QStringLiteral("Execute Query"));
 }
 
 /* F8 — run the current statement, and if it's a single-table SELECT open that
@@ -1294,8 +1295,9 @@ void ConnectionTab::runAndEdit()
     if(!ed)
         return;
     const QString stmt =
-        (ed->hasSelectedText() ? ed->selectedText()
-                               : statementAt(ed->toPlainText(), ed->cursorPosition()))
+        (ed->hasSelectedText()
+             ? ed->selectedText()
+             : statementAt(ed->toPlainText(), ed->cursorPosition(), m_params.driverType))
             .trimmed();
 
     static const QRegularExpression re(QStringLiteral("^SELECT\\b.*\\bFROM\\s+`?([A-Za-z0-9_$]+)`?"
@@ -1332,8 +1334,9 @@ void ConnectionTab::explainCurrent(bool json)
     SqlEditor *ed = currentEditor();
     if(!ed)
         return;
-    QString stmt = ed->hasSelectedText() ? ed->selectedText()
-                                         : statementAt(ed->toPlainText(), ed->cursorPosition());
+    QString stmt = ed->hasSelectedText()
+                       ? ed->selectedText()
+                       : statementAt(ed->toPlainText(), ed->cursorPosition(), m_params.driverType);
     stmt = stmt.trimmed();
     while(stmt.endsWith(QLatin1Char(';')))
         stmt.chop(1);
@@ -4238,7 +4241,7 @@ bool ConnectionTab::execDdl(const QString &sql)
          * every call site — wrapped in an explicit transaction when there's
          * more than one, so a mid-sequence failure doesn't leave the
          * earlier statements applied (matching PQexec's atomicity). */
-        const QStringList stmts = splitStatements(sql);
+        const QStringList stmts = splitStatements(sql, SqlDriverType::Sqlite);
         ok = true;
         const bool multi = stmts.size() > 1;
         if(multi)

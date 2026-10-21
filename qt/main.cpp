@@ -488,7 +488,7 @@ int main(int argc, char *argv[])
              * rather than the single-query() call that would silently drop
              * every statement after the first here in the test too */
             bool alterOk = true;
-            for(const QString &s : splitStatements(alterSql1)) {
+            for(const QString &s : splitStatements(alterSql1, SqlDriverType::Sqlite)) {
                 if(s.trimmed().isEmpty())
                     continue;
                 if(!c->query(s, nullptr, &stmtErr)) {
@@ -673,7 +673,7 @@ int main(int argc, char *argv[])
             /* apply exactly like ConnectionTab::execDdl() does for SQLite:
              * split on ';' and run each statement separately */
             bool applyOk = true;
-            for(const QString &s : splitStatements(sql)) {
+            for(const QString &s : splitStatements(sql, SqlDriverType::Sqlite)) {
                 if(s.trimmed().isEmpty())
                     continue;
                 if(!c->query(s, nullptr, &stmtErr)) {
@@ -1122,8 +1122,10 @@ int main(int argc, char *argv[])
                 tmpl.replace(QStringLiteral("new_trigger"), cs.name);
                 tmpl.replace(QStringLiteral("some_table"), QStringLiteral("oy_schema_test_t"));
                 bool cOk = true;
-                for(const QString &s : splitStatements(SchemaSql::editorText(
-                        cs.kw, db, cs.name, tmpl, true, SqlDriverType::Postgres)))
+                for(const QString &s :
+                    splitStatements(SchemaSql::editorText(cs.kw, db, cs.name, tmpl, true,
+                                                          SqlDriverType::Postgres),
+                                    SqlDriverType::Postgres))
                     cOk = run(s) && cOk;
                 const bool present = exists(cs.iq) == 1;
 
@@ -1131,7 +1133,8 @@ int main(int argc, char *argv[])
                 bool aOk = !ddl.isEmpty();
                 for(const QString &s : splitStatements(
                         SchemaSql::editorText(cs.kw, db, cs.name, SchemaSql::stripDefiner(ddl),
-                                              false, SqlDriverType::Postgres)))
+                                              false, SqlDriverType::Postgres),
+                        SqlDriverType::Postgres))
                     aOk = run(s) && aOk;
                 const bool stillThere = exists(cs.iq) == 1;
 

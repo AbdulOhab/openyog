@@ -34,24 +34,38 @@ target_compile_options(tst_connectionstore PRIVATE -Wno-unknown-pragmas -Wno-com
 add_test(NAME smoketest COMMAND smoketest)
 set_tests_properties(smoketest PROPERTIES SKIP_RETURN_CODE 3)
 
-# openyog's own headless selftests (see the flag list atop qt/main.cpp)
-add_test(NAME selftest_comptest COMMAND openyog --comptest)
-set_tests_properties(selftest_comptest PROPERTIES ENVIRONMENT QT_QPA_PLATFORM=offscreen)
+# openyog's own headless selftests (see the flag list atop qt/main.cpp): the
+# ones that need no database server. XDG_CONFIG_HOME keeps them away from
+# the developer's real settings and saved connections.
+set(SELFTEST_ENV "QT_QPA_PLATFORM=offscreen;XDG_CONFIG_HOME=${CMAKE_CURRENT_BINARY_DIR}/xdg-config")
+foreach(flag comptest stmtattest casetest filtertest icontest shortcuttest)
+    add_test(NAME selftest_${flag} COMMAND openyog --${flag})
+    set_tests_properties(selftest_${flag} PROPERTIES ENVIRONMENT "${SELFTEST_ENV}")
+endforeach()
 
-# --sqlitetest runs against a database built from fixtures/ by the sqlite3
-# CLI; without the CLI both tests are left out rather than failing.
+file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/exporttest")
+add_test(NAME selftest_exporttest
+         COMMAND openyog "--exporttest=${CMAKE_CURRENT_BINARY_DIR}/exporttest")
+set_tests_properties(selftest_exporttest PROPERTIES ENVIRONMENT "${SELFTEST_ENV}")
+
+# The SQLite selftests run against a database built from fixtures/ by the
+# sqlite3 CLI, a fresh one per test and per run (all but --sqlitetest add
+# tables of their own); without the CLI they're left out rather than failing.
 find_program(SQLITE3_CLI sqlite3)
 if(SQLITE3_CLI)
-    set(SQLITE_FIXTURE_DB "${CMAKE_CURRENT_BINARY_DIR}/sqlite_fixture.sqlite")
-    add_test(NAME sqlite_fixture_db
-             COMMAND "${SQLITE3_CLI}" "${SQLITE_FIXTURE_DB}"
-                     ".read ${CMAKE_CURRENT_SOURCE_DIR}/fixtures/sqlite_fixture.sql")
-    set_tests_properties(sqlite_fixture_db PROPERTIES FIXTURES_SETUP sqlite_fixture)
+    foreach(flag sqlitetest sqlitecreatetabletest sqliteindextest sqlitemisctest)
+        set(db "${CMAKE_CURRENT_BINARY_DIR}/fixture-${flag}.sqlite")
+        add_test(NAME ${flag}_fixture
+                 COMMAND "${CMAKE_COMMAND}" "-DSQLITE3=${SQLITE3_CLI}"
+                         "-DSQL=${CMAKE_CURRENT_SOURCE_DIR}/fixtures/sqlite_fixture.sql"
+                         "-DDB=${db}" -P "${CMAKE_CURRENT_SOURCE_DIR}/make_fixture_db.cmake")
+        set_tests_properties(${flag}_fixture PROPERTIES FIXTURES_SETUP ${flag}_db)
 
-    add_test(NAME selftest_sqlite COMMAND openyog "--sqlitetest=${SQLITE_FIXTURE_DB}")
-    set_tests_properties(selftest_sqlite PROPERTIES
-                         FIXTURES_REQUIRED sqlite_fixture
-                         ENVIRONMENT QT_QPA_PLATFORM=offscreen)
+        add_test(NAME selftest_${flag} COMMAND openyog "--${flag}=${db}")
+        set_tests_properties(selftest_${flag} PROPERTIES
+                             FIXTURES_REQUIRED ${flag}_db
+                             ENVIRONMENT "${SELFTEST_ENV}")
+    endforeach()
 else()
-    message(STATUS "sqlite3 CLI not found: skipping the --sqlitetest selftest")
+    message(STATUS "sqlite3 CLI not found: skipping the SQLite selftests")
 endif()

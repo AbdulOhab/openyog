@@ -1,8 +1,9 @@
--- Fixture for `openyog --sqlitetest=FILE` (qt/main.cpp): the layout its
--- shape checks expect. employees has an INTEGER PRIMARY KEY id, a city
--- index, an inline FK to emp_dept and a BEFORE INSERT trigger, and there is
--- one view. SQLite has no routines or events.
--- Re-runnable: ctest rebuilds the database from this file on every run.
+-- Fixture for the SQLite selftests (`openyog --sqlitetest=FILE` and the
+-- other --sqlite*test= flags, qt/main.cpp): the layout --sqlitetest's shape
+-- checks expect. employees has an INTEGER PRIMARY KEY id, a city index, an
+-- inline FK to emp_dept and a BEFORE INSERT trigger, and there is one view.
+-- SQLite has no routines or events.
+-- ctest builds a fresh database from this file per test, on every run.
 DROP VIEW IF EXISTS v_employee_dept;
 DROP TABLE IF EXISTS employees;
 DROP TABLE IF EXISTS emp_dept;

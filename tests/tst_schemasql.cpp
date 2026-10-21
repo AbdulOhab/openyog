@@ -25,6 +25,8 @@ private slots:
     void mysqlRoutineAlterSplitsIntoDropAndCreate();
     void mysqlCreateHasNoDrop();
     void postgresFunctionAlterIsOneStatement();
+    void postgresCreateTemplatesStayWhole_data();
+    void postgresCreateTemplatesStayWhole();
     void postgresTriggerAlterDropsOnItsTable_data();
     void postgresTriggerAlterDropsOnItsTable();
 };
@@ -118,8 +120,10 @@ void TestSchemaSql::mysqlRoutineAlterSplitsIntoDropAndCreate()
     const QString body = QStringLiteral("CREATE %1 `d`.`o`()\nBEGIN\n  SELECT 1;\n  SELECT 2;\n"
                                         "END;")
                              .arg(objType);
-    const QStringList stmts = splitStatements(SchemaSql::editorText(
-        objType, QStringLiteral("d"), QStringLiteral("o"), body, false, driver));
+    const QStringList stmts =
+        splitStatements(SchemaSql::editorText(objType, QStringLiteral("d"), QStringLiteral("o"),
+                                              body, false, driver),
+                        driver);
     QCOMPARE(stmts.size(), 2);
     QCOMPARE(stmts[0], QStringLiteral("DROP %1 IF EXISTS `d`.`o`").arg(objType));
     /* the compound body survives with its inner semicolons; the trailing one
@@ -145,8 +149,33 @@ void TestSchemaSql::postgresFunctionAlterIsOneStatement()
                                        "AS $function$\nBEGIN\n  RETURN a;\nEND;\n$function$");
     const QStringList stmts = splitStatements(
         SchemaSql::editorText(QStringLiteral("FUNCTION"), QStringLiteral("public"),
-                              QStringLiteral("f"), def, false, SqlDriverType::Postgres));
+                              QStringLiteral("f"), def, false, SqlDriverType::Postgres),
+        SqlDriverType::Postgres);
     QCOMPARE(stmts, QStringList{def});
+}
+
+void TestSchemaSql::postgresCreateTemplatesStayWhole_data()
+{
+    QTest::addColumn<QString>("objType");
+    QTest::newRow("FUNCTION") << "FUNCTION";
+    QTest::newRow("PROCEDURE") << "PROCEDURE";
+    /* two statements (trigger function + trigger), sent as one chunk */
+    QTest::newRow("TRIGGER") << "TRIGGER";
+}
+
+void TestSchemaSql::postgresCreateTemplatesStayWhole()
+{
+    QFETCH(QString, objType);
+    const QString tpl =
+        SchemaSql::createTemplate(objType, QStringLiteral("public"), SqlDriverType::Postgres);
+    QString body = tpl.trimmed();
+    while(body.endsWith(QLatin1Char(';')))
+        body.chop(1);
+    const QStringList stmts =
+        splitStatements(SchemaSql::editorText(objType, QStringLiteral("public"), QString(), tpl,
+                                              true, SqlDriverType::Postgres),
+                        SqlDriverType::Postgres);
+    QCOMPARE(stmts, QStringList{body});
 }
 
 void TestSchemaSql::postgresTriggerAlterDropsOnItsTable_data()
@@ -173,7 +202,8 @@ void TestSchemaSql::postgresTriggerAlterDropsOnItsTable()
 
     const QStringList stmts = splitStatements(
         SchemaSql::editorText(QStringLiteral("TRIGGER"), QStringLiteral("public"),
-                              QStringLiteral("trg"), def, false, SqlDriverType::Postgres));
+                              QStringLiteral("trg"), def, false, SqlDriverType::Postgres),
+        SqlDriverType::Postgres);
     QCOMPARE(stmts.size(), 2);
     QCOMPARE(stmts[0], QStringLiteral("DROP TRIGGER IF EXISTS \"trg\" ON %1").arg(table));
     QCOMPARE(stmts[1], def);
