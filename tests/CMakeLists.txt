@@ -39,9 +39,10 @@ set_tests_properties(smoketest PROPERTIES SKIP_RETURN_CODE 3)
 
 # openyog's own headless selftests (see the flag list atop qt/main.cpp): the
 # ones that need no database server. XDG_CONFIG_HOME keeps them away from
-# the developer's real settings and saved connections, and a dead session
-# bus (plus a private XDG_RUNTIME_DIR, so GLib can't fall back to the real
-# one) keeps a connection they save out of the developer's keyring.
+# the developer's real settings and saved connections, a dead session bus
+# (plus a private XDG_RUNTIME_DIR, so GLib can't fall back to the real one)
+# keeps a connection they save out of the developer's keyring, and
+# OPENYOG_SSH_DIR / no ssh-agent keep the SSH tests off ~/.ssh.
 set(SELFTEST_RUNTIME "${CMAKE_CURRENT_BINARY_DIR}/xdg-runtime")
 file(MAKE_DIRECTORY "${SELFTEST_RUNTIME}")
 file(CHMOD "${SELFTEST_RUNTIME}" DIRECTORY_PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE)
@@ -50,6 +51,8 @@ set(SELFTEST_ENV
     "XDG_CONFIG_HOME=${CMAKE_CURRENT_BINARY_DIR}/xdg-config"
     "XDG_DATA_HOME=${CMAKE_CURRENT_BINARY_DIR}/xdg-data"
     "XDG_RUNTIME_DIR=${SELFTEST_RUNTIME}"
+    "OPENYOG_SSH_DIR=${CMAKE_CURRENT_BINARY_DIR}/ssh"
+    "SSH_AUTH_SOCK="
     "DBUS_SESSION_BUS_ADDRESS=unix:path=${SELFTEST_RUNTIME}/no-bus")
 foreach(flag comptest stmtattest casetest filtertest icontest shortcuttest)
     add_test(NAME selftest_${flag} COMMAND openyog --${flag})
@@ -187,6 +190,39 @@ if(OPENYOG_TEST_PG)
     set_tests_properties(selftest_pg_metadata selftest_pg_schema selftest_pg_multidb
                          selftest_pg_dump_roundtrip selftest_pg_complete selftest_pg_complete_join
                          PROPERTIES
+                         FIXTURES_REQUIRED pg_db RESOURCE_LOCK pg_db
+                         ENVIRONMENT "${SELFTEST_ENV}")
+endif()
+
+# ---- SSH tunnel (optional, on top of the live servers above) ----------------
+# -DOPENYOG_TEST_SSH=host:port:user:password of an SSH server that allows
+# TCP forwarding; the MySQL/PostgreSQL selftests then also run through it.
+# The database as seen from that SSH host defaults to the targets above;
+# -DOPENYOG_TEST_SSH_MYSQL / -DOPENYOG_TEST_SSH_PG override it (e.g. an sshd
+# in a container reaching the host's servers as host.containers.internal).
+set(OPENYOG_TEST_SSH "" CACHE STRING
+    "host:port:user:password of an SSH server for the tunnel selftests")
+set(OPENYOG_TEST_SSH_MYSQL "${OPENYOG_TEST_MYSQL}" CACHE STRING
+    "the MySQL test database as seen from the SSH host")
+set(OPENYOG_TEST_SSH_PG "${OPENYOG_TEST_PG}" CACHE STRING
+    "the PostgreSQL test database as seen from the SSH host")
+if(OPENYOG_TEST_SSH AND OPENYOG_TEST_MYSQL)
+    add_test(NAME selftest_mysql_ssh
+             COMMAND openyog "--autoconnect=${OPENYOG_TEST_SSH_MYSQL}" "--ssh=${OPENYOG_TEST_SSH}"
+                     --sshtrust "--screenshot=${CMAKE_CURRENT_BINARY_DIR}/mysql-ssh.png"
+                     "--completeat=SELECT * FROM employees e WHERE e.")
+    set_tests_properties(selftest_mysql_ssh PROPERTIES
+                         PASS_REGULAR_EXPRESSION "e\\.\\]: id \\| name \\| salary"
+                         FIXTURES_REQUIRED mysql_db RESOURCE_LOCK mysql_db
+                         ENVIRONMENT "${SELFTEST_ENV}")
+endif()
+if(OPENYOG_TEST_SSH AND OPENYOG_TEST_PG)
+    add_test(NAME selftest_pg_ssh
+             COMMAND openyog "--autoconnectpg=${OPENYOG_TEST_SSH_PG}" "--ssh=${OPENYOG_TEST_SSH}"
+                     --sshtrust "--screenshot=${CMAKE_CURRENT_BINARY_DIR}/pg-ssh.png"
+                     "--completeat=SELECT * FROM employees e JOIN emp_dept d ON ")
+    set_tests_properties(selftest_pg_ssh PROPERTIES
+                         PASS_REGULAR_EXPRESSION "ON \\]: d\\.id = e\\.dept_id \\|"
                          FIXTURES_REQUIRED pg_db RESOURCE_LOCK pg_db
                          ENVIRONMENT "${SELFTEST_ENV}")
 endif()

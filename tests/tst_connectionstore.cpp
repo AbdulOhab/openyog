@@ -68,6 +68,9 @@ private slots:
     void renameRefusedWhenKeychainLocked();
     void removeDeletesSecret();
     void sqliteStoresNoSecret();
+    void sshSettingsAndSecretRoundTrip();
+    void sshOffDropsItsSecret();
+    void removeAndRenameCarryTheSshSecret();
 
 private:
     QTemporaryDir m_configHome;
@@ -198,6 +201,75 @@ void TestConnectionStore::sqliteStoresNoSecret()
     ConnectionParams back;
     QVERIFY(ConnectionStore::load(QStringLiteral("local"), &back));
     QCOMPARE(back.filePath, QStringLiteral("/tmp/x.sqlite"));
+}
+
+namespace {
+ConnectionParams sshParams(const QString &name)
+{
+    ConnectionParams p = mysqlParams(name);
+    p.host = QStringLiteral("127.0.0.1"); /* as seen from the SSH host */
+    p.useSsh = true;
+    p.sshHost = QStringLiteral("bastion.example");
+    p.sshPort = 2222;
+    p.sshUser = QStringLiteral("tunnel");
+    p.sshPassword = QStringLiteral("ssh-s3cret");
+    p.sshKeyFile = QStringLiteral("/home/u/.ssh/id_ed25519");
+    return p;
+}
+} // namespace
+
+void TestConnectionStore::sshSettingsAndSecretRoundTrip()
+{
+    ConnectionStore::save(sshParams(QStringLiteral("viaSsh")));
+    /* its own keychain entry, next to the database password's */
+    QCOMPARE(FakeSecretStore::entries().value(QStringLiteral("connection/viaSsh/ssh")),
+             QStringLiteral("ssh-s3cret"));
+    QCOMPARE(FakeSecretStore::entries().value(QStringLiteral("connection/viaSsh")),
+             QStringLiteral("s3cret"));
+    QVERIFY(!iniText().contains(QStringLiteral("ssh-s3cret")));
+
+    ConnectionParams back;
+    QVERIFY(ConnectionStore::load(QStringLiteral("viaSsh"), &back));
+    QVERIFY(back.useSsh);
+    QCOMPARE(back.sshHost, QStringLiteral("bastion.example"));
+    QCOMPARE(back.sshPort, 2222);
+    QCOMPARE(back.sshUser, QStringLiteral("tunnel"));
+    QCOMPARE(back.sshPassword, QStringLiteral("ssh-s3cret"));
+    QCOMPARE(back.sshKeyFile, QStringLiteral("/home/u/.ssh/id_ed25519"));
+    QCOMPARE(back.password, QStringLiteral("s3cret"));
+
+    /* no keychain: both fall back to the INI */
+    FakeSecretStore::reset(false);
+    ConnectionStore::save(sshParams(QStringLiteral("plain")));
+    ConnectionParams plain;
+    QVERIFY(ConnectionStore::load(QStringLiteral("plain"), &plain));
+    QCOMPARE(plain.sshPassword, QStringLiteral("ssh-s3cret"));
+    QCOMPARE(plain.password, QStringLiteral("s3cret"));
+}
+
+void TestConnectionStore::sshOffDropsItsSecret()
+{
+    ConnectionStore::save(sshParams(QStringLiteral("p")));
+    ConnectionParams off = sshParams(QStringLiteral("p"));
+    off.useSsh = false;
+    ConnectionStore::save(off);
+    QVERIFY(!FakeSecretStore::entries().contains(QStringLiteral("connection/p/ssh")));
+    ConnectionParams back;
+    QVERIFY(ConnectionStore::load(QStringLiteral("p"), &back));
+    QVERIFY(!back.useSsh);
+    QVERIFY(back.sshPassword.isEmpty());
+}
+
+void TestConnectionStore::removeAndRenameCarryTheSshSecret()
+{
+    ConnectionStore::save(sshParams(QStringLiteral("a")));
+    QVERIFY(ConnectionStore::rename(QStringLiteral("a"), QStringLiteral("b")));
+    QVERIFY(!FakeSecretStore::entries().contains(QStringLiteral("connection/a/ssh")));
+    QCOMPARE(FakeSecretStore::entries().value(QStringLiteral("connection/b/ssh")),
+             QStringLiteral("ssh-s3cret"));
+
+    ConnectionStore::remove(QStringLiteral("b"));
+    QVERIFY(FakeSecretStore::entries().isEmpty());
 }
 
 QTEST_GUILESS_MAIN(TestConnectionStore)

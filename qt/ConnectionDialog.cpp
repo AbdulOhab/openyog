@@ -11,6 +11,7 @@
 #include <QPlainTextEdit>
 #include <QRadioButton>
 #include <QTextEdit>
+#include <QDir>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QFormLayout>
@@ -29,6 +30,7 @@
 
 #include "db/IDbDriver.h"
 #include "db/IDbConnection.h"
+#include "db/SshTunnel.h"
 
 namespace {
 QWidget *placeholderTab(const QString &what)
@@ -311,13 +313,66 @@ ConnectionDialog::ConnectionDialog(QWidget *parent) : QDialog(parent)
     sslLayout->addLayout(sslForm);
     sslLayout->addStretch(1);
 
+    /* ---- SSH tab: tunnel to the server through an SSH host (SshTunnel) ---- */
+    auto *sshTab = new QWidget(this);
+    m_useSsh = new QCheckBox(QStringLiteral("Use SS&H tunnel"), sshTab);
+    m_sshHost = new QLineEdit(sshTab);
+    m_sshHost->setPlaceholderText(QStringLiteral("bastion.example.com"));
+    m_sshPort = new QSpinBox(sshTab);
+    m_sshPort->setRange(1, 65535);
+    m_sshPort->setValue(22);
+    m_sshPort->setLocale(QLocale::c());
+    m_sshUser = new QLineEdit(sshTab);
+    m_sshPassword = new QLineEdit(sshTab);
+    m_sshPassword->setEchoMode(QLineEdit::Password);
+    m_sshKeyFile = new QLineEdit(sshTab);
+    m_sshKeyFile->setPlaceholderText(
+        QStringLiteral("empty: password, then ssh-agent / ~/.ssh keys"));
+    auto *sshKeyBrowse = new QPushButton(QStringLiteral("Browse…"), sshTab);
+    connect(sshKeyBrowse, &QPushButton::clicked, this, [this] {
+        const QString path = QFileDialog::getOpenFileName(
+            this, QStringLiteral("SSH Private Key"),
+            m_sshKeyFile->text().isEmpty() ? QDir::homePath() + QStringLiteral("/.ssh")
+                                           : m_sshKeyFile->text());
+        if(!path.isEmpty())
+            m_sshKeyFile->setText(path);
+    });
+    auto *sshForm = new QFormLayout;
+    sshForm->addRow(QString(), m_useSsh);
+    sshForm->addRow(QStringLiteral("SSH Host"), m_sshHost);
+    sshForm->addRow(QStringLiteral("SSH Port"), m_sshPort);
+    sshForm->addRow(QStringLiteral("SSH Username"), m_sshUser);
+    sshForm->addRow(QStringLiteral("Password / Passphrase"), m_sshPassword);
+    sshForm->addRow(QStringLiteral("Private Key"), sslRow(m_sshKeyFile, sshKeyBrowse));
+    auto *sshNote = new QLabel(
+        SshTunnel::available()
+            ? QStringLiteral("With a tunnel, the MySQL/PostgreSQL tab's host and port are the "
+                             "database as seen from the SSH host — often 127.0.0.1.")
+            : QStringLiteral("SSH tunnels aren't available in this build."),
+        sshTab);
+    sshNote->setWordWrap(true);
+    sshNote->setEnabled(false);
+    const QList<QWidget *> sshFields{m_sshHost,     m_sshPort,    m_sshUser,
+                                     m_sshPassword, m_sshKeyFile, sshKeyBrowse};
+    const auto setSshFieldsEnabled = [sshFields](bool on) {
+        for(QWidget *w : sshFields)
+            w->setEnabled(on);
+    };
+    setSshFieldsEnabled(false);
+    m_useSsh->setEnabled(SshTunnel::available());
+    connect(m_useSsh, &QCheckBox::toggled, this, setSshFieldsEnabled);
+    auto *sshLayout = new QVBoxLayout(sshTab);
+    sshLayout->addLayout(sshForm);
+    sshLayout->addWidget(sshNote);
+    sshLayout->addStretch(1);
+
     m_tabs = new QTabWidget(this);
     m_tabs->setObjectName(QStringLiteral("connectDialogTabs")); /* Theme.cpp styling */
     m_tabs->addTab(m_mysqlTab, QStringLiteral("MySQL/MariaDB"));
     m_tabs->addTab(m_sqliteTab, QStringLiteral("SQLite"));
     m_tabs->addTab(m_postgresTab, QStringLiteral("PostgreSQL"));
     m_tabs->addTab(placeholderTab(QStringLiteral("HTTP tunnel")), QStringLiteral("HTTP"));
-    m_tabs->addTab(placeholderTab(QStringLiteral("SSH tunnel")), QStringLiteral("SSH"));
+    m_tabs->addTab(sshTab, QStringLiteral("SSH"));
     m_tabs->addTab(sslTab, QStringLiteral("SSL"));
     m_tabs->addTab(placeholderTab(QStringLiteral("Advanced")), QStringLiteral("Advanced"));
     connect(m_tabs, &QTabWidget::currentChanged, this, [this](int) {
@@ -537,9 +592,50 @@ void ConnectionDialog::deleteConnection()
         newConnection();
 }
 
+bool ConnectionDialog::confirmSshHostKey(QWidget *parent, const ConnectionParams &p)
+{
+    if(!p.useSsh || !SshTunnel::available())
+        return true;
+    const SshTunnel::HostKey hk = SshTunnel::checkHostKey(p);
+    const QString where = QStringLiteral("%1:%2").arg(p.sshHost).arg(p.sshPort);
+    switch(hk.state) {
+        case SshTunnel::HostKeyState::Known:
+        case SshTunnel::HostKeyState::Error:
+            return true;
+        case SshTunnel::HostKeyState::Changed:
+            QMessageBox::critical(
+                parent, QStringLiteral("SSH Host Key Changed"),
+                QStringLiteral("The SSH host key of %1 has changed. It now is:\n%2\n\n"
+                               "Someone could be intercepting the connection, so OpenYog won't "
+                               "connect. If the server was reinstalled, remove its old entry "
+                               "from ~/.ssh/known_hosts.")
+                    .arg(where, hk.fingerprint));
+            return false;
+        case SshTunnel::HostKeyState::Unknown: {
+            const auto answer = QMessageBox::question(
+                parent, QStringLiteral("Unknown SSH Host"),
+                QStringLiteral("The authenticity of SSH host %1 can't be established.\n"
+                               "Its key fingerprint is:\n%2\n\n"
+                               "Trust this host and connect?")
+                    .arg(where, hk.fingerprint));
+            if(answer != QMessageBox::Yes)
+                return false;
+            QString error;
+            if(!SshTunnel::trustHostKey(p, &error)) {
+                QMessageBox::warning(parent, QStringLiteral("Unknown SSH Host"), error);
+                return false;
+            }
+            return true;
+        }
+    }
+    return true;
+}
+
 void ConnectionDialog::testConnection()
 {
     const ConnectionParams p = params();
+    if(!confirmSshHostKey(this, p))
+        return;
     QString error;
     IDbConnection *c = dbDriverFor(p.driverType)->connect(p, &error);
     const bool ok = c != nullptr;
@@ -624,6 +720,12 @@ void ConnectionDialog::setParams(const ConnectionParams &p)
     m_sslCa->setText(p.sslCa);
     m_sslCert->setText(p.sslCert);
     m_sslKey->setText(p.sslKey);
+    m_useSsh->setChecked(p.useSsh && SshTunnel::available());
+    m_sshHost->setText(p.sshHost);
+    m_sshPort->setValue(p.sshPort > 0 ? p.sshPort : 22);
+    m_sshUser->setText(p.sshUser);
+    m_sshPassword->setText(p.sshPassword);
+    m_sshKeyFile->setText(p.sshKeyFile);
     m_compress->setChecked(p.compress);
     if(p.idleTimeoutSecs > 0) {
         m_idleCustom->setChecked(true);
@@ -665,6 +767,12 @@ ConnectionParams ConnectionDialog::params() const
         p.sslCa = m_sslCa->text().trimmed();
         p.sslCert = m_sslCert->text().trimmed();
         p.sslKey = m_sslKey->text().trimmed();
+        p.useSsh = m_useSsh->isChecked();
+        p.sshHost = m_sshHost->text().trimmed();
+        p.sshPort = m_sshPort->value();
+        p.sshUser = m_sshUser->text().trimmed();
+        p.sshPassword = m_sshPassword->text();
+        p.sshKeyFile = m_sshKeyFile->text().trimmed();
         p.idleTimeoutSecs = m_pgIdleCustom->isChecked() ? m_pgIdleSecs->value() : 0;
         p.keepAliveSecs = m_pgKeepAlive->value();
         p.name = hasSavedName ? sel : QStringLiteral("%1@%2:%3").arg(p.user, p.host).arg(p.port);
@@ -680,6 +788,12 @@ ConnectionParams ConnectionDialog::params() const
     p.sslCa = m_sslCa->text().trimmed();
     p.sslCert = m_sslCert->text().trimmed();
     p.sslKey = m_sslKey->text().trimmed();
+    p.useSsh = m_useSsh->isChecked();
+    p.sshHost = m_sshHost->text().trimmed();
+    p.sshPort = m_sshPort->value();
+    p.sshUser = m_sshUser->text().trimmed();
+    p.sshPassword = m_sshPassword->text();
+    p.sshKeyFile = m_sshKeyFile->text().trimmed();
     p.compress = m_compress->isChecked();
     p.idleTimeoutSecs = m_idleCustom->isChecked() ? m_idleSecs->value() : 0;
     p.keepAliveSecs = m_keepAlive->value();

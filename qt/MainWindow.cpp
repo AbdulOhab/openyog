@@ -1830,15 +1830,25 @@ void MainWindow::newConnection()
 
 bool MainWindow::openAndRun(const ConnectionParams &params, bool interactive)
 {
+    /* an SSH host seen for the first time: ask before the tunnel opens
+     * (non-interactive, the connect below fails saying the key's untrusted) */
+    if(interactive && !ConnectionDialog::confirmSshHostKey(this, params))
+        return false;
     auto *tab = new ConnectionTab(params, this);
     if(!tab->isConnected()) {
+        /* with the reason: a wrong password, an untrusted SSH host key and a
+         * server that's down otherwise all read the same */
         const QString msg = QStringLiteral("Could not connect to %1@%2:%3.")
                                 .arg(params.user, params.host)
                                 .arg(params.port);
-        if(interactive)
-            QMessageBox::warning(this, QStringLiteral("Connection failed"), msg);
-        else
-            statusBar()->showMessage(msg, 10000);
+        const QString why = tab->connectError().trimmed();
+        if(interactive) {
+            QMessageBox::warning(this, QStringLiteral("Connection failed"),
+                                 why.isEmpty() ? msg : msg + QStringLiteral("\n\n") + why);
+        } else {
+            statusBar()->showMessage(why.isEmpty() ? msg : msg + QLatin1Char(' ') + why, 15000);
+            qWarning("%s %s", qPrintable(msg), qPrintable(why));
+        }
         delete tab;
         return false;
     }

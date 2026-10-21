@@ -40,6 +40,7 @@
 #include "Theme.h"
 #include "db/IDbDriver.h"
 #include "db/IDbConnection.h"
+#include "db/SshTunnel.h"
 
 #include <QDebug>
 
@@ -63,6 +64,7 @@
 #include <QPushButton>
 #include <QRegularExpression>
 #include <QTableWidget>
+#include <QTabWidget>
 #include <QTextStream>
 #include <QThreadPool>
 #include <QTimer>
@@ -81,6 +83,7 @@ int main(int argc, char *argv[])
     QString screenshot;
     bool shotDialog = false;
     QString dialogDriver; /* --dialogdriver=sqlite : preselect a driver, --dialog selftest */
+    QString dialogTab;    /* --dialogtab=SSH : show that tab, --dialog selftest */
     bool shotCreateTable = false;
     bool shotIndexDlg = false;
     bool shotFkDlg = false;   /* --fkdlg: render the Foreign Keys dialog */
@@ -104,6 +107,7 @@ int main(int argc, char *argv[])
     QString expandPgDbArg;      /* --expandpgdb=NAME selftest */
     bool runAgain = false;      /* --runagain selftest: F9 a second time before the screenshot */
     QString sessionTestArg;     /* --sessiontest=FILE.sqlite selftest */
+    bool sshTrust = false;      /* --sshtrust selftest: accept an unknown SSH host key */
     QString editorSql;          /* --sql=TEXT selftest: put TEXT in the editor (with --runagain:
                                  * run it) */
     QStringList completeAts;    /* --completeat=TEXT selftest (repeatable): print what
@@ -155,6 +159,8 @@ int main(int argc, char *argv[])
             shotDialog = true;
         if(a.startsWith(QStringLiteral("--dialogdriver=")))
             dialogDriver = a.mid(QStringLiteral("--dialogdriver=").size());
+        if(a.startsWith(QStringLiteral("--dialogtab=")))
+            dialogTab = a.mid(QStringLiteral("--dialogtab=").size());
         if(a == QStringLiteral("--createtable"))
             shotCreateTable = true;
         if(a == QStringLiteral("--indexdlg"))
@@ -165,6 +171,23 @@ int main(int argc, char *argv[])
             shotDumpDlg = true;
         if(a == QStringLiteral("--runagain"))
             runAgain = true;
+        /* --ssh=host:port:user:password [--sshkey=FILE]: route the
+         * --autoconnect=/--autoconnectpg= connection through an SSH tunnel
+         * (the database host:port then as seen from the SSH host) */
+        if(a.startsWith(QStringLiteral("--ssh="))) {
+            const QStringList s = a.mid(QStringLiteral("--ssh=").size()).split(QLatin1Char(':'));
+            if(s.size() == 4) {
+                autoConnect.useSsh = true;
+                autoConnect.sshHost = s[0];
+                autoConnect.sshPort = s[1].toInt();
+                autoConnect.sshUser = s[2];
+                autoConnect.sshPassword = s[3];
+            }
+        }
+        if(a.startsWith(QStringLiteral("--sshkey=")))
+            autoConnect.sshKeyFile = a.mid(QStringLiteral("--sshkey=").size());
+        if(a == QStringLiteral("--sshtrust"))
+            sshTrust = true;
         if(a.startsWith(QStringLiteral("--sessiontest=")))
             sessionTestArg = a.mid(QStringLiteral("--sessiontest=").size());
         if(a.startsWith(QStringLiteral("--sql=")))
@@ -1758,6 +1781,16 @@ int main(int argc, char *argv[])
     dbDriverFor(SqlDriverType::Mysql)->libraryInit();
     int rc = 0;
 
+    /* --sshtrust: trust-on-first-use for the selftests' SSH host, the step
+     * the UI asks the user about (MainWindow::openAndRun) */
+    if(sshTrust && autoConnect.useSsh) {
+        QString sshError;
+        if(!SshTunnel::trustHostKey(autoConnect, &sshError)) {
+            QTextStream(stdout) << "sshtrust: " << sshError << '\n';
+            return 1;
+        }
+    }
+
     /* --delconn=NAME selftest: delete a saved connection and exit */
     if(!delConn.isEmpty()) {
         const bool existed = ConnectionStore::storedNames().contains(delConn);
@@ -1772,7 +1805,7 @@ int main(int argc, char *argv[])
     /* --dumpdb=FILE selftest (headless, no screenshot): autoconnect, dump, exit */
     if(!dumpPath.isEmpty() && doAutoConnect) {
         MainWindow w;
-        rc = (w.openAndRun(autoConnect) && w.selftestDump(dumpPath)) ? 0 : 1;
+        rc = (w.openAndRun(autoConnect, /*interactive=*/false) && w.selftestDump(dumpPath)) ? 0 : 1;
         QThreadPool::globalInstance()->waitForDone();
         dbDriverFor(SqlDriverType::Mysql)->libraryShutdown();
         return rc;
@@ -1782,7 +1815,10 @@ int main(int argc, char *argv[])
     if(!copyDbArg.isEmpty() && doAutoConnect) {
         const QStringList p = copyDbArg.split(':');
         MainWindow w;
-        rc = (p.size() == 2 && w.openAndRun(autoConnect) && w.selftestCopyDb(p[0], p[1])) ? 0 : 1;
+        rc = (p.size() == 2 && w.openAndRun(autoConnect, /*interactive=*/false) &&
+              w.selftestCopyDb(p[0], p[1]))
+                 ? 0
+                 : 1;
         QThreadPool::globalInstance()->waitForDone();
         dbDriverFor(SqlDriverType::Mysql)->libraryShutdown();
         return rc;
@@ -1793,7 +1829,8 @@ int main(int argc, char *argv[])
     if(!pgCopyDbArg.isEmpty() && doAutoConnect) {
         const QStringList p = pgCopyDbArg.split(':');
         MainWindow w;
-        rc = (p.size() == 2 && w.openAndRun(autoConnect) && w.selftestCopyDbPostgres(p[0], p[1]))
+        rc = (p.size() == 2 && w.openAndRun(autoConnect, /*interactive=*/false) &&
+              w.selftestCopyDbPostgres(p[0], p[1]))
                  ? 0
                  : 1;
         QThreadPool::globalInstance()->waitForDone();
@@ -1806,7 +1843,9 @@ int main(int argc, char *argv[])
      * side-connection plumbing (ConnectionTab::connectionFor()/paramsFor()), exit */
     if(!pgMultiDbArg.isEmpty() && doAutoConnect) {
         MainWindow w;
-        rc = (w.openAndRun(autoConnect) && w.selftestMultiDb(pgMultiDbArg)) ? 0 : 1;
+        rc = (w.openAndRun(autoConnect, /*interactive=*/false) && w.selftestMultiDb(pgMultiDbArg))
+                 ? 0
+                 : 1;
         QThreadPool::globalInstance()->waitForDone();
         dbDriverFor(SqlDriverType::Mysql)->libraryShutdown();
         return rc;
@@ -1830,7 +1869,7 @@ int main(int argc, char *argv[])
                    * never-shown, zero-sized tree viewport is silently
                    * dropped by Qt (see ObjectBrowser::clickTreeItem) */
         QTimer::singleShot(1500, [&] {
-            ok = w.openAndRun(autoConnect);
+            ok = w.openAndRun(autoConnect, /*interactive=*/false);
             QTimer::singleShot(600, [&] {
                 QTextStream(stdout)
                     << "combo: " << w.selftestComboItems().join(QStringLiteral(", "))
@@ -1904,7 +1943,10 @@ int main(int argc, char *argv[])
         const bool nodata = sqliteCopyDbArg.endsWith(QStringLiteral(":nodata"));
         const QString target = nodata ? sqliteCopyDbArg.chopped(7) : sqliteCopyDbArg;
         MainWindow w;
-        rc = (w.openAndRun(autoConnect) && w.selftestCopySqliteFile(target, !nodata)) ? 0 : 1;
+        rc = (w.openAndRun(autoConnect, /*interactive=*/false) &&
+              w.selftestCopySqliteFile(target, !nodata))
+                 ? 0
+                 : 1;
         QThreadPool::globalInstance()->waitForDone();
         dbDriverFor(SqlDriverType::Mysql)->libraryShutdown();
         return rc;
@@ -1916,7 +1958,7 @@ int main(int argc, char *argv[])
     if(!sqliteCsvImportArg.isEmpty() && doAutoConnect) {
         const QStringList p = sqliteCsvImportArg.split(':');
         MainWindow w;
-        rc = (p.size() >= 2 && w.openAndRun(autoConnect) &&
+        rc = (p.size() >= 2 && w.openAndRun(autoConnect, /*interactive=*/false) &&
               w.selftestCsvImportBatched({}, p[0], p[1], QStringLiteral("IGNORE"),
                                          p.size() > 2 ? p[2].split(QLatin1Char(','))
                                                       : QStringList()))
@@ -1932,7 +1974,7 @@ int main(int argc, char *argv[])
     if(!pgCsvImportArg.isEmpty() && doAutoConnect) {
         const QStringList p = pgCsvImportArg.split(':');
         MainWindow w;
-        rc = (p.size() >= 2 && w.openAndRun(autoConnect) &&
+        rc = (p.size() >= 2 && w.openAndRun(autoConnect, /*interactive=*/false) &&
               w.selftestCsvImportBatched(QStringLiteral("public"), p[0], p[1],
                                          p.size() > 2 ? p[2] : QStringLiteral("IGNORE"),
                                          p.size() > 3 ? p[3].split(QLatin1Char(','))
@@ -1962,7 +2004,10 @@ int main(int argc, char *argv[])
      * schema HTML, write it to disk, exit */
     if(!schemaHtmlArg.isEmpty() && doAutoConnect) {
         MainWindow w;
-        rc = (w.openAndRun(autoConnect) && w.selftestSchemaHtml(schemaHtmlArg)) ? 0 : 1;
+        rc = (w.openAndRun(autoConnect, /*interactive=*/false) &&
+              w.selftestSchemaHtml(schemaHtmlArg))
+                 ? 0
+                 : 1;
         QThreadPool::globalInstance()->waitForDone();
         dbDriverFor(SqlDriverType::Mysql)->libraryShutdown();
         return rc;
@@ -2020,6 +2065,12 @@ int main(int argc, char *argv[])
                         combo->setCurrentIndex(idx);
                     }
                 }
+                if(!dialogTab.isEmpty())
+                    if(auto *tabs =
+                           dlg->findChild<QTabWidget *>(QStringLiteral("connectDialogTabs")))
+                        for(int i = 0; i < tabs->count(); ++i)
+                            if(tabs->tabText(i).remove(QLatin1Char('&')) == dialogTab)
+                                tabs->setCurrentIndex(i);
             }
             dlg->show();
             QTimer::singleShot(200, [dlg, screenshot] {
@@ -2078,7 +2129,7 @@ int main(int argc, char *argv[])
         /* threaded execution needs more than a frame or two to land */
         QTimer::singleShot(1500, [&, w = w.get()] {
             if(doAutoConnect)
-                w->openAndRun(autoConnect);
+                w->openAndRun(autoConnect, /*interactive=*/false);
             /* open the table only after the batch's results have landed,
              * so the data grid keeps the focus */
             QTimer::singleShot(600, [&, w] {

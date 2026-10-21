@@ -1,5 +1,6 @@
 #include "PostgresDriver.h"
 #include "PostgresConnection.h"
+#include "SshTunnel.h"
 
 #include <libpq-fe.h>
 
@@ -17,9 +18,20 @@ QString conninfoQuote(const QString &value)
 }
 } // namespace
 
-IDbConnection *PostgresDriver::connect(const ConnectionParams &params, QString *error,
+IDbConnection *PostgresDriver::connect(const ConnectionParams &requested, QString *error,
                                        bool /*localInfile*/)
 {
+    /* through SSH: the tunnel's local end stands in for the server */
+    ConnectionParams params = requested;
+    std::shared_ptr<SshTunnel> tunnel;
+    if(requested.useSsh) {
+        tunnel = SshTunnel::open(requested, error);
+        if(!tunnel)
+            return nullptr;
+        params.host = QStringLiteral("127.0.0.1");
+        params.port = tunnel->localPort();
+    }
+
     QStringList parts;
     parts << QStringLiteral("host=%1").arg(conninfoQuote(params.host))
           << QStringLiteral("port=%1").arg(params.port)
@@ -77,5 +89,7 @@ IDbConnection *PostgresDriver::connect(const ConnectionParams &params, QString *
         PGresult *res = PQexec(conn, sql.constData());
         PQclear(res);
     }
-    return new PostgresConnection(conn);
+    auto *pg = new PostgresConnection(conn);
+    pg->adoptTunnel(std::move(tunnel));
+    return pg;
 }

@@ -415,6 +415,7 @@ ConnectionTab::ConnectionTab(const ConnectionParams &params, QWidget *parent)
         QString error;
         m_conn = dbDriverFor(m_params.driverType)->connect(m_params, &error, /*localInfile=*/true);
         if(!m_conn) {
+            m_connectError = error;
             m_messages->setPlainText(QStringLiteral("Connection failed: ") + error);
             return;
         }

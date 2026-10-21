@@ -60,6 +60,15 @@ struct ConnectionParams
     QString database; // optional
     QString filePath; // SQLite only: path to the .sqlite file
 
+    // MySQL/PostgreSQL: reach the server through an SSH tunnel (SshTunnel) —
+    // host/port above are then the database as seen *from the SSH host*
+    bool useSsh = false;
+    QString sshHost;
+    int sshPort = 22;
+    QString sshUser;
+    QString sshPassword; // login password, or the private key's passphrase
+    QString sshKeyFile;  // private key; empty: password, then ssh-agent / ~/.ssh keys
+
     // MySQL/PostgreSQL: client-cert TLS (mysql_ssl_set / libpq sslmode=verify-*)
     bool useSsl = false;
     QString sslCa;   // CA cert

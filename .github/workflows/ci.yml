@@ -38,8 +38,8 @@ jobs:
           pacman -Syu --noconfirm --needed \
             base-devel git cmake ninja clang \
             qt6-base qt6-svg qscintilla-qt6 qtkeychain-qt6 \
-            mariadb-libs postgresql-libs sqlite \
-            mariadb-clients postgresql
+            mariadb-libs postgresql-libs sqlite libssh \
+            mariadb-clients postgresql openssh
 
       - uses: actions/checkout@v4
 
@@ -49,11 +49,21 @@ jobs:
       - name: clang-format
         run: clang-format --dry-run --Werror qt/*.cpp qt/*.h qt/db/*.cpp qt/db/*.h tests/*.cpp tests/*.h
 
+      # an SSH server in the job container for the tunnel selftests: it
+      # reaches the database services by the same names as the job does
+      - name: Start an SSH server
+        run: |
+          ssh-keygen -A
+          useradd -m tunnel
+          echo 'tunnel:tunnelpw' | chpasswd
+          /usr/bin/sshd -o PasswordAuthentication=yes -o AllowTcpForwarding=yes
+
       - name: Configure
         run: >-
           cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug
           -DOPENYOG_TEST_MYSQL=mariadb:3306:root:root:openyog_test
           -DOPENYOG_TEST_PG=postgres:5432:postgres:root:openyog_test
+          -DOPENYOG_TEST_SSH=127.0.0.1:22:tunnel:tunnelpw
 
       - name: Build
         run: cmake --build build

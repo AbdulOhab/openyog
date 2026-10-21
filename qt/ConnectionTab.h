@@ -59,6 +59,11 @@ public:
     {
         return m_conn != nullptr;
     }
+    /* why the connection in the constructor failed, when isConnected() is false */
+    QString connectError() const
+    {
+        return m_connectError;
+    }
     QString title() const
     {
         return m_params.name;
@@ -383,7 +388,8 @@ private:
     class QTimer *m_keepAliveTimer = nullptr; /* Connect dialog's keep-alive */
 
     QStringList m_databases;
-    QString m_lastFind;       /* for Find Next / F3 */
+    QString m_lastFind; /* for Find Next / F3 */
+    QString m_connectError;
     QString m_loadedTableKey; /* physDb, db, table of the grid's content */
     /* autocomplete: what every editor tab is handed (updateCompletions()),
      * plus the per-table / per-database lists it looks up lazily */

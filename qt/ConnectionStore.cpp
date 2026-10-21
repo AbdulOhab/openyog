@@ -21,10 +21,29 @@ static QByteArray toUtf8(const QString &s)
     return s.toUtf8();
 }
 
-/* the connection's entry in the OS keychain (SecretStore) */
-static QString secretKey(const QString &name)
+/* a connection's secrets — the database password, and the SSH password or
+ * key passphrase — each kept in the OS keychain under its own key (the INI
+ * section records <flag>=1), or in upstream's base64 INI field when no
+ * keychain takes it */
+namespace {
+struct SecretSlot
 {
-    return QStringLiteral("connection/") + name;
+    const char *keySuffix;
+    const char *field;
+    const char *flag;
+};
+const SecretSlot kDbPassword = {"", "password", "password_in_keychain"};
+const SecretSlot kSshPassword = {"/ssh", "ssh_password", "ssh_password_in_keychain"};
+} // namespace
+
+static QString secretKey(const QString &name, const SecretSlot &slot)
+{
+    return QStringLiteral("connection/") + name + QLatin1String(slot.keySuffix);
+}
+
+static bool inKeychain(const QString &name, const SecretSlot &slot)
+{
+    return wyIni::IniGetInt(toUtf8(name), slot.flag, 0, iniPath().toUtf8()) != 0;
 }
 
 /* upstream's INI password field: base64, i.e. obfuscation, not encryption */
@@ -39,26 +58,65 @@ static QString decodeIniPassword(wyString &b64value) /* wyString getters aren't 
     return QString::fromUtf8(decoded);
 }
 
-static void writeIniPassword(const QByteArray &section, const QString &password,
-                             const QByteArray &iniFile)
+static void writeIniSecret(const QByteArray &section, const SecretSlot &slot, const QString &value,
+                           const QByteArray &iniFile)
 {
     wyChar *b64 = NULL;
-    const QByteArray pw = toUtf8(password);
+    const QByteArray pw = toUtf8(value);
     EncodeBase64(pw.constData(), pw.size(), &b64);
-    wyIni::IniWriteString(section, "password", b64 ? b64 : "", iniFile);
+    wyIni::IniWriteString(section, slot.field, b64 ? b64 : "", iniFile);
     free(b64);
 }
 
-/* move the password into the keychain and blank the INI copy; false (and
- * the INI left as it was) when no keychain backend takes it */
-static bool storeInKeychain(const QString &name, const QString &password, const QByteArray &iniFile)
+/* move the secret into the keychain and blank the INI copy; false (and the
+ * INI left as it was) when no keychain backend takes it */
+static bool storeInKeychain(const QString &name, const SecretSlot &slot, const QString &value,
+                            const QByteArray &iniFile)
 {
-    if(!SecretStore::write(secretKey(name), password))
+    if(!SecretStore::write(secretKey(name, slot), value))
         return false;
     const QByteArray n = toUtf8(name);
-    wyIni::IniWriteString(n, "password", "", iniFile);
-    wyIni::IniWriteInt(n, "password_in_keychain", 1, iniFile);
+    wyIni::IniWriteString(n, slot.field, "", iniFile);
+    wyIni::IniWriteInt(n, slot.flag, 1, iniFile);
     return true;
+}
+
+/* keychain first; the INI field only when no keychain takes it, never both */
+static void saveSecret(const QString &name, const SecretSlot &slot, const QString &value)
+{
+    const QByteArray p = iniPath().toUtf8();
+    if(!storeInKeychain(name, slot, value, p)) {
+        writeIniSecret(toUtf8(name), slot, value, p);
+        wyIni::IniWriteInt(toUtf8(name), slot.flag, 0, p);
+    }
+}
+
+/* in the OS keychain when the entry says so; otherwise the INI's base64
+ * field (built without a keychain, none answered at save time, or a file
+ * from before keychain support), which gets moved into the keychain now if
+ * one takes it. Missing / locked / denied reads as empty: the server's own
+ * error then says so. */
+static QString loadSecret(const QString &name, const SecretSlot &slot)
+{
+    QString secret;
+    if(inKeychain(name, slot)) {
+        SecretStore::read(secretKey(name, slot), &secret);
+        return secret;
+    }
+    wyString value;
+    wyIni::IniGetString(toUtf8(name), slot.field, "", &value, iniPath().toUtf8());
+    secret = decodeIniPassword(value);
+    if(!secret.isEmpty())
+        storeInKeychain(name, slot, secret, iniPath().toUtf8());
+    return secret;
+}
+
+static void removeSecret(const QString &name, const SecretSlot &slot)
+{
+    /* only touch the keychain for entries that use it: a delete there can
+     * mean an unlock prompt */
+    if(inKeychain(name, slot))
+        SecretStore::remove(secretKey(name, slot));
 }
 
 bool ConnectionStore::load(const QString &name, ConnectionParams *out)
@@ -97,21 +155,17 @@ bool ConnectionStore::load(const QString &name, ConnectionParams *out)
     out->port = wyIni::IniGetInt(n, "port", driver == SqlDriverType::Postgres ? 5432 : 3306,
                                  iniPath().toUtf8());
 
-    /* password: in the OS keychain when the entry says so; otherwise the
-     * INI's base64 field (built without a keychain, none answered at save
-     * time, or a file from before keychain support), which gets moved into
-     * the keychain now if one takes it */
-    out->password.clear();
-    if(wyIni::IniGetInt(n, "password_in_keychain", 0, iniPath().toUtf8()) != 0) {
-        /* missing / locked / denied: connect with an empty password and let
-         * the server's own error say so */
-        SecretStore::read(secretKey(name), &out->password);
-    } else {
-        wyIni::IniGetString(n, "password", "", &value, iniPath().toUtf8());
-        out->password = decodeIniPassword(value);
-        if(!out->password.isEmpty())
-            storeInKeychain(name, out->password, iniPath().toUtf8());
-    }
+    out->password = loadSecret(name, kDbPassword);
+
+    out->useSsh = wyIni::IniGetInt(n, "use_ssh", 0, iniPath().toUtf8()) != 0;
+    wyIni::IniGetString(n, "ssh_host", "", &value, iniPath().toUtf8());
+    out->sshHost = value.GetString();
+    out->sshPort = wyIni::IniGetInt(n, "ssh_port", 22, iniPath().toUtf8());
+    wyIni::IniGetString(n, "ssh_user", "", &value, iniPath().toUtf8());
+    out->sshUser = value.GetString();
+    wyIni::IniGetString(n, "ssh_keyfile", "", &value, iniPath().toUtf8());
+    out->sshKeyFile = value.GetString();
+    out->sshPassword = out->useSsh ? loadSecret(name, kSshPassword) : QString();
 
     out->useSsl = wyIni::IniGetInt(n, "use_ssl", 0, iniPath().toUtf8()) != 0;
     wyIni::IniGetString(n, "ssl_ca", "", &value, iniPath().toUtf8());
@@ -144,11 +198,19 @@ void ConnectionStore::save(const ConnectionParams &params)
     wyIni::IniWriteString(n, "database", toUtf8(params.database), p);
     wyIni::IniWriteInt(n, "port", params.port, p);
 
-    /* keychain first; the INI field only when no keychain takes it, never
-     * both */
-    if(!storeInKeychain(params.name, params.password, p)) {
-        writeIniPassword(n, params.password, p);
-        wyIni::IniWriteInt(n, "password_in_keychain", 0, p);
+    saveSecret(params.name, kDbPassword, params.password);
+
+    wyIni::IniWriteInt(n, "use_ssh", params.useSsh ? 1 : 0, p);
+    wyIni::IniWriteString(n, "ssh_host", toUtf8(params.sshHost), p);
+    wyIni::IniWriteInt(n, "ssh_port", params.sshPort, p);
+    wyIni::IniWriteString(n, "ssh_user", toUtf8(params.sshUser), p);
+    wyIni::IniWriteString(n, "ssh_keyfile", toUtf8(params.sshKeyFile), p);
+    if(params.useSsh) {
+        saveSecret(params.name, kSshPassword, params.sshPassword);
+    } else {
+        removeSecret(params.name, kSshPassword);
+        wyIni::IniWriteString(n, kSshPassword.field, "", p);
+        wyIni::IniWriteInt(n, kSshPassword.flag, 0, p);
     }
 
     wyIni::IniWriteInt(n, "use_ssl", params.useSsl ? 1 : 0, p);
@@ -163,12 +225,9 @@ void ConnectionStore::save(const ConnectionParams &params)
 
 void ConnectionStore::remove(const QString &name)
 {
-    const QByteArray n = toUtf8(name);
-    /* only touch the keychain for entries that use it: a delete there can
-     * mean an unlock prompt */
-    if(wyIni::IniGetInt(n, "password_in_keychain", 0, iniPath().toUtf8()) != 0)
-        SecretStore::remove(secretKey(name));
-    wyIni::IniDeleteSection(n.constData(), iniPath().toUtf8());
+    removeSecret(name, kDbPassword);
+    removeSecret(name, kSshPassword);
+    wyIni::IniDeleteSection(toUtf8(name).constData(), iniPath().toUtf8());
 }
 
 bool ConnectionStore::rename(const QString &oldName, const QString &newName)
@@ -178,13 +237,14 @@ bool ConnectionStore::rename(const QString &oldName, const QString &newName)
     ConnectionParams p;
     if(!load(oldName, &p))
         return false;
-    /* a keychain that won't hand the password over (locked, access denied)
-     * leaves p.password empty, and the save + remove below would then lose
-     * it for good: refuse the rename instead */
-    QString secret;
-    if(wyIni::IniGetInt(toUtf8(oldName), "password_in_keychain", 0, iniPath().toUtf8()) != 0 &&
-       !SecretStore::read(secretKey(oldName), &secret))
-        return false;
+    /* a keychain that won't hand a secret over (locked, access denied)
+     * leaves it empty in p, and the save + remove below would then lose it
+     * for good: refuse the rename instead */
+    for(const SecretSlot *slot : {&kDbPassword, &kSshPassword}) {
+        QString secret;
+        if(inKeychain(oldName, *slot) && !SecretStore::read(secretKey(oldName, *slot), &secret))
+            return false;
+    }
     p.name = newName;
     save(p);
     remove(oldName);

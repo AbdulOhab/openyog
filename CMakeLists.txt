@@ -113,6 +113,7 @@ add_executable(openyog
     qt/db/SqliteConnection.h   qt/db/SqliteConnection.cpp
     qt/db/PostgresDriver.h     qt/db/PostgresDriver.cpp
     qt/db/PostgresConnection.h qt/db/PostgresConnection.cpp
+    qt/db/SshTunnel.h          qt/db/SshTunnel.cpp
     qt/MainWindow.h        qt/MainWindow.cpp
     qt/ConnectionDialog.h  qt/ConnectionDialog.cpp
     qt/ConnectionTab.h     qt/ConnectionTab.cpp
@@ -167,6 +168,20 @@ if(Qt6Keychain_FOUND)
     message(STATUS "QtKeychain found: saved passwords go to the OS keychain")
 else()
     message(STATUS "QtKeychain not found: saved passwords stay base64 in connections.ini")
+endif()
+
+# SSH tunnels (qt/db/SshTunnel) through libssh (Arch: libssh). Optional, and
+# Linux-only for now (the forwarding loop is POSIX sockets + poll): without
+# it SshTunnel compiles to stubs and the SSH tab says it isn't available.
+find_path(LIBSSH_INCLUDE_DIR libssh/libssh.h)
+find_library(LIBSSH_LIBRARY NAMES ssh)
+if(LIBSSH_INCLUDE_DIR AND LIBSSH_LIBRARY AND CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    target_compile_definitions(openyog PRIVATE OPENYOG_HAVE_SSH)
+    target_include_directories(openyog PRIVATE ${LIBSSH_INCLUDE_DIR})
+    target_link_libraries(openyog PRIVATE ${LIBSSH_LIBRARY})
+    message(STATUS "libssh found: SSH tunnels enabled")
+else()
+    message(STATUS "libssh not found (or not Linux): SSH tunnels disabled")
 endif()
 
 # Windows only: compile qt/openyog.rc so the .exe carries its own icon. windres

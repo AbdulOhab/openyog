@@ -27,6 +27,13 @@ public:
 
     ConnectionParams params() const;
 
+    /* trust-on-first-use for the SSH host behind `p`, the way OpenSSH asks:
+     * an unknown host key is shown (fingerprint) and added to known_hosts
+     * on Yes; a changed one is refused outright. True when connecting may
+     * go ahead — also when the SSH host can't be reached at all, which the
+     * connect itself then reports. */
+    static bool confirmSshHostKey(QWidget *parent, const ConnectionParams &p);
+
 protected:
     void showEvent(QShowEvent *event) override;
     void hideEvent(QHideEvent *event) override;
@@ -102,4 +109,11 @@ private:
     QLineEdit *m_sslCa = nullptr;
     QLineEdit *m_sslCert = nullptr;
     QLineEdit *m_sslKey = nullptr;
+
+    QCheckBox *m_useSsh = nullptr;
+    QLineEdit *m_sshHost = nullptr;
+    QSpinBox *m_sshPort = nullptr;
+    QLineEdit *m_sshUser = nullptr;
+    QLineEdit *m_sshPassword = nullptr;
+    QLineEdit *m_sshKeyFile = nullptr;
 };

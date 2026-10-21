@@ -20,8 +20,11 @@ Early but usable for day-to-day work against a local server. Working now:
   started.
 - **Connections**: SQLyog-style *Connect to MySQL Host* dialog, extended with
   a driver picker for MySQL/MariaDB, PostgreSQL, and SQLite (saved
-  connections, clone / rename / delete, Test Connection); HTTP / SSH / SSL /
-  Advanced are still placeholders.
+  connections, clone / rename / delete, Test Connection), SSL client
+  certificates, and SSH tunnels (password or private key, host keys checked
+  against `~/.ssh/known_hosts`). Saved passwords live in the OS keychain;
+  the open connections and their query tabs come back on the next start.
+  The HTTP tunnel and Advanced tabs are still placeholders.
 - **Object browser**: connection → databases → Tables / Views / Stored Procs /
   Functions / Triggers / Events (lazy-loaded); tables expand to columns.
   Postgres connections can browse and switch between every database on the
@@ -43,11 +46,12 @@ Early but usable for day-to-day work against a local server. Working now:
 Requires a C++17 compiler, CMake ≥ 3.21, Ninja, Qt 6, QScintilla (Qt 6
 build), MariaDB client headers, libpq, and SQLite3. QtKeychain is optional:
 with it, saved connection passwords go to the OS keychain (GNOME Keyring,
-KWallet …); without it they stay base64-encoded in `connections.ini`. On
+KWallet …); without it they stay base64-encoded in `connections.ini`.
+libssh is optional too: it adds SSH tunnels (Linux only for now). On
 Arch / CachyOS:
 
 ```bash
-sudo pacman -S --needed base-devel cmake ninja qt6-base qt6-tools qt6-svg qscintilla-qt6 qtkeychain-qt6 mariadb postgresql-libs sqlite
+sudo pacman -S --needed base-devel cmake ninja qt6-base qt6-tools qt6-svg qscintilla-qt6 qtkeychain-qt6 libssh mariadb postgresql-libs sqlite
 
 cmake -S . -B build-cmake -G Ninja
 cmake --build build-cmake

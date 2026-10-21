@@ -1,5 +1,6 @@
 #include "MySqlDriver.h"
 #include "MySqlConnection.h"
+#include "SshTunnel.h"
 
 #include <mysql/mysql.h>
 
@@ -46,9 +47,20 @@ static MYSQL *tryConnect(const ConnectionParams &params, bool localInfile, bool 
     return c;
 }
 
-IDbConnection *MySqlDriver::connect(const ConnectionParams &params, QString *error,
+IDbConnection *MySqlDriver::connect(const ConnectionParams &requested, QString *error,
                                     bool localInfile)
 {
+    /* through SSH: the tunnel's local end stands in for the server */
+    ConnectionParams params = requested;
+    std::shared_ptr<SshTunnel> tunnel;
+    if(requested.useSsh) {
+        tunnel = SshTunnel::open(requested, error);
+        if(!tunnel)
+            return nullptr;
+        params.host = QStringLiteral("127.0.0.1");
+        params.port = tunnel->localPort();
+    }
+
     /* Host "localhost" makes libmysql/libmariadb use the local UNIX socket
      * and ignore the port entirely — so a MariaDB in a container, or on any
      * port other than the socket's own server, was "not connectable" by
@@ -85,7 +97,9 @@ IDbConnection *MySqlDriver::connect(const ConnectionParams &params, QString *err
                 .toUtf8();
         mysql_query(c, sql.constData());
     }
-    return new MySqlConnection(c, params.host, params.port, params.user, params.password);
+    auto *conn = new MySqlConnection(c, params.host, params.port, params.user, params.password);
+    conn->adoptTunnel(std::move(tunnel));
+    return conn;
 }
 
 void MySqlDriver::libraryInit()

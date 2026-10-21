@@ -14,6 +14,9 @@
 #include <QVector>
 
 #include <functional>
+#include <memory>
+
+class SshTunnel;
 
 /* Buffered result set: one query, fully materialized. */
 struct DbResultSet
@@ -184,4 +187,15 @@ public:
     /* does the backend accept `UPDATE/DELETE … LIMIT n`? (SQLite only with
      * SQLITE_ENABLE_UPDATE_DELETE_LIMIT — assume no) */
     virtual bool supportsLimitOnUpdateDelete() = 0;
+
+    /* the SSH tunnel this connection runs through, if any (drivers hand it
+     * over after connecting). A base-class member, so it's destroyed after
+     * the derived destructor has closed the database connection. */
+    void adoptTunnel(std::shared_ptr<SshTunnel> tunnel)
+    {
+        m_tunnel = std::move(tunnel);
+    }
+
+private:
+    std::shared_ptr<SshTunnel> m_tunnel;
 };
