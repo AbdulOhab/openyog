@@ -115,6 +115,8 @@ add_executable(openyog
     qt/MainWindow.h        qt/MainWindow.cpp
     qt/ConnectionDialog.h  qt/ConnectionDialog.cpp
     qt/ConnectionTab.h     qt/ConnectionTab.cpp
+    qt/ConnectionTabCopy.cpp   qt/ConnectionTabImport.cpp   # ConnectionTab, split by area
+    qt/ConnectionTabSchema.cpp qt/ConnectionTabTools.cpp
     qt/QueryModel.h        qt/QueryModel.cpp
     qt/ConnectionStore.h   qt/ConnectionStore.cpp
     qt/SecretStore.h       qt/SecretStore.cpp
