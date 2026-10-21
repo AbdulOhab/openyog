@@ -82,6 +82,8 @@ jobs:
           # the commit under test, not the default branch the PKGBUILD names
           sed "s|^source=.*|source=('openyog::git+file://$GITHUB_WORKSPACE#commit=$GITHUB_SHA')|" \
             packaging/arch/PKGBUILD > /home/builder/pkg/PKGBUILD
+          # makepkg writes the computed pkgver back into it
+          chown builder /home/builder/pkg/PKGBUILD
           sudo -u builder git config --global --add safe.directory "$GITHUB_WORKSPACE"
           sudo -u builder git config --global --add safe.directory "$GITHUB_WORKSPACE/.git"
           cd /home/builder/pkg && sudo -u builder makepkg -s --noconfirm
