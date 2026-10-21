@@ -138,8 +138,15 @@ if(OPENYOG_TEST_MYSQL)
                      "--completeat=SELECT * FROM employees e WHERE e." "--completeat=CALL ")
     set_tests_properties(selftest_mysql_complete PROPERTIES PASS_REGULAR_EXPRESSION
         "e\\.\\]: id \\| name \\| salary \\| city \\| dept_id \\| hired \\| photo\ncompleteat \\[CALL \\]: refresh_stats\\(")
+    # a JOIN's ON: the condition its foreign key spells out
+    add_test(NAME selftest_mysql_complete_join
+             COMMAND openyog "--autoconnect=${OPENYOG_TEST_MYSQL}"
+                     "--screenshot=${CMAKE_CURRENT_BINARY_DIR}/mysql-complete-join.png"
+                     "--completeat=SELECT * FROM employees e JOIN emp_dept d ON ")
+    set_tests_properties(selftest_mysql_complete_join PROPERTIES PASS_REGULAR_EXPRESSION
+        "ON \\]: d\\.id = e\\.dept_id \\|")
     set_tests_properties(smoketest_mysql selftest_mysql_schema selftest_mysql_dump_roundtrip
-                         selftest_mysql_complete PROPERTIES
+                         selftest_mysql_complete selftest_mysql_complete_join PROPERTIES
                          FIXTURES_REQUIRED mysql_db RESOURCE_LOCK mysql_db
                          ENVIRONMENT "${SELFTEST_ENV}")
 endif()
@@ -169,8 +176,15 @@ if(OPENYOG_TEST_PG)
                      "--completeat=SELECT * FROM v_emp" "--completeat=SELECT * FROM employees WHERE name ili")
     set_tests_properties(selftest_pg_complete PROPERTIES PASS_REGULAR_EXPRESSION
         "v_emp\\]: v_employee_dept\ncompleteat \\[[^]]*ili\\]: ILIKE")
+    add_test(NAME selftest_pg_complete_join
+             COMMAND openyog "--autoconnectpg=${OPENYOG_TEST_PG}"
+                     "--screenshot=${CMAKE_CURRENT_BINARY_DIR}/pg-complete-join.png"
+                     "--completeat=SELECT * FROM employees e JOIN emp_dept d ON ")
+    set_tests_properties(selftest_pg_complete_join PROPERTIES PASS_REGULAR_EXPRESSION
+        "ON \\]: d\\.id = e\\.dept_id \\|")
     set_tests_properties(selftest_pg_metadata selftest_pg_schema selftest_pg_multidb
-                         selftest_pg_dump_roundtrip selftest_pg_complete PROPERTIES
+                         selftest_pg_dump_roundtrip selftest_pg_complete selftest_pg_complete_join
+                         PROPERTIES
                          FIXTURES_REQUIRED pg_db RESOURCE_LOCK pg_db
                          ENVIRONMENT "${SELFTEST_ENV}")
 endif()

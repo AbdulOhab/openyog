@@ -192,6 +192,8 @@ int imageFor(SqlCompletion::Kind k)
             return 5;
         case SqlCompletion::Kind::Procedure:
             return 6;
+        case SqlCompletion::Kind::Join:
+            return 7;
         case SqlCompletion::Kind::Keyword:
             break;
     }
@@ -205,8 +207,8 @@ void SqlEditor::registerCompletionImages()
     {
         int id;
         const char *file;
-    } images[] = {{1, "table.ico"},    {2, "view.ico"},     {3, "column.ico"},
-                  {4, "function.ico"}, {5, "database.ico"}, {6, "process.ico"}};
+    } images[] = {{1, "table.ico"},    {2, "view.ico"},    {3, "column.ico"},   {4, "function.ico"},
+                  {5, "database.ico"}, {6, "process.ico"}, {7, "manrel_16.ico"}};
     for(const auto &i : images) {
         const QPixmap pm = Icons::get(QString::fromLatin1(i.file)).pixmap(16, 16);
         if(!pm.isNull())

@@ -29,6 +29,8 @@ SqlCompletion::Schema shopSchema()
             return {"o_id", "o_total", "emp_id", "customer_name"};
         return {};
     };
+    s.foreignKeys = {{"employees", {"dept_id"}, "emp_dept", {"dept_id"}},
+                     {"orders", {"emp_id"}, "employees", {"emp_id"}}};
     s.tablesOf = [](const QString &db) -> QStringList {
         return db == QLatin1String("archive") ? QStringList{"old_orders"} : QStringList{};
     };
@@ -93,6 +95,8 @@ private slots:
     void quotedNamesInCompletions();
     void stringsAndComments();
     void prefixAt();
+    void joinConditionsFromForeignKeys();
+    void relatedTablesFirstAfterJoin();
 };
 
 void TestSqlCompletion::tablesAfterFrom()
@@ -334,6 +338,59 @@ void TestSqlCompletion::prefixAt()
     QCOMPARE(SqlCompletion::prefixAt(QStringLiteral("SELECT e.na"), 11), QStringLiteral("na"));
     QCOMPARE(SqlCompletion::prefixAt(QStringLiteral("SELECT "), 7), QString());
     QCOMPARE(SqlCompletion::prefixAt(QStringLiteral("SELECT emp_id"), 10), QStringLiteral("emp"));
+}
+
+void TestSqlCompletion::joinConditionsFromForeignKeys()
+{
+    /* the newly joined table's side first, whichever way the key points */
+    QCOMPARE(firstAt(QStringLiteral("SELECT * FROM employees e JOIN emp_dept d ON §")),
+             QStringLiteral("d.dept_id = e.dept_id"));
+    QCOMPARE(firstAt(QStringLiteral("SELECT * FROM emp_dept d JOIN employees e ON §")),
+             QStringLiteral("e.dept_id = d.dept_id"));
+    QCOMPARE(
+        itemsAt(QStringLiteral("SELECT * FROM emp_dept d JOIN employees e ON §")).value(0).kind,
+        Kind::Join);
+    /* and not INSERT's ON DUPLICATE KEY UPDATE / ON CONFLICT */
+    QVERIFY(!textsAt(QStringLiteral("SELECT * FROM employees e JOIN emp_dept d ON §"))
+                 .contains(QStringLiteral("DUPLICATE KEY UPDATE")));
+    QVERIFY(!textsAt(QStringLiteral("SELECT * FROM employees e JOIN emp_dept d ON §"),
+                     SqlDriverType::Postgres)
+                 .contains(QStringLiteral("CONFLICT")));
+    QCOMPARE(firstAt(QStringLiteral("INSERT INTO emp_dept VALUES (1, 'x') ON §")),
+             QStringLiteral("DUPLICATE KEY UPDATE"));
+    /* no alias: the table names */
+    QCOMPARE(firstAt(QStringLiteral("SELECT * FROM employees LEFT JOIN emp_dept ON §")),
+             QStringLiteral("emp_dept.dept_id = employees.dept_id"));
+    /* only the table being joined: d relates to e, not to o */
+    const QStringList three = textsAt(QStringLiteral(
+        "SELECT * FROM orders o JOIN employees e ON e.emp_id = o.emp_id JOIN emp_dept d ON §"));
+    QCOMPARE(three.value(0), QStringLiteral("d.dept_id = e.dept_id"));
+    QVERIFY(!three.value(1).contains(QLatin1String(" = o.")));
+    /* typed the alias already: still first; anything else: not offered */
+    QCOMPARE(firstAt(QStringLiteral("SELECT * FROM employees e JOIN emp_dept d ON d§")),
+             QStringLiteral("d.dept_id = e.dept_id"));
+    QVERIFY(!textsAt(QStringLiteral("SELECT * FROM employees e JOIN emp_dept d ON x§"))
+                 .contains(QStringLiteral("d.dept_id = e.dept_id")));
+
+    /* a composite key: every column pair, AND-ed */
+    SqlCompletion::Schema s = shopSchema();
+    s.tables << QStringLiteral("shipments");
+    s.foreignKeys.append({"shipments", {"order_id", "emp_id"}, "orders", {"o_id", "emp_id"}});
+    QCOMPARE(textsAt(QStringLiteral("SELECT * FROM orders o JOIN shipments s ON §"),
+                     SqlDriverType::Mysql, s)
+                 .value(0),
+             QStringLiteral("s.order_id = o.o_id AND s.emp_id = o.emp_id"));
+}
+
+void TestSqlCompletion::relatedTablesFirstAfterJoin()
+{
+    /* orders references employees */
+    QCOMPARE(firstAt(QStringLiteral("SELECT * FROM orders o JOIN §")), QStringLiteral("employees"));
+    /* employees is referenced by orders and references emp_dept */
+    const QStringList t = textsAt(QStringLiteral("SELECT * FROM employees e LEFT JOIN §"));
+    QCOMPARE(t.mid(0, 2), (QStringList{"emp_dept", "orders"}));
+    /* every other table still follows */
+    QVERIFY(t.contains(QStringLiteral("v_employee_dept")));
 }
 
 QTEST_GUILESS_MAIN(TestSqlCompletion)

@@ -14,6 +14,10 @@
  *                                      functions, keywords
  *   … right after an operand           operators and clause keywords first
  *   alias. / table. / db.              that table's columns / that db's tables
+ *   JOIN …                             tables a foreign key ties to the
+ *                                      statement's tables first
+ *   … JOIN t x ON                      the join condition(s) those foreign
+ *                                      keys spell out: x.id = e.t_id
  *   INSERT INTO t (                    t's columns
  *   VALUES (                           functions and NULL / DEFAULT
  *   USE / CALL                         databases / stored procedures
@@ -37,12 +41,21 @@
 
 namespace SqlCompletion {
 
-enum class Kind { Keyword, Function, Table, View, Column, Alias, Database, Procedure };
+enum class Kind { Keyword, Function, Table, View, Column, Alias, Database, Procedure, Join };
 
 struct Item
 {
     QString text; /* exactly what gets inserted: quoted when the name needs it */
     Kind kind;
+};
+
+/* one foreign key: table(columns) REFERENCES refTable(refColumns) */
+struct ForeignKey
+{
+    QString table;
+    QStringList columns;
+    QString refTable;
+    QStringList refColumns;
 };
 
 struct Schema
@@ -54,7 +67,8 @@ struct Schema
     QStringList databases;
     QStringList functions; /* its own stored functions */
     QStringList procedures;
-    QStringList extra; /* untyped words, offered where tables/columns are empty */
+    QStringList extra;             /* untyped words, offered where tables/columns are empty */
+    QList<ForeignKey> foreignKeys; /* the database's, for JOIN suggestions */
     /* one table's columns in ordinal order; may be unset */
     std::function<QStringList(const QString &table)> columnsOf;
     /* another database's tables, for "db." ; may be unset */

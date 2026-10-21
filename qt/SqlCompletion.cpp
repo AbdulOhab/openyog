@@ -688,7 +688,7 @@ struct Ctx
         Nothing        /* AS | , LIMIT | — a new alias or a number goes here */
     } type = Any;
     /* InsertColumns / TableColumns: the table; Qualified: the qualifier;
-     * AfterTable / AfterOperand: the governing keyword, upper-cased */
+     * otherwise the governing keyword, upper-cased */
     QString name;
 };
 
@@ -801,6 +801,9 @@ Ctx analyze(const QList<Tok> &t)
         governing = i;
     }
 
+    if(governing >= 0)
+        c.name = t[governing].text.toUpper();
+
     /* ALTER TABLE t DROP / MODIFY / CHANGE / ALTER / RENAME [COLUMN] | → t's
      * columns; ADD COLUMN | names a new one */
     if(c.type == Ctx::Table && governing >= 0 && isWord(t[governing], "TABLE") &&
@@ -900,11 +903,19 @@ public:
             if(!(w->dialects & m_bit) || !(w->place & place))
                 continue;
             const QString text = QString::fromLatin1(w->text);
-            const QString rest = remainderAfterHead(text);
+            /* a JOIN's ON isn't INSERT's ON DUPLICATE KEY / ON CONFLICT */
+            const bool insertOnly = m_joinOn && text.startsWith(QLatin1String("ON "));
+            const QString rest = insertOnly ? QString() : remainderAfterHead(text);
             if(!rest.isEmpty())
                 m_c.append({rest, rest, k, kRemainderGroup, false});
             m_c.append({text, text, k, group, false});
         }
+    }
+
+    /* a ready-made piece of SQL (a join condition): matched as written */
+    void raw(const QString &text, Kind k, int group)
+    {
+        m_c.append({text, text, k, group, false});
     }
 
     /* what usually comes next after the governing keyword ("SET" after
@@ -978,7 +989,11 @@ public:
     }
 
 private:
+public:
     static constexpr int kRemainderGroup = -1;
+    static constexpr int kJoinGroup = -2; /* a join condition beats everything */
+
+private:
     static constexpr int kMaxItems = 500;
 
     QString remainderAfterHead(const QString &phrase) const
@@ -998,6 +1013,10 @@ private:
         return QString();
     }
 
+public:
+    bool m_joinOn = false; /* the caret is in a JOIN … ON condition */
+
+private:
     SqlDriverType m_d;
     quint8 m_bit;
     bool m_userQuoted;
@@ -1017,6 +1036,69 @@ QStringList without(const QStringList &all, const QStringList &drop)
     for(const QString &x : all)
         if(!d.contains(x))
             out << x;
+    return out;
+}
+
+bool sameName(const QString &a, const QString &b)
+{
+    return a.compare(b, Qt::CaseInsensitive) == 0;
+}
+
+/* the conditions that join `joined` to `other` through a foreign key in
+ * either direction — "j.x = o.y [AND …]", the newly joined table's side
+ * first. A self-referencing key on a self join gives both readings. */
+QStringList joinConditions(const StmtTable &joined, const StmtTable &other,
+                           const QList<ForeignKey> &fks, SqlDriverType d)
+{
+    const QString ja = quoteIfNeeded(joined.alias.isEmpty() ? joined.table : joined.alias, d);
+    const QString oa = quoteIfNeeded(other.alias.isEmpty() ? other.table : other.alias, d);
+    const auto cond = [&](const QStringList &jc, const QStringList &oc) {
+        QStringList parts;
+        for(int k = 0; k < jc.size() && k < oc.size(); ++k)
+            parts << QStringLiteral("%1.%2 = %3.%4")
+                         .arg(ja, quoteIfNeeded(jc[k], d), oa, quoteIfNeeded(oc[k], d));
+        return parts.join(QStringLiteral(" AND "));
+    };
+    QStringList out;
+    for(const ForeignKey &fk : fks) {
+        if(sameName(fk.table, joined.table) && sameName(fk.refTable, other.table))
+            out << cond(fk.columns, fk.refColumns);
+        if(sameName(fk.table, other.table) && sameName(fk.refTable, joined.table))
+            out << cond(fk.refColumns, fk.columns);
+    }
+    return out;
+}
+
+/* whether the last ON in `t` is a JOIN's — not INSERT's ON DUPLICATE KEY
+ * UPDATE / ON CONFLICT: the nearest JOIN or INSERT-side keyword before it
+ * decides */
+bool isJoinOn(const QList<Tok> &t)
+{
+    int i = int(t.size()) - 1;
+    while(i >= 0 && !isWord(t[i], "ON"))
+        --i;
+    for(--i; i >= 0; --i) {
+        if(isWord(t[i], "JOIN") || isWord(t[i], "STRAIGHT_JOIN"))
+            return true;
+        if(isWord(t[i], "VALUES") || isWord(t[i], "VALUE") || isWord(t[i], "INTO") ||
+           isWord(t[i], "SET"))
+            return false;
+    }
+    return false;
+}
+
+/* tables a foreign key ties to any of `tables`, either direction */
+QStringList relatedTables(const QVector<StmtTable> &tables, const QList<ForeignKey> &fks)
+{
+    QStringList out;
+    for(const StmtTable &t : tables)
+        for(const ForeignKey &fk : fks) {
+            if(sameName(fk.table, t.table))
+                out << fk.refTable;
+            if(sameName(fk.refTable, t.table))
+                out << fk.table;
+        }
+    out.removeDuplicates();
     return out;
 }
 
@@ -1121,6 +1203,15 @@ QList<Item> complete(const QString &sql, int pos, const Schema &schema, SqlDrive
             break;
         }
         case Ctx::Table:
+            if(ctx.name.endsWith(QLatin1String("JOIN"))) {
+                const QStringList related =
+                    relatedTables(tablesIn(head, schema), schema.foreignKeys);
+                QStringList known;
+                for(const QString &r : related)
+                    if(!canonical(tablesAndViews, r).isEmpty())
+                        known << canonical(tablesAndViews, r);
+                b.idents(known, Kind::Table, Builder::kRemainderGroup);
+            }
             addTables(0);
             b.idents(schema.databases, Kind::Database, 1);
             b.words(kKeywords, nKw, Clause, Kind::Keyword, 2);
@@ -1131,6 +1222,14 @@ QList<Item> complete(const QString &sql, int pos, const Schema &schema, SqlDrive
             addTables(1);
             break;
         case Ctx::Column:
+            if(ctx.name == QLatin1String("ON") && isJoinOn(head)) {
+                b.m_joinOn = true;
+                const QVector<StmtTable> before = tablesIn(head, schema);
+                for(int i = 0; i + 1 < before.size(); ++i)
+                    for(const QString &c :
+                        joinConditions(before.last(), before[i], schema.foreignKeys, driver))
+                        b.raw(c, Kind::Join, Builder::kJoinGroup);
+            }
             addExpression(0);
             b.words(kKeywords, nKw, Clause, Kind::Keyword, 4);
             break;

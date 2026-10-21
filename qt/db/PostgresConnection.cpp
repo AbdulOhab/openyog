@@ -314,6 +314,29 @@ DbResultSet PostgresConnection::listColumns(const QString &db, const QString &ta
  * default's listColumns() round trip per table — the difference between
  * O(1) and O(N) network round trips is what made switchDatabase() feel
  * slow on a schema with many tables */
+DbResultSet PostgresConnection::listAllForeignKeys(const QString &db)
+{
+    /* conkey/confkey are parallel arrays of column numbers: unnest them
+     * together, in order */
+    DbResultSet rs;
+    runBuffered(QStringLiteral("SELECT cl.relname, con.conname, a.attname, rcl.relname, ra.attname "
+                               "FROM pg_constraint con "
+                               "JOIN pg_class cl ON cl.oid = con.conrelid "
+                               "JOIN pg_namespace n ON n.oid = cl.relnamespace "
+                               "JOIN pg_class rcl ON rcl.oid = con.confrelid "
+                               "CROSS JOIN LATERAL unnest(con.conkey, con.confkey) "
+                               "  WITH ORDINALITY AS k(attnum, refattnum, ord) "
+                               "JOIN pg_attribute a ON a.attrelid = con.conrelid "
+                               "  AND a.attnum = k.attnum "
+                               "JOIN pg_attribute ra ON ra.attrelid = con.confrelid "
+                               "  AND ra.attnum = k.refattnum "
+                               "WHERE con.contype = 'f' AND n.nspname = '%1' "
+                               "ORDER BY cl.relname, con.conname, k.ord")
+                    .arg(QString(effectiveSchema(db)).replace('\'', QStringLiteral("''"))),
+                &rs, nullptr);
+    return rs;
+}
+
 QStringList PostgresConnection::listAllColumnNames(const QString &db)
 {
     const QString schema = effectiveSchema(db);

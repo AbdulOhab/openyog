@@ -46,6 +46,7 @@ public:
     QStringList listTables(const QString &db, const QString &typeFilter) override;
     DbResultSet listColumns(const QString &db, const QString &table) override;
     QStringList listAllColumnNames(const QString &db) override;
+    DbResultSet listAllForeignKeys(const QString &db) override;
     DbResultSet listIndexes(const QString &db, const QString &table) override;
     DbResultSet listForeignKeys(const QString &db, const QString &table) override;
     QStringList listTriggers(const QString &db) override;

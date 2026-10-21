@@ -143,6 +143,20 @@ public:
     }
     virtual DbResultSet listIndexes(const QString &db, const QString &table) = 0;
     virtual DbResultSet listForeignKeys(const QString &db, const QString &table) = 0;
+    /* every foreign key in `db`, one row per column pair: table,
+     * constraint, column, referenced table, referenced column — ordered by
+     * table, constraint, column position (so a composite key's rows are
+     * consecutive). For autocomplete's JOIN suggestions; same caveat as
+     * listAllColumnNames(): a backend with a catalog to query once should
+     * override the per-table default. */
+    virtual DbResultSet listAllForeignKeys(const QString &db)
+    {
+        DbResultSet out;
+        for(const QString &t : listTables(db, QStringLiteral("BASE TABLE")))
+            for(const QStringList &row : listForeignKeys(db, t).rows)
+                out.rows << (QStringList{t} + row.mid(0, 4));
+        return out;
+    }
     virtual QStringList listTriggers(const QString &db) = 0;
     virtual DbResultSet listTableTriggers(const QString &db, const QString &table) = 0;
     virtual DbResultSet listRoutines(const QString &db) = 0;

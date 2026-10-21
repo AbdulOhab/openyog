@@ -197,6 +197,19 @@ DbResultSet MySqlConnection::listColumns(const QString &db, const QString &table
 
 /* one information_schema query for every distinct column name in `db`,
  * instead of the default's SHOW FULL COLUMNS round trip per table */
+DbResultSet MySqlConnection::listAllForeignKeys(const QString &db)
+{
+    DbResultSet rs;
+    runBuffered(QStringLiteral("SELECT TABLE_NAME, CONSTRAINT_NAME, COLUMN_NAME, "
+                               "REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME "
+                               "FROM information_schema.KEY_COLUMN_USAGE "
+                               "WHERE TABLE_SCHEMA='%1' AND REFERENCED_TABLE_NAME IS NOT NULL "
+                               "ORDER BY TABLE_NAME, CONSTRAINT_NAME, ORDINAL_POSITION")
+                    .arg(QString(db).replace('\'', QStringLiteral("''"))),
+                &rs, nullptr);
+    return rs;
+}
+
 QStringList MySqlConnection::listAllColumnNames(const QString &db)
 {
     DbResultSet rs;

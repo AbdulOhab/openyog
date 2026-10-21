@@ -827,6 +827,16 @@ void ConnectionTab::updateCompletions()
         /* one bulk query instead of a listColumns() round trip per table —
          * see IDbConnection::listAllColumnNames() */
         s.columns = m_conn->listAllColumnNames(db);
+        /* one row per column pair, a composite key's rows consecutive */
+        QString lastKey;
+        for(const QStringList &row : m_conn->listAllForeignKeys(db).rows) {
+            const QString key = row.value(0) + QLatin1Char('\x1f') + row.value(1);
+            if(key != lastKey)
+                s.foreignKeys.append({row.value(0), {}, row.value(3), {}});
+            lastKey = key;
+            s.foreignKeys.last().columns << row.value(2);
+            s.foreignKeys.last().refColumns << row.value(4);
+        }
         for(const QStringList &row : m_conn->listRoutines(db).rows) {
             const bool proc =
                 row.value(1).compare(QLatin1String("PROCEDURE"), Qt::CaseInsensitive) == 0;
