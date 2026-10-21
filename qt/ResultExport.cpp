@@ -271,7 +271,11 @@ bool write(const QString &path, Format fmt, const QStringList &headers,
            QString *err)
 {
     QFile f(path);
-    if(!f.open(QIODevice::WriteOnly | QIODevice::Text)) {
+    /* binary, not QIODevice::Text: render() already wrote the line ends the
+     * user picked (CSV defaults to \r\n), and Text mode on Windows would
+     * turn every \n into \r\n again — \r\r\n line ends, and line breaks
+     * inside quoted values changed */
+    if(!f.open(QIODevice::WriteOnly)) {
         if(err)
             *err = QStringLiteral("cannot write %1").arg(path);
         return false;
