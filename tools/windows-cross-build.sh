@@ -92,11 +92,13 @@ command -v x86_64-w64-mingw32-cmake >/dev/null || { echo "mingw-w64-cmake missin
 # names, so it links fine and the bug below wouldn't show up until runtime
 # against a real non-TLS server). Native Linux is untouched: these are only
 # passed here, never added to CMakeLists.txt itself.
+# OPENYOG_BUILD_TESTS=OFF: test .exe's can't run on this host anyway.
 x86_64-w64-mingw32-cmake -G Ninja -B "$BUILD" -S "$ROOT" \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_FIND_ROOT_PATH="/usr/x86_64-w64-mingw32;$QT_MINGW" \
     -DMDB_MYSQL_DIR="$MARIADB_MINGW/include" \
-    -DMARIADB_LIBRARY="$MARIADB_MINGW/lib/mariadb/libmariadb.dll.a"
+    -DMARIADB_LIBRARY="$MARIADB_MINGW/lib/mariadb/libmariadb.dll.a" \
+    -DOPENYOG_BUILD_TESTS=OFF
 cmake --build "$BUILD" --target openyog
 
 # ---- deploy: exe + transitive DLL closure ------------------------------

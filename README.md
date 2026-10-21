@@ -40,17 +40,21 @@ Early but usable for day-to-day work against a local server. Working now:
 
 ## Build (Linux)
 
-Requires a C++17 compiler, CMake ≥ 3.21, Ninja, Qt 6, MariaDB client headers,
-libpq, and SQLite3. On Arch / CachyOS:
+Requires a C++17 compiler, CMake ≥ 3.21, Ninja, Qt 6, QScintilla (Qt 6
+build), MariaDB client headers, libpq, and SQLite3. On Arch / CachyOS:
 
 ```bash
-sudo pacman -S --needed base-devel cmake ninja qt6-base qt6-tools qt6-svg mariadb postgresql-libs sqlite
+sudo pacman -S --needed base-devel cmake ninja qt6-base qt6-tools qt6-svg qscintilla-qt6 mariadb postgresql-libs sqlite
 
 cmake -S . -B build-cmake -G Ninja
 cmake --build build-cmake
+ctest --test-dir build-cmake --output-on-failure   # unit tests + selftests
 
 ./build-cmake/openyog
 ```
+
+CI (`.github/workflows/ci.yml`) runs the same build, `ctest`, and a
+`clang-format` check on every push and pull request.
 
 ## Build (Windows, cross-compiled from Linux)
 

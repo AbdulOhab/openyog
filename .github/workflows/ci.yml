@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  linux:
+    name: Linux build + tests
+    runs-on: ubuntu-latest
+    # Arch matches the development setup (README's pacman line): current Qt 6
+    # and qscintilla-qt6. Ubuntu LTS ships a Qt several minor versions older.
+    container: archlinux:latest
+    steps:
+      - name: Install dependencies
+        run: |
+          pacman -Syu --noconfirm --needed \
+            base-devel git cmake ninja clang \
+            qt6-base qt6-svg qscintilla-qt6 \
+            mariadb-libs postgresql-libs sqlite
+
+      - uses: actions/checkout@v4
+
+      # .clang-format was last applied tree-wide with clang-format 22; a
+      # newer Arch clang may disagree on a few lines, in which case reformat
+      # and commit rather than loosening the check
+      - name: clang-format
+        run: clang-format --dry-run --Werror qt/*.cpp qt/*.h qt/db/*.cpp qt/db/*.h tests/*.cpp
+
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure

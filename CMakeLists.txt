@@ -156,3 +156,13 @@ if(WIN32)
     set(CMAKE_RC_FLAGS "${CMAKE_RC_FLAGS} -I${CMAKE_CURRENT_SOURCE_DIR}/qt")
     target_sources(openyog PRIVATE qt/openyog.rc)
 endif()
+
+# ---- Tests: unit tests for qt/'s pure-logic modules plus smoketest and the
+# openyog selftests, all under ctest (tests/CMakeLists.txt). On by default;
+# -DOPENYOG_BUILD_TESTS=OFF skips the extra targets (e.g. the mingw cross
+# build, whose executables can't run on the build host anyway).
+option(OPENYOG_BUILD_TESTS "Build the ctest suite under tests/" ON)
+if(OPENYOG_BUILD_TESTS)
+    enable_testing()
+    add_subdirectory(tests)
+endif()
