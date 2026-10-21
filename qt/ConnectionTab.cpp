@@ -166,7 +166,7 @@ protected:
         const QString a = sourceModel()->data(l).toString();
         const QString b = sourceModel()->data(r).toString();
         if(a == QStringLiteral("NULL") || b == QStringLiteral("NULL"))
-            return b != QStringLiteral("NULL"); /* NULLs sort to the end */
+            return a != QStringLiteral("NULL"); /* NULLs sort to the end */
         bool an = false, bn = false;
         const double av = a.toDouble(&an), bv = b.toDouble(&bn);
         if(an && bn)
@@ -1426,6 +1426,10 @@ void ConnectionTab::addResultGrid(const QueryResult &r, const QString &title)
 
     auto *grid = new QTableView(this);
     grid->setModel(proxy);
+    /* nothing sorted until the user clicks a header: setSortingEnabled()
+     * sorts by the header's indicator right away, and its default (column 0,
+     * descending) silently reversed the query's own ORDER BY */
+    grid->horizontalHeader()->setSortIndicator(-1, Qt::AscendingOrder);
     grid->setSortingEnabled(true);
     grid->setAlternatingRowColors(true);
     grid->setSelectionMode(QAbstractItemView::ExtendedSelection);
