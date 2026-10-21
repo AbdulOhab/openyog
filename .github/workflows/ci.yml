@@ -13,13 +13,33 @@ jobs:
     # Arch matches the development setup (README's pacman line): current Qt 6
     # and qscintilla-qt6. Ubuntu LTS ships a Qt several minor versions older.
     container: archlinux:latest
+    # throwaway servers for the live selftests (tests/CMakeLists.txt,
+    # OPENYOG_TEST_MYSQL / OPENYOG_TEST_PG); reachable by their service name
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: root
+          MARIADB_DATABASE: openyog_test
+        options: >-
+          --health-cmd "healthcheck.sh --connect --innodb_initialized"
+          --health-interval 5s --health-timeout 5s --health-retries 30
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: root
+          POSTGRES_DB: openyog_test
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 30
     steps:
       - name: Install dependencies
         run: |
           pacman -Syu --noconfirm --needed \
             base-devel git cmake ninja clang \
             qt6-base qt6-svg qscintilla-qt6 qtkeychain-qt6 \
-            mariadb-libs postgresql-libs sqlite
+            mariadb-libs postgresql-libs sqlite \
+            mariadb-clients postgresql
 
       - uses: actions/checkout@v4
 
@@ -30,7 +50,10 @@ jobs:
         run: clang-format --dry-run --Werror qt/*.cpp qt/*.h qt/db/*.cpp qt/db/*.h tests/*.cpp tests/*.h
 
       - name: Configure
-        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug
+        run: >-
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug
+          -DOPENYOG_TEST_MYSQL=mariadb:3306:root:root:openyog_test
+          -DOPENYOG_TEST_PG=postgres:5432:postgres:root:openyog_test
 
       - name: Build
         run: cmake --build build

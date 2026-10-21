@@ -38,8 +38,17 @@ set_tests_properties(smoketest PROPERTIES SKIP_RETURN_CODE 3)
 
 # openyog's own headless selftests (see the flag list atop qt/main.cpp): the
 # ones that need no database server. XDG_CONFIG_HOME keeps them away from
-# the developer's real settings and saved connections.
-set(SELFTEST_ENV "QT_QPA_PLATFORM=offscreen;XDG_CONFIG_HOME=${CMAKE_CURRENT_BINARY_DIR}/xdg-config")
+# the developer's real settings and saved connections, and a dead session
+# bus (plus a private XDG_RUNTIME_DIR, so GLib can't fall back to the real
+# one) keeps a connection they save out of the developer's keyring.
+set(SELFTEST_RUNTIME "${CMAKE_CURRENT_BINARY_DIR}/xdg-runtime")
+file(MAKE_DIRECTORY "${SELFTEST_RUNTIME}")
+file(CHMOD "${SELFTEST_RUNTIME}" DIRECTORY_PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE)
+set(SELFTEST_ENV
+    "QT_QPA_PLATFORM=offscreen"
+    "XDG_CONFIG_HOME=${CMAKE_CURRENT_BINARY_DIR}/xdg-config"
+    "XDG_RUNTIME_DIR=${SELFTEST_RUNTIME}"
+    "DBUS_SESSION_BUS_ADDRESS=unix:path=${SELFTEST_RUNTIME}/no-bus")
 foreach(flag comptest stmtattest casetest filtertest icontest shortcuttest)
     add_test(NAME selftest_${flag} COMMAND openyog --${flag})
     set_tests_properties(selftest_${flag} PROPERTIES ENVIRONMENT "${SELFTEST_ENV}")
@@ -86,4 +95,82 @@ if(SQLITE3_CLI)
                          ENVIRONMENT "${SELFTEST_ENV}")
 else()
     message(STATUS "sqlite3 CLI not found: skipping the SQLite selftests")
+endif()
+
+# ---- Live database servers (optional) ---------------------------------------
+# -DOPENYOG_TEST_MYSQL=host:port:user:password:db and/or
+# -DOPENYOG_TEST_PG=host:port:user:password:db add the selftests that need a
+# real server; CI runs them against throwaway service containers. Their
+# fixtures DROP and recreate their own tables (PostgreSQL also creates
+# <db>_other, and the dump round trips a scratch <db>_restore): never point
+# these at a database that matters. The password can't contain ':'.
+set(OPENYOG_TEST_MYSQL "" CACHE STRING
+    "host:port:user:password:db of a throwaway MySQL/MariaDB database for live selftests")
+set(OPENYOG_TEST_PG "" CACHE STRING
+    "host:port:user:password:db of a throwaway PostgreSQL database for live selftests")
+set(LIVE_SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/live_server.cmake")
+
+if(OPENYOG_TEST_MYSQL)
+    find_program(MYSQL_CLI NAMES mariadb mysql REQUIRED)
+    string(REPLACE ":" ";" my "${OPENYOG_TEST_MYSQL}")
+    list(GET my 0 my_host)
+    list(GET my 1 my_port)
+    list(GET my 2 my_user)
+    list(GET my 3 my_password)
+    list(GET my 4 my_db)
+
+    add_test(NAME mysql_fixture
+             COMMAND "${CMAKE_COMMAND}" -DMODE=mysql-fixture "-DSERVER=${OPENYOG_TEST_MYSQL}"
+                     "-DCLI=${MYSQL_CLI}" "-DSQL=${CMAKE_CURRENT_SOURCE_DIR}/fixtures/mysql_fixture.sql"
+                     -P "${LIVE_SCRIPT}")
+    set_tests_properties(mysql_fixture PROPERTIES FIXTURES_SETUP mysql_db RESOURCE_LOCK mysql_db)
+
+    add_test(NAME smoketest_mysql COMMAND smoketest ${my_host} ${my_user} ${my_password} ${my_port} ${my_db})
+    add_test(NAME selftest_mysql_schema COMMAND openyog "--schematest=${OPENYOG_TEST_MYSQL}")
+    add_test(NAME selftest_mysql_dump_roundtrip
+             COMMAND "${CMAKE_COMMAND}" -DMODE=mysql-roundtrip "-DSERVER=${OPENYOG_TEST_MYSQL}"
+                     "-DCLI=${MYSQL_CLI}" "-DOPENYOG=$<TARGET_FILE:openyog>"
+                     "-DOUT=${CMAKE_CURRENT_BINARY_DIR}/mysql-roundtrip" -P "${LIVE_SCRIPT}")
+    # autocomplete against the real schema: an alias's columns, a procedure
+    add_test(NAME selftest_mysql_complete
+             COMMAND openyog "--autoconnect=${OPENYOG_TEST_MYSQL}"
+                     "--screenshot=${CMAKE_CURRENT_BINARY_DIR}/mysql-complete.png"
+                     "--completeat=SELECT * FROM employees e WHERE e." "--completeat=CALL ")
+    set_tests_properties(selftest_mysql_complete PROPERTIES PASS_REGULAR_EXPRESSION
+        "e\\.\\]: id \\| name \\| salary \\| city \\| dept_id \\| hired \\| photo\ncompleteat \\[CALL \\]: refresh_stats\\(")
+    set_tests_properties(smoketest_mysql selftest_mysql_schema selftest_mysql_dump_roundtrip
+                         selftest_mysql_complete PROPERTIES
+                         FIXTURES_REQUIRED mysql_db RESOURCE_LOCK mysql_db
+                         ENVIRONMENT "${SELFTEST_ENV}")
+endif()
+
+if(OPENYOG_TEST_PG)
+    find_program(PSQL_CLI NAMES psql REQUIRED)
+    string(REPLACE ":" ";" pg "${OPENYOG_TEST_PG}")
+    list(GET pg 4 pg_db)
+
+    add_test(NAME pg_fixture
+             COMMAND "${CMAKE_COMMAND}" -DMODE=pg-fixture "-DSERVER=${OPENYOG_TEST_PG}"
+                     "-DCLI=${PSQL_CLI}" "-DSQL=${CMAKE_CURRENT_SOURCE_DIR}/fixtures/pg_fixture.sql"
+                     "-DOUT=${CMAKE_CURRENT_BINARY_DIR}/pg-fixture" -P "${LIVE_SCRIPT}")
+    set_tests_properties(pg_fixture PROPERTIES FIXTURES_SETUP pg_db RESOURCE_LOCK pg_db)
+
+    add_test(NAME selftest_pg_metadata COMMAND openyog "--pgtest=${OPENYOG_TEST_PG}")
+    add_test(NAME selftest_pg_schema COMMAND openyog "--pgschematest=${OPENYOG_TEST_PG}")
+    add_test(NAME selftest_pg_multidb
+             COMMAND openyog "--autoconnectpg=${OPENYOG_TEST_PG}" "--pgmultidbtest=${pg_db}_other")
+    add_test(NAME selftest_pg_dump_roundtrip
+             COMMAND "${CMAKE_COMMAND}" -DMODE=pg-roundtrip "-DSERVER=${OPENYOG_TEST_PG}"
+                     "-DCLI=${PSQL_CLI}" "-DOPENYOG=$<TARGET_FILE:openyog>"
+                     "-DOUT=${CMAKE_CURRENT_BINARY_DIR}/pg-roundtrip" -P "${LIVE_SCRIPT}")
+    add_test(NAME selftest_pg_complete
+             COMMAND openyog "--autoconnectpg=${OPENYOG_TEST_PG}"
+                     "--screenshot=${CMAKE_CURRENT_BINARY_DIR}/pg-complete.png"
+                     "--completeat=SELECT * FROM v_emp" "--completeat=SELECT * FROM employees WHERE name ili")
+    set_tests_properties(selftest_pg_complete PROPERTIES PASS_REGULAR_EXPRESSION
+        "v_emp\\]: v_employee_dept\ncompleteat \\[[^]]*ili\\]: ILIKE")
+    set_tests_properties(selftest_pg_metadata selftest_pg_schema selftest_pg_multidb
+                         selftest_pg_dump_roundtrip selftest_pg_complete PROPERTIES
+                         FIXTURES_REQUIRED pg_db RESOURCE_LOCK pg_db
+                         ENVIRONMENT "${SELFTEST_ENV}")
 endif()
