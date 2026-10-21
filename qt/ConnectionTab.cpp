@@ -555,22 +555,8 @@ void ConnectionTab::attachEditor(SqlEditor *ed, const QString &title)
         ed->getCursorPosition(&line, &index);
         emit cursorMoved(QStringLiteral("Ln %1, Col %2").arg(line + 1).arg(index + 1));
     });
-    ed->setCompletions(m_completions);
-    ed->setSchema(m_tableNames, m_columnNames);
-    ed->setColumnLookup([this](const QString &table) {
-        if(!m_conn)
-            return QStringList();
-        const QString db = defaultDb();
-        const QString key = db + QLatin1Char('\x1f') + table;
-        auto it = m_columnCache.find(key);
-        if(it == m_columnCache.end()) {
-            QStringList cols;
-            for(const QStringList &row : m_conn->listColumns(db, table).rows)
-                cols << row.value(0);
-            it = m_columnCache.insert(key, cols);
-        }
-        return it.value();
-    });
+    ed->setDialect(m_params.driverType);
+    ed->setCompletionSchema(m_completionSchema);
     Q_UNUSED(title);
 }
 
@@ -822,37 +808,59 @@ bool ConnectionTab::switchDatabase(const QString &database)
     return true;
 }
 
-/* schema identifiers (tables + columns of the current db) for autocomplete —
- * kept split so the editor can offer tables after FROM/JOIN and columns after
- * SELECT/WHERE (clause-aware, like SQLyog's AutoCompleteInterface) */
+/* what the editors' autocomplete knows about the current database (see
+ * SqlCompletion.h): its tables, views, columns and routines up front; one
+ * table's columns, or another database's tables, looked up the first time a
+ * statement needs them and cached until the next refresh */
 void ConnectionTab::updateCompletions()
 {
-    m_completions.clear();
     m_columnCache.clear();
-    m_tableNames.clear();
-    m_columnNames.clear();
+    m_tablesCache.clear();
+    SqlCompletion::Schema s;
     const QString db = defaultDb();
     if(m_conn && !db.isEmpty()) {
-        QSet<QString> tables;
-        QStringList tbls = m_conn->listTables(db, QStringLiteral("BASE TABLE"));
-        tbls += m_conn->listTables(db, QStringLiteral("VIEW"));
-        for(const QString &t : tbls)
-            if(!t.isEmpty())
-                tables.insert(t);
-        m_tableNames = QStringList(tables.cbegin(), tables.cend());
+        s.database = db;
+        s.tables = m_conn->listTables(db, QStringLiteral("BASE TABLE"));
+        s.views = m_conn->listTables(db, QStringLiteral("VIEW"));
+        s.tables.removeDuplicates();
+        s.views.removeDuplicates();
         /* one bulk query instead of a listColumns() round trip per table —
          * see IDbConnection::listAllColumnNames() */
-        m_columnNames = m_conn->listAllColumnNames(db);
-        QSet<QString> all = tables;
-        for(const QString &c : m_columnNames)
-            all.insert(c);
-        m_completions = QStringList(all.cbegin(), all.cend());
-    }
-    for(int i = 0; i < m_editorTabs->count(); ++i)
-        if(auto *ed = qobject_cast<SqlEditor *>(m_editorTabs->widget(i))) {
-            ed->setCompletions(m_completions);
-            ed->setSchema(m_tableNames, m_columnNames);
+        s.columns = m_conn->listAllColumnNames(db);
+        for(const QStringList &row : m_conn->listRoutines(db).rows) {
+            const bool proc =
+                row.value(1).compare(QLatin1String("PROCEDURE"), Qt::CaseInsensitive) == 0;
+            (proc ? s.procedures : s.functions) << row.value(0);
         }
+    }
+    if(m_conn)
+        s.databases = m_conn->listDatabases();
+    s.columnsOf = [this](const QString &table) {
+        if(!m_conn)
+            return QStringList();
+        const QString db = defaultDb();
+        const QString key = db + QLatin1Char('\x1f') + table;
+        auto it = m_columnCache.find(key);
+        if(it == m_columnCache.end()) {
+            QStringList cols;
+            for(const QStringList &row : m_conn->listColumns(db, table).rows)
+                cols << row.value(0);
+            it = m_columnCache.insert(key, cols);
+        }
+        return it.value();
+    };
+    s.tablesOf = [this](const QString &other) {
+        if(!m_conn)
+            return QStringList();
+        auto it = m_tablesCache.find(other);
+        if(it == m_tablesCache.end())
+            it = m_tablesCache.insert(other, m_conn->listTables(other));
+        return it.value();
+    };
+    m_completionSchema = s;
+    for(int i = 0; i < m_editorTabs->count(); ++i)
+        if(auto *ed = qobject_cast<SqlEditor *>(m_editorTabs->widget(i)))
+            ed->setCompletionSchema(m_completionSchema);
 }
 
 void ConnectionTab::addEditorTab()

@@ -14,9 +14,10 @@
  * any non-ASCII query. */
 #pragma once
 
+#include "SqlCompletion.h"
+
 #include <Qsci/qsciscintilla.h>
 #include <QStringList>
-#include <QVector>
 
 #include <functional>
 
@@ -44,15 +45,14 @@ public:
     void copyWithNormalizedWhitespace(); /* selection → clipboard, ws runs → " " */
     void insertFromFile();               /* pick a file, insert at the cursor */
 
-    /* keyword + schema identifier list for autocomplete (Ctrl+Space / typing) */
-    void setCompletions(const QStringList &words); /* generic bucket / fallback */
-    /* clause-aware split: tables offered after FROM/JOIN/INTO/UPDATE,
-     * columns after SELECT/WHERE/ON/SET/HAVING/GROUP BY/ORDER BY (and after
-     * a "." qualifier). Empty buckets fall back to the generic list. */
+    /* autocomplete (Ctrl+Space, typing, or "." after a table/alias): what to
+     * offer is SqlCompletion's call — the schema it draws on, and the
+     * dialect whose keywords, functions and quoting it uses */
+    void setCompletionSchema(const SqlCompletion::Schema &schema);
+    void setDialect(SqlDriverType dialect);
+    /* piecemeal setters for the same schema (selftests) */
+    void setCompletions(const QStringList &words); /* untyped fallback words */
     void setSchema(const QStringList &tables, const QStringList &columns);
-    /* one table's column names in ordinal order — lets the column lists put
-     * the columns of the statement's own tables first, and narrow "alias."
-     * to that table. Called lazily, only for tables the statement names. */
     void setColumnLookup(std::function<QStringList(const QString &table)> lookup);
     void triggerCompletion();           /* force the popup now */
     int completionCountForTest() const; /* selftest only */
@@ -66,26 +66,14 @@ protected:
     void changeEvent(QEvent *event) override;
 
 private:
-    enum ClauseCtx { CtxAll, CtxTable, CtxColumn };
-    ClauseCtx clauseContextAtCursor() const;
-    QStringList candidatesForContext() const;
-    struct StmtTable
-    {
-        QString table, alias;
-    };
-    QVector<StmtTable> tablesInStatement() const;
-    QStringList columnsOfTables(const QVector<StmtTable> &tables, const QString &qualifier) const;
-    QString qualifierBeforeCursor() const;
-    QString wordUnderCursor() const;
     QString lineTextNoEol(int line) const;
     void popupCompleter(bool force);
     void insertCompletion(const QString &word);
+    void registerCompletionImages();
     void reskin();
 
-    QStringList m_generic; /* setCompletions() — fallback bucket */
-    QStringList m_tables;  /* setSchema() tables */
-    QStringList m_columns; /* setSchema() columns */
-    std::function<QStringList(const QString &)> m_columnLookup;
+    SqlCompletion::Schema m_schema;
+    SqlDriverType m_dialect = SqlDriverType::Mysql;
     int m_lastCompletionCount = 0;
     QStringList m_lastHits;
     /* popup context: the partial word being completed (line, index, length) */

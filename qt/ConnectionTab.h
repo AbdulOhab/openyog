@@ -10,6 +10,7 @@
 #pragma once
 
 #include "ConnectionParams.h"
+#include "SqlCompletion.h"
 #include "SqlEditor.h"
 #include "QueryModel.h"
 
@@ -376,12 +377,13 @@ private:
     class QTimer *m_keepAliveTimer = nullptr; /* Connect dialog's keep-alive */
 
     QStringList m_databases;
-    QString m_lastFind;                        /* for Find Next / F3 */
-    QStringList m_completions;                 /* schema identifiers for autocomplete (union) */
-    QStringList m_tableNames;                  /* offered after FROM / JOIN / INTO / UPDATE */
-    QStringList m_columnNames;                 /* offered after SELECT / WHERE / ON / SET … */
-    QString m_loadedTableKey;                  /* physDb, db, table of the grid's content */
+    QString m_lastFind;       /* for Find Next / F3 */
+    QString m_loadedTableKey; /* physDb, db, table of the grid's content */
+    /* autocomplete: what every editor tab is handed (updateCompletions()),
+     * plus the per-table / per-database lists it looks up lazily */
+    SqlCompletion::Schema m_completionSchema;
     QHash<QString, QStringList> m_columnCache; /* completion: db + table → columns */
+    QHash<QString, QStringList> m_tablesCache; /* completion: other db → its tables */
     void updateCompletions();
     void loadTableData(const QString &db, const QString &table, const QString &physDb,
                        bool activate);

@@ -126,6 +126,7 @@ add_executable(openyog
     qt/IndexDialog.h       qt/IndexDialog.cpp
     qt/SchemaSql.h         qt/SchemaSql.cpp
     qt/SqlSplit.h          qt/SqlSplit.cpp
+    qt/SqlCompletion.h     qt/SqlCompletion.cpp
     qt/ResultExport.h      qt/ResultExport.cpp
     qt/DelimitedText.h     qt/DelimitedText.cpp
     qt/ExportDialog.h      qt/ExportDialog.cpp

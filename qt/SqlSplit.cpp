@@ -182,3 +182,14 @@ QString statementAt(const QString &sql, int pos, SqlDriverType driver)
     }
     return last;
 }
+
+StatementSpan statementSpanAt(const QString &sql, int pos, SqlDriverType driver)
+{
+    for(const Segment &s : scan(sql, driver)) {
+        if(s.start > pos)
+            break;
+        if(pos <= s.end)
+            return {s.start, s.end};
+    }
+    return {pos, pos};
+}

@@ -25,3 +25,16 @@ QStringList splitStatements(const QString &sql, SqlDriverType driver = SqlDriver
  * (same rules as splitStatements). A caret on blank or comment-only text
  * picks the nearest statement before it. Empty if none. */
 QString statementAt(const QString &sql, int pos, SqlDriverType driver = SqlDriverType::Mysql);
+
+/* [start, end) of the raw statement text the caret at `pos` sits in, up to
+ * (not including) its terminator: unlike statementAt(), no trimming and no
+ * falling back to an earlier statement — what the editor's autocomplete
+ * needs to read the clause around the caret. A caret on a DELIMITER line
+ * gets the empty span {pos, pos}. */
+struct StatementSpan
+{
+    int start = 0;
+    int end = 0;
+};
+StatementSpan statementSpanAt(const QString &sql, int pos,
+                              SqlDriverType driver = SqlDriverType::Mysql);

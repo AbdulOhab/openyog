@@ -48,6 +48,7 @@
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDir>
+#include <QKeyEvent>
 #include <QKeySequence>
 #include <QLineEdit>
 #include <QListWidget>
@@ -1585,7 +1586,29 @@ int main(int argc, char *argv[])
                                 << w1.mid(0, 3).join(',') << (ok1 ? "  PASS" : "  FAIL")
                                 << " | 'e.' narrows to employees = " << w3.join(',')
                                 << (ok3 ? "  PASS\n" : "  FAIL\n");
-            return (ok && okT && okC && ok1 && ok3) ? 0 : 1;
+            /* 4. typing, through keyPressEvent: "." opens the qualifier's
+             * columns by itself; nothing pops up inside a string literal */
+            const auto typeKey = [&ed](const QString &sql, int key, const QString &text) {
+                ed.setPlainText(sql);
+                ed.moveCursorToEnd();
+                QKeyEvent k(QEvent::KeyPress, key, Qt::NoModifier, text);
+                QCoreApplication::sendEvent(&ed, &k);
+                return ed.completionHitsForTest();
+            };
+            const QStringList dot = typeKey(QStringLiteral("SELECT * FROM orders o WHERE o"),
+                                            Qt::Key_Period, QStringLiteral("."));
+            const bool okDot =
+                dot == QStringList{QStringLiteral("o_id"), QStringLiteral("o_total")};
+            const bool okStr = typeKey(QStringLiteral("SELECT * FROM orders WHERE x = 'o_"),
+                                       Qt::Key_T, QStringLiteral("t"))
+                                   .isEmpty() &&
+                               !typeKey(QStringLiteral("SELECT * FROM orders WHERE o_"), Qt::Key_T,
+                                        QStringLiteral("t"))
+                                    .isEmpty();
+            QTextStream(stdout) << "comptest: typing 'o.' pops orders columns = " << dot.join(',')
+                                << (okDot ? "  PASS" : "  FAIL") << " | no popup inside a string"
+                                << (okStr ? "  PASS\n" : "  FAIL\n");
+            return (ok && okT && okC && ok1 && ok3 && okDot && okStr) ? 0 : 1;
         }
         if(a.startsWith(QStringLiteral("--opentable="))) {
             const QStringList parts = a.mid(12).split(':');

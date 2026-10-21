@@ -1,5 +1,6 @@
 #include "SqlEditor.h"
 
+#include "Icons.h"
 #include "wyIni.h"
 
 #include <QClipboard>
@@ -24,70 +25,6 @@ QString uiIniPath()
 }
 } // namespace
 
-namespace {
-/* SQL keywords always offered by the completer */
-const QStringList kKeywordWords = {
-    "SELECT",
-    "FROM",
-    "WHERE",
-    "GROUP BY",
-    "ORDER BY",
-    "HAVING",
-    "LIMIT",
-    "OFFSET",
-    "INNER JOIN",
-    "LEFT JOIN",
-    "RIGHT JOIN",
-    "JOIN",
-    "ON",
-    "AS",
-    "AND",
-    "OR",
-    "NOT",
-    "IN",
-    "IS NULL",
-    "IS NOT NULL",
-    "LIKE",
-    "BETWEEN",
-    "EXISTS",
-    "UNION",
-    "UNION ALL",
-    "DISTINCT",
-    "INSERT INTO",
-    "VALUES",
-    "UPDATE",
-    "SET",
-    "DELETE FROM",
-    "CREATE TABLE",
-    "ALTER TABLE",
-    "DROP TABLE",
-    "TRUNCATE TABLE",
-    "CREATE VIEW",
-    "CREATE INDEX",
-    "PRIMARY KEY",
-    "FOREIGN KEY",
-    "REFERENCES",
-    "DEFAULT",
-    "AUTO_INCREMENT",
-    "CASE",
-    "WHEN",
-    "THEN",
-    "ELSE",
-    "END",
-    "ASC",
-    "DESC",
-    "COUNT(",
-    "SUM(",
-    "AVG(",
-    "MIN(",
-    "MAX(",
-    "COALESCE(",
-    "IFNULL(",
-    "NOW()",
-    "CURRENT_TIMESTAMP",
-};
-} // namespace
-
 SqlEditor::SqlEditor(QWidget *parent) : QsciScintilla(parent)
 {
     setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
@@ -104,6 +41,7 @@ SqlEditor::SqlEditor(QWidget *parent) : QsciScintilla(parent)
 
     connect(this, &QsciScintilla::userListActivated, this,
             [this](int, const QString &word) { insertCompletion(word); });
+    registerCompletionImages();
 
     reskin();
 }
@@ -236,227 +174,70 @@ void SqlEditor::moveCursorToEnd()
 
 /* ---- completion ------------------------------------------------------- */
 
+namespace {
+/* popup icon per kind (Scintilla's "word?id" list items); 0 = none */
+int imageFor(SqlCompletion::Kind k)
+{
+    switch(k) {
+        case SqlCompletion::Kind::Table:
+        case SqlCompletion::Kind::Alias:
+            return 1;
+        case SqlCompletion::Kind::View:
+            return 2;
+        case SqlCompletion::Kind::Column:
+            return 3;
+        case SqlCompletion::Kind::Function:
+            return 4;
+        case SqlCompletion::Kind::Database:
+            return 5;
+        case SqlCompletion::Kind::Procedure:
+            return 6;
+        case SqlCompletion::Kind::Keyword:
+            break;
+    }
+    return 0;
+}
+} // namespace
+
+void SqlEditor::registerCompletionImages()
+{
+    const struct
+    {
+        int id;
+        const char *file;
+    } images[] = {{1, "table.ico"},    {2, "view.ico"},     {3, "column.ico"},
+                  {4, "function.ico"}, {5, "database.ico"}, {6, "process.ico"}};
+    for(const auto &i : images) {
+        const QPixmap pm = Icons::get(QString::fromLatin1(i.file)).pixmap(16, 16);
+        if(!pm.isNull())
+            registerImage(i.id, pm);
+    }
+}
+
+void SqlEditor::setCompletionSchema(const SqlCompletion::Schema &schema)
+{
+    m_schema = schema;
+}
+
+void SqlEditor::setDialect(SqlDriverType dialect)
+{
+    m_dialect = dialect;
+}
+
 void SqlEditor::setCompletions(const QStringList &words)
 {
-    m_generic = words;
+    m_schema.extra = words;
 }
 
 void SqlEditor::setSchema(const QStringList &tables, const QStringList &columns)
 {
-    m_tables = tables;
-    m_columns = columns;
+    m_schema.tables = tables;
+    m_schema.columns = columns;
 }
 
 void SqlEditor::setColumnLookup(std::function<QStringList(const QString &)> lookup)
 {
-    m_columnLookup = std::move(lookup);
-}
-
-/* The tables (with aliases) the statement around the caret reads or writes:
- * whatever follows FROM/JOIN/UPDATE/INTO, plus a comma-separated list after
- * FROM. Only names present in the schema list count — a subquery alias or a
- * typo just isn't a table here. Whole statement, not just the text before
- * the caret: in "SELECT | FROM t" the table comes after. */
-QVector<SqlEditor::StmtTable> SqlEditor::tablesInStatement() const
-{
-    const int pos = cursorPosition();
-    const QString doc = toPlainText();
-    const int start = doc.lastIndexOf(QLatin1Char(';'), qMax(0, pos - 1)) + 1;
-    int end = doc.indexOf(QLatin1Char(';'), pos);
-    if(end < 0)
-        end = doc.size();
-    const QString stmt = doc.mid(start, end - start);
-
-    static const QRegularExpression tok(
-        QStringLiteral("`[^`]+`|\"[^\"]+\"|[A-Za-z_][A-Za-z0-9_$]*|[.,()]"));
-    QStringList toks;
-    auto it = tok.globalMatch(stmt);
-    while(it.hasNext())
-        toks << it.next().captured(0);
-
-    static const QSet<QString> notAlias = {
-        "WHERE",   "JOIN",   "INNER",     "LEFT",         "RIGHT", "FULL",   "CROSS",
-        "NATURAL", "OUTER",  "ON",        "USING",        "GROUP", "ORDER",  "HAVING",
-        "LIMIT",   "UNION",  "SET",       "VALUES",       "FROM",  "SELECT", "AS",
-        "INTO",    "WINDOW", "RETURNING", "STRAIGHT_JOIN"};
-    const auto unquote = [](QString t) {
-        if(t.size() >= 2 && (t.startsWith(QLatin1Char('`')) || t.startsWith(QLatin1Char('"'))))
-            t = t.mid(1, t.size() - 2);
-        return t;
-    };
-    const auto isIdent = [](const QString &t) {
-        return !t.isEmpty() && (t[0].isLetter() || t[0] == QLatin1Char('_') ||
-                                t[0] == QLatin1Char('`') || t[0] == QLatin1Char('"'));
-    };
-
-    QVector<StmtTable> out;
-    for(int i = 0; i < toks.size(); ++i) {
-        const QString u = toks[i].toUpper();
-        if(u != QLatin1String("FROM") && u != QLatin1String("JOIN") &&
-           u != QLatin1String("UPDATE") && u != QLatin1String("INTO"))
-            continue;
-        const bool list = u == QLatin1String("FROM");
-        int j = i + 1;
-        while(j < toks.size() && isIdent(toks[j])) {
-            QString name = unquote(toks[j++]);
-            while(j + 1 < toks.size() && toks[j] == QLatin1String(".") && isIdent(toks[j + 1])) {
-                name = unquote(toks[j + 1]); /* schema.table → table */
-                j += 2;
-            }
-            QString alias;
-            if(j < toks.size() && toks[j].compare(QLatin1String("AS"), Qt::CaseInsensitive) == 0 &&
-               j + 1 < toks.size()) {
-                alias = unquote(toks[j + 1]);
-                j += 2;
-            } else if(j < toks.size() && isIdent(toks[j]) &&
-                      !notAlias.contains(toks[j].toUpper())) {
-                alias = unquote(toks[j++]);
-            }
-            for(const QString &t : m_tables)
-                if(t.compare(name, Qt::CaseInsensitive) == 0) {
-                    out.append({t, alias});
-                    break;
-                }
-            if(list && j < toks.size() && toks[j] == QLatin1String(","))
-                ++j;
-            else
-                break;
-        }
-    }
-    return out;
-}
-
-/* the word right before a "." that ends the text before the partial
- * identifier — "e" in "SELECT e.na|" — or empty when there is none */
-QString SqlEditor::qualifierBeforeCursor() const
-{
-    const int pos = cursorPosition();
-    const QString doc = toPlainText();
-    int e = pos;
-    while(e > 0 && (doc[e - 1].isLetterOrNumber() || doc[e - 1] == QLatin1Char('_')))
-        --e;
-    if(e == 0 || doc[e - 1] != QLatin1Char('.'))
-        return {};
-    int q = e - 1;
-    if(q > 0 && (doc[q - 1] == QLatin1Char('`') || doc[q - 1] == QLatin1Char('"')))
-        --q;
-    int s = q;
-    while(s > 0 && (doc[s - 1].isLetterOrNumber() || doc[s - 1] == QLatin1Char('_')))
-        --s;
-    return doc.mid(s, q - s);
-}
-
-/* Columns of the statement's tables in table order, then ordinal order. With
- * a qualifier ("alias." / "table."), only that table's — empty when the
- * qualifier names none of them, so the caller falls back to every column. */
-QStringList SqlEditor::columnsOfTables(const QVector<StmtTable> &tables,
-                                       const QString &qualifier) const
-{
-    QStringList out;
-    if(!m_columnLookup)
-        return out;
-    for(const StmtTable &t : tables) {
-        if(!qualifier.isEmpty() && qualifier.compare(t.alias, Qt::CaseInsensitive) != 0 &&
-           qualifier.compare(t.table, Qt::CaseInsensitive) != 0)
-            continue;
-        out += m_columnLookup(t.table);
-    }
-    out.removeDuplicates();
-    return out;
-}
-
-/* Which identifiers to offer, from the last significant keyword before the
- * cursor on the current statement.  Mirrors SQLyog's AutoCompleteInterface
- * clause tracking (tables after FROM/JOIN, columns after SELECT/WHERE …). */
-SqlEditor::ClauseCtx SqlEditor::clauseContextAtCursor() const
-{
-    const int pos = cursorPosition();
-    const QString doc = toPlainText();
-    const int stmtStart = doc.lastIndexOf(QLatin1Char(';'), qMax(0, pos - 1)) + 1;
-    QString head = doc.mid(stmtStart, pos - stmtStart);
-
-    /* drop the partial identifier currently being typed */
-    int e = head.size();
-    while(e > 0 && (head[e - 1].isLetterOrNumber() || head[e - 1] == QLatin1Char('_')))
-        --e;
-    head.truncate(e);
-
-    /* "alias." / "table." → completing a column of that qualifier */
-    int k = head.size();
-    while(k > 0 && head[k - 1].isSpace())
-        --k;
-    if(k > 0 && head[k - 1] == QLatin1Char('.'))
-        return CtxColumn;
-
-    static const QRegularExpression tok(QStringLiteral("[A-Za-z_][A-Za-z0-9_]*|,|\\(|\\)"));
-    QStringList toks;
-    auto it = tok.globalMatch(head);
-    while(it.hasNext())
-        toks << it.next().captured(0);
-
-    for(int i = toks.size() - 1; i >= 0; --i) {
-        const QString u = toks[i].toUpper();
-        if(u == QLatin1String("FROM") || u == QLatin1String("JOIN") || u == QLatin1String("INTO") ||
-           u == QLatin1String("UPDATE") || u == QLatin1String("TABLE") ||
-           u == QLatin1String("DESCRIBE"))
-            return CtxTable;
-        if(u == QLatin1String("SELECT") || u == QLatin1String("WHERE") ||
-           u == QLatin1String("ON") || u == QLatin1String("SET") || u == QLatin1String("HAVING") ||
-           u == QLatin1String("BY") || u == QLatin1String("USING") ||
-           u == QLatin1String("VALUES") || u == QLatin1String("RETURNING"))
-            return CtxColumn;
-        /* AND / OR / NOT / commas / parens are transparent — keep scanning */
-    }
-    return CtxAll;
-}
-
-QStringList SqlEditor::candidatesForContext() const
-{
-    QStringList list = kKeywordWords;
-    switch(clauseContextAtCursor()) {
-        case CtxTable:
-            list += m_tables.isEmpty() ? m_generic : m_tables;
-            break;
-        case CtxColumn: {
-            /* the statement's own tables' columns lead, in table order —
-             * not merged into the alphabetical pool below, which is what
-             * buried them among every column of the database. */
-            const QVector<StmtTable> tables = tablesInStatement();
-            const QString qualifier = qualifierBeforeCursor();
-            const QStringList own = columnsOfTables(tables, qualifier);
-            if(!qualifier.isEmpty() && !own.isEmpty())
-                return own; /* "alias." — that table's columns and nothing else */
-            QStringList rest = list;
-            rest += m_columns.isEmpty() ? m_generic : m_columns;
-            rest.removeDuplicates();
-            rest.sort(Qt::CaseInsensitive);
-            QStringList ordered = own;
-            for(const QString &w : rest)
-                if(!own.contains(w))
-                    ordered << w;
-            return ordered;
-        }
-        case CtxAll:
-        default:
-            list += m_generic;
-            list += m_tables;
-            list += m_columns;
-            break;
-    }
-    list.removeDuplicates();
-    list.sort(Qt::CaseInsensitive);
-    return list;
-}
-
-QString SqlEditor::wordUnderCursor() const
-{
-    int line = 0, index = 0;
-    getCursorPosition(&line, &index);
-    const QString t = lineTextNoEol(line);
-    int s = index;
-    while(s > 0 && (t[s - 1].isLetterOrNumber() || t[s - 1] == QLatin1Char('_')))
-        --s;
-    return t.mid(s, index - s);
+    m_schema.columnsOf = std::move(lookup);
 }
 
 QString SqlEditor::lineTextNoEol(int line) const
@@ -467,33 +248,46 @@ QString SqlEditor::lineTextNoEol(int line) const
     return t;
 }
 
+/* force = Ctrl+Space. Typing opens the list once two characters of a name are
+ * in, or right after "alias." / "table." — never inside a string or comment —
+ * and re-filters it on every further character (Scintilla's own narrowing
+ * only knows prefixes, the ranking here also matches inside names). */
 void SqlEditor::popupCompleter(bool force)
 {
-    const QString prefix = wordUnderCursor();
-    if(!force && prefix.length() < 2) {
+    const QString doc = toPlainText();
+    const int pos = cursorPosition();
+    const QString prefix = SqlCompletion::prefixAt(doc, pos);
+    const int before = pos - int(prefix.size()) - 1;
+    const bool afterDot = before >= 0 && doc[before] == QLatin1Char('.');
+    const auto close = [this] {
         m_lastCompletionCount = 0;
+        m_lastHits.clear();
         cancelList();
+    };
+    if(!force && ((prefix.size() < 2 && !afterDot) ||
+                  SqlCompletion::inStringOrComment(doc, pos, m_dialect))) {
+        close();
         return;
     }
-    QStringList hits;
-    const QStringList list = candidatesForContext();
-    for(const QString &w : list)
-        if(w.startsWith(prefix, Qt::CaseInsensitive))
-            hits << w;
+    QStringList hits, shown;
+    for(const SqlCompletion::Item &item : SqlCompletion::complete(doc, pos, m_schema, m_dialect)) {
+        hits << item.text;
+        const int image = imageFor(item.kind);
+        shown << (image ? item.text + QLatin1Char('?') + QString::number(image) : item.text);
+    }
     if(hits.isEmpty() ||
        (hits.size() == 1 && hits.first().compare(prefix, Qt::CaseInsensitive) == 0)) {
-        m_lastCompletionCount = 0;
-        cancelList();
+        close();
         return;
     }
     getCursorPosition(&m_ctxLine, &m_ctxIndex);
-    m_ctxPrefixLen = prefix.length();
-    m_lastCompletionCount = hits.size();
+    m_ctxPrefixLen = int(prefix.size());
+    m_lastCompletionCount = int(hits.size());
     m_lastHits = hits;
-    /* keep candidatesForContext()'s order (own-table columns first) instead
-     * of Scintilla's default alphabetical re-sort */
+    /* keep SqlCompletion's ranking instead of Scintilla's alphabetical
+     * re-sort */
     SendScintilla(SCI_AUTOCSETORDER, static_cast<long>(SC_ORDER_CUSTOM));
-    showUserList(1, hits);
+    showUserList(1, shown);
 }
 
 void SqlEditor::triggerCompletion()
@@ -516,7 +310,8 @@ void SqlEditor::insertCompletion(const QString &word)
         return; /* stale popup */
     const QString t = lineTextNoEol(line);
     int s = index;
-    while(s > 0 && (t[s - 1].isLetterOrNumber() || t[s - 1] == QLatin1Char('_')))
+    while(s > 0 && (t[s - 1].isLetterOrNumber() || t[s - 1] == QLatin1Char('_') ||
+                    t[s - 1] == QLatin1Char('$')))
         --s;
     setSelection(line, s, line, index);
     replaceSelectedText(word);
@@ -532,21 +327,24 @@ void SqlEditor::keyPressEvent(QKeyEvent *event)
         popupCompleter(true);
         return;
     }
+    const bool listWasOpen = isListActive();
 
     QsciScintilla::keyPressEvent(event);
 
-    if(event->text().isEmpty() || (event->modifiers() & ~Qt::ShiftModifier)) /* Ctrl/Alt combos */
+    if(event->key() == Qt::Key_Backspace) {
+        if(listWasOpen)
+            popupCompleter(false); /* re-filter, or close below two characters */
+        return;
+    }
+    if(event->text().isEmpty() ||
+       (event->modifiers() & ~(Qt::ShiftModifier | Qt::KeypadModifier))) /* Ctrl/Alt combos */
         return;
     const QChar ch = event->text().at(0);
-    const bool wordChar = ch.isLetterOrNumber() || ch == QLatin1Char('_');
-    if(isListActive()) {
-        /* Scintilla narrows the open list as typing continues; close it on
-         * anything that can't be part of an identifier */
-        if(!wordChar && ch != QLatin1Char(' '))
-            cancelList();
-    } else if(wordChar) {
+    if(ch.isLetterOrNumber() || ch == QLatin1Char('_') || ch == QLatin1Char('$') ||
+       ch == QLatin1Char('.'))
         popupCompleter(false);
-    }
+    else if(isListActive())
+        cancelList(); /* anything else ends the name being typed */
 }
 
 void SqlEditor::changeEvent(QEvent *event)
