@@ -41,10 +41,13 @@ Early but usable for day-to-day work against a local server. Working now:
 ## Build (Linux)
 
 Requires a C++17 compiler, CMake ≥ 3.21, Ninja, Qt 6, QScintilla (Qt 6
-build), MariaDB client headers, libpq, and SQLite3. On Arch / CachyOS:
+build), MariaDB client headers, libpq, and SQLite3. QtKeychain is optional:
+with it, saved connection passwords go to the OS keychain (GNOME Keyring,
+KWallet …); without it they stay base64-encoded in `connections.ini`. On
+Arch / CachyOS:
 
 ```bash
-sudo pacman -S --needed base-devel cmake ninja qt6-base qt6-tools qt6-svg qscintilla-qt6 mariadb postgresql-libs sqlite
+sudo pacman -S --needed base-devel cmake ninja qt6-base qt6-tools qt6-svg qscintilla-qt6 qtkeychain-qt6 mariadb postgresql-libs sqlite
 
 cmake -S . -B build-cmake -G Ninja
 cmake --build build-cmake

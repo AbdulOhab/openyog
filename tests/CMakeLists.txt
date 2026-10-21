@@ -19,6 +19,15 @@ openyog_unit_test(tst_sqlformat    "${QT_SRC}/SqlFormat.cpp")
 openyog_unit_test(tst_schemasql    "${QT_SRC}/SchemaSql.cpp" "${QT_SRC}/SqlSplit.cpp")
 openyog_unit_test(tst_resultexport "${QT_SRC}/ResultExport.cpp")
 
+# ConnectionStore against an in-memory keychain: FakeSecretStore.cpp takes
+# qt/SecretStore.cpp's place, so the keychain, INI-fallback and migration
+# paths all run without a real Secret Service
+openyog_unit_test(tst_connectionstore FakeSecretStore.cpp "${QT_SRC}/ConnectionStore.cpp")
+target_link_libraries(tst_connectionstore PRIVATE wycore ${MARIADB_LIBRARY} ${SQLITE3_LIBRARY})
+# upstream headers (Datatype.h's MSVC pragmas, wyString.h's comments) — the
+# same noise wycore itself silences
+target_compile_options(tst_connectionstore PRIVATE -Wno-unknown-pragmas -Wno-comment)
+
 # wycore port checks. Exit code 3 means the MariaDB server it also probes
 # (127.0.0.1:3306) isn't reachable: a skip, not a failure, on a machine or
 # CI runner without one.

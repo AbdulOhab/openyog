@@ -18,7 +18,7 @@ jobs:
         run: |
           pacman -Syu --noconfirm --needed \
             base-devel git cmake ninja clang \
-            qt6-base qt6-svg qscintilla-qt6 \
+            qt6-base qt6-svg qscintilla-qt6 qtkeychain-qt6 \
             mariadb-libs postgresql-libs sqlite
 
       - uses: actions/checkout@v4
@@ -27,7 +27,7 @@ jobs:
       # newer Arch clang may disagree on a few lines, in which case reformat
       # and commit rather than loosening the check
       - name: clang-format
-        run: clang-format --dry-run --Werror qt/*.cpp qt/*.h qt/db/*.cpp qt/db/*.h tests/*.cpp
+        run: clang-format --dry-run --Werror qt/*.cpp qt/*.h qt/db/*.cpp qt/db/*.h tests/*.cpp tests/*.h
 
       - name: Configure
         run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug

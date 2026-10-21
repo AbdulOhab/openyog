@@ -1,9 +1,11 @@
 /* OpenYog — persistent connection store.
  *
- * Deliberately built on the ported core (wyIni + EncodeBase64), i.e. the same
- * INI-with-encoded-password scheme SQLyog itself used for saved connections —
- * kept for authenticity; base64 is obfuscation, not encryption (same as
- * upstream).
+ * Built on the ported core (wyIni), i.e. the same connections.ini SQLyog
+ * itself used. Passwords go to the OS keychain (SecretStore) and the section
+ * only records `password_in_keychain=1`; upstream's base64 `password` field
+ * (obfuscation, not encryption) is the fallback when no keychain backend
+ * takes the secret, and an existing base64 password moves into the keychain
+ * the first time its connection is loaded.
  */
 #pragma once
 

@@ -93,12 +93,16 @@ command -v x86_64-w64-mingw32-cmake >/dev/null || { echo "mingw-w64-cmake missin
 # against a real non-TLS server). Native Linux is untouched: these are only
 # passed here, never added to CMakeLists.txt itself.
 # OPENYOG_BUILD_TESTS=OFF: test .exe's can't run on this host anyway.
+# Qt6Keychain disabled: there's no mingw build of it here, and the host's
+# Linux one (qtkeychain-qt6) must never get picked up for a Windows link —
+# SecretStore compiles to stubs, passwords stay in connections.ini.
 x86_64-w64-mingw32-cmake -G Ninja -B "$BUILD" -S "$ROOT" \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_FIND_ROOT_PATH="/usr/x86_64-w64-mingw32;$QT_MINGW" \
     -DMDB_MYSQL_DIR="$MARIADB_MINGW/include" \
     -DMARIADB_LIBRARY="$MARIADB_MINGW/lib/mariadb/libmariadb.dll.a" \
-    -DOPENYOG_BUILD_TESTS=OFF
+    -DOPENYOG_BUILD_TESTS=OFF \
+    -DCMAKE_DISABLE_FIND_PACKAGE_Qt6Keychain=ON
 cmake --build "$BUILD" --target openyog
 
 # ---- deploy: exe + transitive DLL closure ------------------------------

@@ -117,6 +117,7 @@ add_executable(openyog
     qt/ConnectionTab.h     qt/ConnectionTab.cpp
     qt/QueryModel.h        qt/QueryModel.cpp
     qt/ConnectionStore.h   qt/ConnectionStore.cpp
+    qt/SecretStore.h       qt/SecretStore.cpp
     qt/FavoritesStore.h    qt/FavoritesStore.cpp
     qt/ObjectBrowser.h     qt/ObjectBrowser.cpp
     qt/CreateTableDialog.h qt/CreateTableDialog.cpp
@@ -147,6 +148,19 @@ find_library(QSCINTILLA_LIBRARY NAMES qscintilla2_qt6 REQUIRED)
 target_include_directories(openyog PRIVATE ${QSCINTILLA_INCLUDE_DIR})
 target_link_libraries(openyog PRIVATE wycore Qt6::Widgets ${MARIADB_LIBRARY} ${SQLITE3_LIBRARY} ${PQ_LIBRARY} ${QSCINTILLA_LIBRARY})
 target_compile_options(openyog PRIVATE -Wall)
+
+# Saved-connection passwords go to the OS keychain through QtKeychain (Arch:
+# `sudo pacman -S qtkeychain-qt6`). Optional: without it (e.g. the mingw cross
+# build) SecretStore compiles to stubs and ConnectionStore keeps upstream's
+# base64 field in connections.ini.
+find_package(Qt6Keychain CONFIG QUIET)
+if(Qt6Keychain_FOUND)
+    target_compile_definitions(openyog PRIVATE OPENYOG_HAVE_KEYCHAIN)
+    target_link_libraries(openyog PRIVATE Qt6Keychain::Qt6Keychain)
+    message(STATUS "QtKeychain found: saved passwords go to the OS keychain")
+else()
+    message(STATUS "QtKeychain not found: saved passwords stay base64 in connections.ini")
+endif()
 
 # Windows only: compile qt/openyog.rc so the .exe carries its own icon. windres
 # resolves the script's "resources/openyog.ico" against its include path, not

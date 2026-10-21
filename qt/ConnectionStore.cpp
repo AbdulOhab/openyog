@@ -1,5 +1,6 @@
 #include "ConnectionStore.h"
 
+#include "SecretStore.h"
 #include "wyIni.h"
 #include "CommonHelper.h" /* EncodeBase64/DecodeBase64 + wyString (port shim) */
 
@@ -18,6 +19,46 @@ static QString iniPath()
 static QByteArray toUtf8(const QString &s)
 {
     return s.toUtf8();
+}
+
+/* the connection's entry in the OS keychain (SecretStore) */
+static QString secretKey(const QString &name)
+{
+    return QStringLiteral("connection/") + name;
+}
+
+/* upstream's INI password field: base64, i.e. obfuscation, not encryption */
+static QString decodeIniPassword(wyString &b64value) /* wyString getters aren't const */
+{
+    if(b64value.GetLength() == 0)
+        return QString();
+    QByteArray b64(b64value.GetString());
+    QByteArray decoded(b64.size() * 3 / 4 + 1, '\0');
+    size_t rawlen = DecodeBase64(b64.constData(), decoded.data());
+    decoded.resize((int)rawlen);
+    return QString::fromUtf8(decoded);
+}
+
+static void writeIniPassword(const QByteArray &section, const QString &password,
+                             const QByteArray &iniFile)
+{
+    wyChar *b64 = NULL;
+    const QByteArray pw = toUtf8(password);
+    EncodeBase64(pw.constData(), pw.size(), &b64);
+    wyIni::IniWriteString(section, "password", b64 ? b64 : "", iniFile);
+    free(b64);
+}
+
+/* move the password into the keychain and blank the INI copy; false (and
+ * the INI left as it was) when no keychain backend takes it */
+static bool storeInKeychain(const QString &name, const QString &password, const QByteArray &iniFile)
+{
+    if(!SecretStore::write(secretKey(name), password))
+        return false;
+    const QByteArray n = toUtf8(name);
+    wyIni::IniWriteString(n, "password", "", iniFile);
+    wyIni::IniWriteInt(n, "password_in_keychain", 1, iniFile);
+    return true;
 }
 
 bool ConnectionStore::load(const QString &name, ConnectionParams *out)
@@ -56,15 +97,20 @@ bool ConnectionStore::load(const QString &name, ConnectionParams *out)
     out->port = wyIni::IniGetInt(n, "port", driver == SqlDriverType::Postgres ? 5432 : 3306,
                                  iniPath().toUtf8());
 
-    /* password is stored base64-encoded, like upstream connection files */
-    wyIni::IniGetString(n, "password", "", &value, iniPath().toUtf8());
+    /* password: in the OS keychain when the entry says so; otherwise the
+     * INI's base64 field (built without a keychain, none answered at save
+     * time, or a file from before keychain support), which gets moved into
+     * the keychain now if one takes it */
     out->password.clear();
-    if(value.GetLength() > 0) {
-        QByteArray b64(value.GetString());
-        QByteArray decoded(b64.size() * 3 / 4 + 1, '\0');
-        size_t rawlen = DecodeBase64(b64.constData(), decoded.data());
-        decoded.resize((int)rawlen);
-        out->password = QString::fromUtf8(decoded);
+    if(wyIni::IniGetInt(n, "password_in_keychain", 0, iniPath().toUtf8()) != 0) {
+        /* missing / locked / denied: connect with an empty password and let
+         * the server's own error say so */
+        SecretStore::read(secretKey(name), &out->password);
+    } else {
+        wyIni::IniGetString(n, "password", "", &value, iniPath().toUtf8());
+        out->password = decodeIniPassword(value);
+        if(!out->password.isEmpty())
+            storeInKeychain(name, out->password, iniPath().toUtf8());
     }
 
     out->useSsl = wyIni::IniGetInt(n, "use_ssl", 0, iniPath().toUtf8()) != 0;
@@ -98,11 +144,12 @@ void ConnectionStore::save(const ConnectionParams &params)
     wyIni::IniWriteString(n, "database", toUtf8(params.database), p);
     wyIni::IniWriteInt(n, "port", params.port, p);
 
-    wyChar *b64 = NULL;
-    const QByteArray pw = toUtf8(params.password);
-    EncodeBase64(pw.constData(), pw.size(), &b64);
-    wyIni::IniWriteString(n, "password", b64 ? b64 : "", p);
-    free(b64);
+    /* keychain first; the INI field only when no keychain takes it, never
+     * both */
+    if(!storeInKeychain(params.name, params.password, p)) {
+        writeIniPassword(n, params.password, p);
+        wyIni::IniWriteInt(n, "password_in_keychain", 0, p);
+    }
 
     wyIni::IniWriteInt(n, "use_ssl", params.useSsl ? 1 : 0, p);
     wyIni::IniWriteString(n, "ssl_ca", toUtf8(params.sslCa), p);
@@ -116,7 +163,12 @@ void ConnectionStore::save(const ConnectionParams &params)
 
 void ConnectionStore::remove(const QString &name)
 {
-    wyIni::IniDeleteSection(toUtf8(name).constData(), iniPath().toUtf8());
+    const QByteArray n = toUtf8(name);
+    /* only touch the keychain for entries that use it: a delete there can
+     * mean an unlock prompt */
+    if(wyIni::IniGetInt(n, "password_in_keychain", 0, iniPath().toUtf8()) != 0)
+        SecretStore::remove(secretKey(name));
+    wyIni::IniDeleteSection(n.constData(), iniPath().toUtf8());
 }
 
 bool ConnectionStore::rename(const QString &oldName, const QString &newName)
@@ -125,6 +177,13 @@ bool ConnectionStore::rename(const QString &oldName, const QString &newName)
         return false;
     ConnectionParams p;
     if(!load(oldName, &p))
+        return false;
+    /* a keychain that won't hand the password over (locked, access denied)
+     * leaves p.password empty, and the save + remove below would then lose
+     * it for good: refuse the rename instead */
+    QString secret;
+    if(wyIni::IniGetInt(toUtf8(oldName), "password_in_keychain", 0, iniPath().toUtf8()) != 0 &&
+       !SecretStore::read(secretKey(oldName), &secret))
         return false;
     p.name = newName;
     save(p);
