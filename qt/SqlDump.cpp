@@ -25,32 +25,40 @@ QStringList baseTables(IDbConnection *c, const QString &db, QString *error)
 }
 
 /* one INSERT tuple: NULL stays NULL, everything else single-quoted + escaped;
- * with `hexCols` marking binary columns and blobToHex on, those emit a
- * driver hex literal instead (x'…' / decode('…','hex')) — the same shape
- * TableDataView's hexLiteral builds for staged grid edits */
-QString tuple(IDbConnection *c, const QVector<QByteArray> &fields, const QVector<bool> &isNull,
-              const QVector<bool> &hexCols = {})
+ * columns `hexCols` marks emit a driver hex literal instead (x'…' /
+ * decode('…','hex')) — the same shape TableDataView's hexLiteral builds for
+ * staged grid edits. Bytes, not a QString: a binary value is not UTF-8, and
+ * a round trip through QString turns every invalid byte into U+FFFD. */
+QByteArray tuple(IDbConnection *c, const QVector<QByteArray> &fields, const QVector<bool> &isNull,
+                 const QVector<bool> &hexCols = {})
 {
-    QString s = QStringLiteral("(");
+    QByteArray s("(");
     for(int i = 0; i < fields.size(); ++i) {
         if(i)
-            s += QLatin1Char(',');
+            s += ',';
         if(isNull[i]) {
-            s += QStringLiteral("NULL");
+            s += "NULL";
             continue;
         }
         if(hexCols.value(i)) {
-            const QString h = QString::fromLatin1(fields[i].toHex());
-            s += c->driverType() == SqlDriverType::Postgres
-                     ? QStringLiteral("decode('%1','hex')").arg(h)
-                     : QStringLiteral("x'%1'").arg(h);
-            continue;
+            if(c->driverType() != SqlDriverType::Postgres) {
+                s += "x'" + fields[i].toHex() + "'";
+                continue;
+            }
+            /* PostgreSQL hands bytea over as text already: "\x89504e…" in the
+             * default hex output format, whose digits are the literal; the old
+             * escape format falls through to a plain quoted literal, which
+             * PostgreSQL reads back the same way */
+            if(fields[i].startsWith("\\x")) {
+                s += "decode('" + fields[i].mid(2) + "','hex')";
+                continue;
+            }
         }
-        s += QLatin1Char('\'');
-        s += QString::fromUtf8(c->escape(fields[i]));
-        s += QLatin1Char('\'');
+        s += '\'';
+        s += c->escape(fields[i]);
+        s += '\'';
     }
-    s += QLatin1Char(')');
+    s += ')';
     return s;
 }
 
@@ -172,7 +180,13 @@ bool SqlDump::write(IDbConnection *conn, const QString &db, const QStringList &t
         if(opt.lockAroundInsert && isMy)
             put(QStringLiteral("LOCK TABLES %1 WRITE;").arg(conn->qualify(db, t)));
 
-        const QVector<bool> hexCols = opt.blobToHex ? binaryColumns(conn, db, t) : QVector<bool>();
+        /* "BLOB to HEX" is a choice on MySQL (raw bytes in a quoted literal
+         * read back fine, as mysqldump writes them) and PostgreSQL (bytea
+         * arrives as "\x…" text either way). SQLite would store raw bytes
+         * back as TEXT, so its binary columns always go out as x'…'. */
+        const QVector<bool> hexCols = opt.blobToHex || conn->driverType() == SqlDriverType::Sqlite
+                                          ? binaryColumns(conn, db, t)
+                                          : QVector<bool>();
         const QString select = QStringLiteral("SELECT * FROM %1").arg(conn->qualify(db, t));
         int inBatch = 0;
         bool streamOk =
@@ -184,7 +198,7 @@ bool SqlDump::write(IDbConnection *conn, const QString &db, const QStringList &t
                                                      .toUtf8());
                                   else
                                       out->write(",\n");
-                                  out->write(tuple(conn, fields, isNull, hexCols).toUtf8());
+                                  out->write(tuple(conn, fields, isNull, hexCols));
                                   if(++inBatch >= qMax(1, opt.rowsPerInsert)) {
                                       out->write(";\n");
                                       inBatch = 0;
@@ -195,6 +209,17 @@ bool SqlDump::write(IDbConnection *conn, const QString &db, const QStringList &t
             return false;
         if(inBatch > 0)
             out->write(";\n");
+        /* PostgreSQL: the INSERTs above carry explicit ids, which a serial
+         * column's sequence doesn't see — without this the restored table's
+         * next INSERT collides with row 1 */
+        if(conn->driverType() == SqlDriverType::Postgres)
+            for(const QStringList &col : conn->listColumns(db, t).rows)
+                if(col.value(4).startsWith(QLatin1String("nextval(")))
+                    put(QStringLiteral("SELECT setval(pg_get_serial_sequence('%1', '%2'), "
+                                       "COALESCE(MAX(%3), 1), MAX(%3) IS NOT NULL) FROM %4;")
+                            .arg(QString(conn->quoteIdent(t)).replace('\'', QStringLiteral("''")),
+                                 QString(col.value(0)).replace('\'', QStringLiteral("''")),
+                                 conn->quoteIdent(col.value(0)), conn->quoteIdent(t)));
         put(QString());
 
         if(opt.lockAroundInsert && isMy)
@@ -256,6 +281,9 @@ bool SqlDump::forEachStatement(IDbConnection *conn, const QString &db, const QSt
             inBatch = 0;
             return ok;
         };
+        /* the statements travel as QString to exec(): binary columns have
+         * to be hex literals to survive that (see tuple()) */
+        const QVector<bool> hexCols = binaryColumns(conn, db, t);
         const QString select = QStringLiteral("SELECT * FROM %1").arg(conn->qualify(db, t));
         bool streamOk = conn->streamQuery(
             select, error, nullptr,
@@ -264,7 +292,7 @@ bool SqlDump::forEachStatement(IDbConnection *conn, const QString &db, const QSt
                     batch = QStringLiteral("INSERT INTO %1 VALUES\n").arg(conn->quoteIdent(t));
                 else
                     batch += QStringLiteral(",\n");
-                batch += tuple(conn, fields, isNull);
+                batch += QString::fromUtf8(tuple(conn, fields, isNull, hexCols));
                 if(++inBatch >= qMax(1, opt.rowsPerInsert) && !flush()) {
                     execFailed = true;
                     return false;

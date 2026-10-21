@@ -68,6 +68,22 @@ if(SQLITE3_CLI)
                              FIXTURES_REQUIRED ${flag}_db
                              ENVIRONMENT "${SELFTEST_ENV}")
     endforeach()
+
+    # SQL dump → restore keeps binary and non-ASCII data byte for byte
+    set(db "${CMAKE_CURRENT_BINARY_DIR}/fixture-dump.sqlite")
+    add_test(NAME dump_fixture
+             COMMAND "${CMAKE_COMMAND}" "-DSQLITE3=${SQLITE3_CLI}"
+                     "-DSQL=${CMAKE_CURRENT_SOURCE_DIR}/fixtures/sqlite_fixture.sql"
+                     "-DDB=${db}" -P "${CMAKE_CURRENT_SOURCE_DIR}/make_fixture_db.cmake")
+    set_tests_properties(dump_fixture PROPERTIES FIXTURES_SETUP dump_db)
+    add_test(NAME selftest_dump_roundtrip
+             COMMAND "${CMAKE_COMMAND}" "-DOPENYOG=$<TARGET_FILE:openyog>"
+                     "-DSQLITE3=${SQLITE3_CLI}" "-DSRC=${db}"
+                     "-DOUT=${CMAKE_CURRENT_BINARY_DIR}/dump-roundtrip"
+                     -P "${CMAKE_CURRENT_SOURCE_DIR}/dump_roundtrip.cmake")
+    set_tests_properties(selftest_dump_roundtrip PROPERTIES
+                         FIXTURES_REQUIRED dump_db
+                         ENVIRONMENT "${SELFTEST_ENV}")
 else()
     message(STATUS "sqlite3 CLI not found: skipping the SQLite selftests")
 endif()

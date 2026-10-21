@@ -5,6 +5,7 @@
 -- SQLite has no routines or events.
 -- ctest builds a fresh database from this file per test, on every run.
 DROP VIEW IF EXISTS v_employee_dept;
+DROP TABLE IF EXISTS files;
 DROP TABLE IF EXISTS employees;
 DROP TABLE IF EXISTS emp_dept;
 
@@ -36,4 +37,10 @@ FROM employees e LEFT JOIN emp_dept d ON d.id = e.dept_id;
 INSERT INTO emp_dept (id, name) VALUES (1, 'Engineering'), (2, 'Sales');
 INSERT INTO employees (name, city, salary, dept_id) VALUES
     ('Alice', 'Dhaka', 5000, 1),
-    ('Bob', 'Chattogram', NULL, 2);
+    ('Bob', 'Chattogram', NULL, 2),
+    ('রহিম', NULL, NULL, 1);
+
+-- binary data for the dump round trip (tests/dump_roundtrip.cmake): bytes
+-- that aren't valid UTF-8, a NUL and 0xFF
+CREATE TABLE files (id INTEGER PRIMARY KEY, data BLOB);
+INSERT INTO files VALUES (1, X'89504E4700FF'), (2, NULL);

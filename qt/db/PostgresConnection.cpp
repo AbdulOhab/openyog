@@ -1,6 +1,7 @@
 #include "PostgresConnection.h"
 
 #include <QHash>
+#include <QRegularExpression>
 #include <QSet>
 
 PostgresConnection::PostgresConnection(PGconn *conn) : m_conn(conn) {}
@@ -523,22 +524,54 @@ QString PostgresConnection::showCreate(const QString &kind, const QString &db, c
                 *error = QStringLiteral("table not found");
             return {};
         }
+        /* a nextval('<seq>'::regclass) default names a sequence this DDL
+         * would otherwise never create — restoring a dump then fails on the
+         * very first CREATE TABLE. The sequence PostgreSQL made for a serial
+         * column (<table>_<column>_seq) is written back as serial, which
+         * recreates it; any other sequence gets its own CREATE SEQUENCE
+         * ahead of the table. */
+        static const QRegularExpression nextvalRe(
+            QStringLiteral("^nextval\\('(?:\"?([^\"']+)\"?\\.)?\"?([^\"']+)\"?'::regclass\\)$"));
+        static const QHash<QString, QString> serialFor = {
+            {QStringLiteral("integer"), QStringLiteral("serial")},
+            {QStringLiteral("bigint"), QStringLiteral("bigserial")},
+            {QStringLiteral("smallint"), QStringLiteral("smallserial")}};
+        QStringList sequences;
         QStringList lines;
         QStringList pkCols;
         for(const QStringList &row : cols.rows) {
-            QString line = QStringLiteral("  %1 %2").arg(quoteIdent(row.value(0)), row.value(1));
+            QString type = row.value(1);
+            QString def = row.value(4) == QStringLiteral("NULL") ? QString() : row.value(4);
+            const auto m = nextvalRe.match(def);
+            if(m.hasMatch()) {
+                const QString seq = m.captured(2);
+                if(seq == name + QLatin1Char('_') + row.value(0) + QStringLiteral("_seq") &&
+                   serialFor.contains(type)) {
+                    type = serialFor.value(type);
+                    def.clear();
+                } else {
+                    sequences << QStringLiteral("CREATE SEQUENCE IF NOT EXISTS %1.%2;")
+                                     .arg(quoteIdent(m.captured(1).isEmpty() ? schema
+                                                                             : m.captured(1)),
+                                          quoteIdent(seq));
+                }
+            }
+            QString line = QStringLiteral("  %1 %2").arg(quoteIdent(row.value(0)), type);
             if(row.value(2) == QStringLiteral("NO"))
                 line += QStringLiteral(" NOT NULL");
-            if(row.value(4) != QStringLiteral("NULL") && !row.value(4).isEmpty())
-                line += QStringLiteral(" DEFAULT %1").arg(row.value(4));
+            if(!def.isEmpty())
+                line += QStringLiteral(" DEFAULT %1").arg(def);
             lines << line;
             if(row.value(3) == QStringLiteral("PRI"))
                 pkCols << quoteIdent(row.value(0));
         }
         if(!pkCols.isEmpty())
             lines << QStringLiteral("  PRIMARY KEY (%1)").arg(pkCols.join(QStringLiteral(", ")));
-        return QStringLiteral("CREATE TABLE %1.%2 (\n%3\n)")
-            .arg(quoteIdent(schema), quoteIdent(name), lines.join(QStringLiteral(",\n")));
+        sequences.removeDuplicates();
+        return (sequences.isEmpty() ? QString()
+                                    : sequences.join(QLatin1Char('\n')) + QLatin1Char('\n')) +
+               QStringLiteral("CREATE TABLE %1.%2 (\n%3\n)")
+                   .arg(quoteIdent(schema), quoteIdent(name), lines.join(QStringLiteral(",\n")));
     }
     if(error)
         *error = QStringLiteral("not supported on PostgreSQL");
