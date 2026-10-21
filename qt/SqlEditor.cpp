@@ -289,6 +289,16 @@ void SqlEditor::popupCompleter(bool force)
     m_ctxPrefixLen = int(prefix.size());
     m_lastCompletionCount = int(hits.size());
     m_lastHits = hits;
+    /* QScintilla places the list via QGuiApplication::screenAt() at the
+     * caret and dereferences the result unchecked: a caret on no screen —
+     * in a gap between monitors, or past the edge of the offscreen
+     * selftests' screen — crashed it in QScreen::availableGeometry(). The
+     * hits above are kept; there's just nowhere to show them. */
+    const long caretPos = SendScintilla(SCI_GETCURRENTPOS);
+    const QPoint caret(int(SendScintilla(SCI_POINTXFROMPOSITION, 0UL, caretPos)),
+                       int(SendScintilla(SCI_POINTYFROMPOSITION, 0UL, caretPos)));
+    if(!QGuiApplication::screenAt(viewport()->mapToGlobal(caret)))
+        return;
     /* keep SqlCompletion's ranking instead of Scintilla's alphabetical
      * re-sort */
     SendScintilla(SCI_AUTOCSETORDER, static_cast<long>(SC_ORDER_CUSTOM));
