@@ -88,6 +88,8 @@ private:
      * (mirrors m_params.database's role for MySQL/SQLite, but here it's
      * always "public" — Postgres's own default schema — never empty) */
     static QString effectiveSchema(const QString &db);
+    /* '"schema"."table"'::regclass, for catalog queries keyed by the table */
+    QString regclassLiteral(const QString &schema, const QString &table);
 
     PGconn *m_conn;
     qint64 m_lastAffected = 0;

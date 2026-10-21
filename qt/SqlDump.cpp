@@ -226,6 +226,33 @@ bool SqlDump::write(IDbConnection *conn, const QString &db, const QStringList &t
             put(QStringLiteral("UNLOCK TABLES;"));
     }
 
+    /* PostgreSQL: foreign keys last, once every table exists (MySQL's SHOW
+     * CREATE TABLE carries them inline, created regardless of order with
+     * FOREIGN_KEY_CHECKS=0; SQLite doesn't check the target at CREATE) */
+    if(opt.structure && conn->driverType() == SqlDriverType::Postgres) {
+        bool header = false;
+        for(const QString &t : std::as_const(list)) {
+            QString fkError;
+            const QString fks = conn->showCreate(QStringLiteral("FOREIGN KEYS"), db, t, &fkError);
+            if(!fkError.isEmpty()) {
+                if(error)
+                    *error = fkError;
+                return false;
+            }
+            if(fks.isEmpty())
+                continue;
+            if(!header) {
+                put(QStringLiteral("-- ----------------------------"));
+                put(QStringLiteral("-- Foreign keys"));
+                put(QStringLiteral("-- ----------------------------"));
+                header = true;
+            }
+            put(fks + QLatin1Char(';'));
+        }
+        if(header)
+            put(QString());
+    }
+
     if(opt.fkChecksOff) {
         const QString fkOn = conn->sqlFkChecks(true);
         if(!fkOn.isEmpty())

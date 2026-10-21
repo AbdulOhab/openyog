@@ -462,6 +462,15 @@ QStringList PostgresConnection::listEvents(const QString &)
     return {}; /* Postgres has no built-in scheduled-event equivalent */
 }
 
+/* '"schema"."table"'::regclass, for catalog queries keyed by the table */
+QString PostgresConnection::regclassLiteral(const QString &schema, const QString &table)
+{
+    return QLatin1Char('\'') +
+           QString(quoteIdent(schema) + QLatin1Char('.') + quoteIdent(table))
+               .replace('\'', QStringLiteral("''")) +
+           QStringLiteral("'::regclass");
+}
+
 QString PostgresConnection::showCreate(const QString &kind, const QString &db, const QString &name,
                                        QString *error)
 {
@@ -513,11 +522,15 @@ QString PostgresConnection::showCreate(const QString &kind, const QString &db, c
     }
     if(k == QStringLiteral("TABLE")) {
         /* Postgres has no SHOW CREATE TABLE / pg_get_tabledef() — this is a
-         * best-effort reconstruction from catalog metadata (columns + PK),
-         * not the byte-for-byte original DDL the way SQLite's showCreate
-         * (which just replays sqlite_master's stored text) or MySQL's (a
-         * real SHOW CREATE TABLE) are. Check constraints, non-PK unique
-         * constraints, and per-column comments aren't reconstructed. */
+         * reconstruction from catalog metadata, not the byte-for-byte
+         * original DDL the way SQLite's showCreate (which just replays
+         * sqlite_master's stored text) or MySQL's (a real SHOW CREATE
+         * TABLE) are: columns, the primary key, UNIQUE / CHECK / EXCLUDE
+         * constraints and the table's other indexes (each verbatim from
+         * pg_get_constraintdef() / pg_indexes). Foreign keys are
+         * showCreate("FOREIGN KEYS")'s, since a dump can only add them once
+         * every table exists; column comments aren't reconstructed. Several
+         * statements, ";\n"-separated, the last without its ";". */
         const DbResultSet cols = listColumns(schema, name);
         if(cols.rows.isEmpty()) {
             if(error)
@@ -550,7 +563,7 @@ QString PostgresConnection::showCreate(const QString &kind, const QString &db, c
                     type = serialFor.value(type);
                     def.clear();
                 } else {
-                    sequences << QStringLiteral("CREATE SEQUENCE IF NOT EXISTS %1.%2;")
+                    sequences << QStringLiteral("CREATE SEQUENCE IF NOT EXISTS %1.%2")
                                      .arg(quoteIdent(m.captured(1).isEmpty() ? schema
                                                                              : m.captured(1)),
                                           quoteIdent(seq));
@@ -567,11 +580,52 @@ QString PostgresConnection::showCreate(const QString &kind, const QString &db, c
         }
         if(!pkCols.isEmpty())
             lines << QStringLiteral("  PRIMARY KEY (%1)").arg(pkCols.join(QStringLiteral(", ")));
+
+        const QString rel = regclassLiteral(schema, name);
+        DbResultSet cons;
+        runBuffered(QStringLiteral("SELECT conname, pg_get_constraintdef(oid) FROM pg_constraint "
+                                   "WHERE conrelid = %1 AND contype IN ('u', 'c', 'x') "
+                                   "ORDER BY conname")
+                        .arg(rel),
+                    &cons, nullptr);
+        for(const QStringList &c : cons.rows)
+            lines << QStringLiteral("  CONSTRAINT %1 %2").arg(quoteIdent(c.value(0)), c.value(1));
+
+        /* indexes of their own — not the ones backing a constraint above */
+        DbResultSet idx;
+        runBuffered(QStringLiteral("SELECT indexdef FROM pg_indexes WHERE schemaname = '%1' "
+                                   "AND tablename = '%2' AND indexname NOT IN "
+                                   "(SELECT conname FROM pg_constraint WHERE conrelid = %3) "
+                                   "ORDER BY indexname")
+                        .arg(QString(schema).replace('\'', QStringLiteral("''")),
+                             QString(name).replace('\'', QStringLiteral("''")), rel),
+                    &idx, nullptr);
+
         sequences.removeDuplicates();
-        return (sequences.isEmpty() ? QString()
-                                    : sequences.join(QLatin1Char('\n')) + QLatin1Char('\n')) +
-               QStringLiteral("CREATE TABLE %1.%2 (\n%3\n)")
-                   .arg(quoteIdent(schema), quoteIdent(name), lines.join(QStringLiteral(",\n")));
+        QStringList statements = sequences;
+        statements << QStringLiteral("CREATE TABLE %1.%2 (\n%3\n)")
+                          .arg(quoteIdent(schema), quoteIdent(name),
+                               lines.join(QStringLiteral(",\n")));
+        for(const QStringList &i : idx.rows)
+            statements << i.value(0);
+        return statements.join(QStringLiteral(";\n"));
+    }
+    if(k == QStringLiteral("FOREIGN KEYS")) {
+        /* ALTER TABLE … ADD CONSTRAINT per foreign key, verbatim from the
+         * catalog; empty when the table has none */
+        DbResultSet fks;
+        if(!runBuffered(
+               QStringLiteral("SELECT conname, pg_get_constraintdef(oid) FROM pg_constraint "
+                              "WHERE conrelid = %1 AND contype = 'f' ORDER BY conname")
+                   .arg(regclassLiteral(schema, name)),
+               &fks, error))
+            return {};
+        QStringList statements;
+        for(const QStringList &f : fks.rows)
+            statements << QStringLiteral("ALTER TABLE %1.%2 ADD CONSTRAINT %3 %4")
+                              .arg(quoteIdent(schema), quoteIdent(name), quoteIdent(f.value(0)),
+                                   f.value(1));
+        return statements.join(QStringLiteral(";\n"));
     }
     if(error)
         *error = QStringLiteral("not supported on PostgreSQL");
