@@ -39,9 +39,6 @@ CMakeLists.txt.user*
 *~
 .DS_Store
 
-# Keep the vendored upstream binaries out of ignore rules:
-!lib/**
-
 # generated symlinks (CMakeLists.txt/build.sh recreate them)
 port/shim/mysql
 port/shim/sqlite3.h
