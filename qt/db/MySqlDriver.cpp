@@ -8,6 +8,11 @@ static MYSQL *tryConnect(const ConnectionParams &params, bool localInfile, bool 
 {
     MYSQL *c = mysql_init(nullptr);
     mysql_options(c, MYSQL_SET_CHARSET_NAME, "utf8mb4");
+    /* give up on an unreachable host after 10 s (PostgresDriver's
+     * connect_timeout=10) instead of the OS's TCP retries, minutes long —
+     * the startup reconnect (MainWindow::restoreLastSession) waits on it */
+    unsigned int connectTimeout = 10;
+    mysql_options(c, MYSQL_OPT_CONNECT_TIMEOUT, &connectTimeout);
     if(localInfile) {
         unsigned int on = 1;
         mysql_options(c, MYSQL_OPT_LOCAL_INFILE, &on);
