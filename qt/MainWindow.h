@@ -52,6 +52,8 @@ public:
     /* --dumptree= selftest */                                /* --expandtreepath= selftest */
     QStringList selftestTreeMenu(const QString &path);        /* --treemenu= selftest */
     QStringList selftestDumpEditor();                         /* --dumpeditor selftest */
+    void selftestSetEditorText(const QString &sql);           /* --sql= selftest */
+    QStringList selftestCompletions(const QString &sql);      /* --completeat= selftest */
     void selftestDoubleClickBrowserItem(const QString &path); /* --dblclicktreepath= selftest */
     void copySelectedTableToHost();                  /* Table menu + --copytablehost selftest */
     void selftestRunAgain();                         /* --runagain selftest: F9 a second time */

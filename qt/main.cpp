@@ -96,6 +96,10 @@ int main(int argc, char *argv[])
     QString useDbArg;           /* --usedb=NAME selftest */
     QString expandPgDbArg;      /* --expandpgdb=NAME selftest */
     bool runAgain = false;      /* --runagain selftest: F9 a second time before the screenshot */
+    QString editorSql;          /* --sql=TEXT selftest: put TEXT in the editor (with --runagain:
+                                 * run it) */
+    QStringList completeAts;    /* --completeat=TEXT selftest (repeatable): print what
+                                 * autocomplete offers for TEXT, caret at its end */
     bool copyTableHost = false; /* --copytablehost selftest: Table ▸ Copy Table(s) To Different
                                    Host… (non-MySQL-source guard) */
     QString selectTreePath;     /* --selecttreepath=a/b/c selftest */
@@ -153,6 +157,10 @@ int main(int argc, char *argv[])
             shotDumpDlg = true;
         if(a == QStringLiteral("--runagain"))
             runAgain = true;
+        if(a.startsWith(QStringLiteral("--sql=")))
+            editorSql = a.mid(QStringLiteral("--sql=").size());
+        if(a.startsWith(QStringLiteral("--completeat=")))
+            completeAts << a.mid(QStringLiteral("--completeat=").size());
         if(a == QStringLiteral("--copytablehost"))
             copyTableHost = true;
         if(a.startsWith(QStringLiteral("--selecttreepath=")))
@@ -2103,6 +2111,13 @@ int main(int argc, char *argv[])
                         for(const QString &line : w->selftestDumpEditor())
                             QTextStream(stdout) << line << '\n';
                     }
+                    for(const QString &at : std::as_const(completeAts))
+                        QTextStream(stdout)
+                            << "completeat [" << at
+                            << "]: " << w->selftestCompletions(at).join(QStringLiteral(" | "))
+                            << '\n';
+                    if(!editorSql.isEmpty())
+                        w->selftestSetEditorText(editorSql);
                     if(showInfoTab)
                         w->selftestShowInfoTab();
                     if(!infoSearch.isEmpty())

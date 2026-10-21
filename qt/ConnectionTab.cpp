@@ -1650,6 +1650,27 @@ QStringList ConnectionTab::dumpBrowserSubtree(const QString &path)
     return m_browser->dumpSubtree(path);
 }
 
+/* --sql= selftest: the active editor's text, caret at the end */
+void ConnectionTab::setEditorTextForTest(const QString &sql)
+{
+    if(SqlEditor *ed = currentEditor()) {
+        ed->setPlainText(sql);
+        ed->moveCursorToEnd();
+    }
+}
+
+/* --completeat= selftest: what Ctrl+Space offers with `sql` in the active
+ * editor and the caret at its end — against this connection's real schema */
+QStringList ConnectionTab::completionsForTest(const QString &sql)
+{
+    SqlEditor *ed = currentEditor();
+    if(!ed)
+        return {};
+    setEditorTextForTest(sql);
+    ed->triggerCompletion();
+    return ed->completionHitsForTest();
+}
+
 QStringList ConnectionTab::dumpEditorText()
 {
     SqlEditor *ed = currentEditor();

@@ -2161,6 +2161,19 @@ QStringList MainWindow::selftestDumpEditor()
     return {};
 }
 
+void MainWindow::selftestSetEditorText(const QString &sql)
+{
+    if(auto *tab = currentTab())
+        tab->setEditorTextForTest(sql);
+}
+
+QStringList MainWindow::selftestCompletions(const QString &sql)
+{
+    if(auto *tab = currentTab())
+        return tab->completionsForTest(sql);
+    return {};
+}
+
 void MainWindow::selftestDoubleClickBrowserItem(const QString &path)
 {
     if(auto *tab = currentTab())
