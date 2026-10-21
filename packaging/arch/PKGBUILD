@@ -1,0 +1,43 @@
+# Maintainer: Abdul Ohab (https://github.com/AbdulOhab)
+#
+# Builds the latest commit on the default branch. Locally:
+#   cd packaging/arch && makepkg -si
+pkgname=openyog-git
+pkgver=0.1.0.r0.g0000000
+pkgrel=1
+pkgdesc='Database client for MySQL, MariaDB, PostgreSQL and SQLite (Qt 6 fork of SQLyog Community)'
+arch=('x86_64' 'aarch64')
+url='https://github.com/AbdulOhab/openyog'
+license=('GPL-3.0-or-later')
+depends=('qt6-base' 'qscintilla-qt6' 'qtkeychain-qt6' 'mariadb-libs' 'postgresql-libs' 'sqlite')
+makedepends=('git' 'cmake' 'ninja')
+provides=('openyog')
+conflicts=('openyog')
+source=('openyog::git+https://github.com/AbdulOhab/openyog.git')
+sha256sums=('SKIP')
+
+pkgver() {
+  cd openyog
+  local base
+  base=$(sed -n 's/^project(openyog VERSION \([0-9.]*\).*/\1/p' CMakeLists.txt)
+  printf '%s.r%s.g%s' "$base" "$(git rev-list --count HEAD)" "$(git rev-parse --short=7 HEAD)"
+}
+
+build() {
+  cmake -S openyog -B build -G Ninja \
+    -DCMAKE_BUILD_TYPE=None \
+    -DCMAKE_INSTALL_PREFIX=/usr \
+    -Wno-dev
+  cmake --build build
+}
+
+check() {
+  # the unit tests and the server-less selftests; the MySQL/PostgreSQL ones
+  # need -DOPENYOG_TEST_MYSQL/-DOPENYOG_TEST_PG and stay off here
+  ctest --test-dir build --output-on-failure
+}
+
+package() {
+  DESTDIR="$pkgdir" cmake --install build
+  install -Dm644 openyog/LICENSE.md "$pkgdir/usr/share/licenses/$pkgname/LICENSE.md"
+}

@@ -1,7 +1,8 @@
-# Phase 1 build (plan.md) — portable core + smoke test on Linux.
-# Qt shell targets arrive in Phase 2 under qt/.
+# OpenYog: SQLyog's portable wy* core (wycore + smoketest) and the Qt 6
+# application on top of it (openyog), plus its tests (tests/) and install
+# rules (bottom of this file).
 cmake_minimum_required(VERSION 3.21)
-project(sqlyog-community-port LANGUAGES CXX)
+project(openyog VERSION 0.1.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -152,6 +153,7 @@ find_library(QSCINTILLA_LIBRARY NAMES qscintilla2_qt6 REQUIRED)
 target_include_directories(openyog PRIVATE ${QSCINTILLA_INCLUDE_DIR})
 target_link_libraries(openyog PRIVATE wycore Qt6::Widgets ${MARIADB_LIBRARY} ${SQLITE3_LIBRARY} ${PQ_LIBRARY} ${QSCINTILLA_LIBRARY})
 target_compile_options(openyog PRIVATE -Wall)
+target_compile_definitions(openyog PRIVATE OPENYOG_VERSION="${PROJECT_VERSION}")
 
 # Saved-connection passwords go to the OS keychain through QtKeychain (Arch:
 # `sudo pacman -S qtkeychain-qt6`). Optional: without it (e.g. the mingw cross
@@ -183,4 +185,27 @@ option(OPENYOG_BUILD_TESTS "Build the ctest suite under tests/" ON)
 if(OPENYOG_BUILD_TESTS)
     enable_testing()
     add_subdirectory(tests)
+endif()
+
+# ---- Install: the binary, plus on Linux the desktop entry, AppStream
+# metadata and icons under the reverse-DNS app id that QGuiApplication::
+# setDesktopFileName() (qt/main.cpp) announces to the compositor.
+#   cmake --install <build> [--prefix /usr] [DESTDIR=… for packaging]
+include(GNUInstallDirs)
+install(TARGETS openyog RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+if(UNIX AND NOT APPLE)
+    set(OPENYOG_APP_ID io.github.abdulohab.openyog)
+    install(FILES packaging/linux/${OPENYOG_APP_ID}.desktop
+            DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
+    install(FILES packaging/linux/${OPENYOG_APP_ID}.metainfo.xml
+            DESTINATION ${CMAKE_INSTALL_DATADIR}/metainfo)
+    foreach(size 16 24 32 64 256)
+        install(FILES qt/resources/openyog-${size}.png
+                DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/${size}x${size}/apps
+                RENAME ${OPENYOG_APP_ID}.png)
+    endforeach()
+    install(FILES qt/openyog.svg
+            DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/scalable/apps
+            RENAME ${OPENYOG_APP_ID}.svg)
+    install(FILES README.md DESTINATION ${CMAKE_INSTALL_DOCDIR})
 endif()

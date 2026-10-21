@@ -1720,6 +1720,10 @@ int main(int argc, char *argv[])
     app.setAttribute(Qt::AA_DontShowIconsInMenus, false);
     QApplication::setApplicationName(QStringLiteral("OpenYog"));
     QApplication::setOrganizationName(QStringLiteral("OpenYog"));
+    QApplication::setApplicationVersion(QStringLiteral(OPENYOG_VERSION));
+    /* the installed .desktop file's name (CMakeLists.txt install rules):
+     * lets a Wayland compositor match the window to its entry and icon */
+    QGuiApplication::setDesktopFileName(QStringLiteral("io.github.abdulohab.openyog"));
 
     /* window / taskbar icon — qt/openyog.svg rasterised into qt/resources, via the .qrc */
     QIcon appIcon;

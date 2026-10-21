@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=OpenYog
+GenericName=Database Client
+Comment=Query and manage MySQL, MariaDB, PostgreSQL and SQLite databases
+Exec=openyog
+Icon=io.github.abdulohab.openyog
+Terminal=false
+Categories=Development;Database;Qt;
+Keywords=SQL;MySQL;MariaDB;PostgreSQL;SQLite;database;query;

@@ -1394,10 +1394,13 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
     QAction *about = help->addAction(QStringLiteral("&About OpenYog"));
     about->setIcon(QIcon(QPixmap(QStringLiteral(":/resources/openyog-16.png"))));
     connect(about, &QAction::triggered, this, [this] {
-        QMessageBox::information(this, QStringLiteral("About OpenYog"),
-                                 QStringLiteral("OpenYog — a cross-platform MySQL/MariaDB client.\n"
-                                                "GPL-3.0 fork of the SQLyog Community source.\n"
-                                                "Not affiliated with Webyog/Idera."));
+        QMessageBox::information(
+            this, QStringLiteral("About OpenYog"),
+            QStringLiteral("OpenYog %1 — a cross-platform MySQL/MariaDB, PostgreSQL and SQLite "
+                           "client.\n"
+                           "GPL-3.0 fork of the SQLyog Community source.\n"
+                           "Not affiliated with Webyog/Idera.")
+                .arg(QCoreApplication::applicationVersion()));
     });
 
     /* ================= toolbar + status bar ========================= */

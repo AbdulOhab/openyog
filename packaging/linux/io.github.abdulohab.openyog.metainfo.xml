@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- AppStream metadata: what software centers (GNOME Software, Discover)
+     and Flathub show for OpenYog. Installed by CMakeLists.txt. -->
+<component type="desktop-application">
+  <id>io.github.abdulohab.openyog</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+  <name>OpenYog</name>
+  <summary>Query and manage MySQL, MariaDB, PostgreSQL and SQLite databases</summary>
+  <description>
+    <p>
+      OpenYog is a desktop database client built on the SQLyog Community
+      Edition source, with a Qt 6 interface in place of the original
+      Windows-only one. It is an independent community fork, not affiliated
+      with Webyog or Idera.
+    </p>
+    <ul>
+      <li>MySQL, MariaDB, PostgreSQL and SQLite connections</li>
+      <li>Query editor with syntax highlighting and context-aware autocomplete</li>
+      <li>Editable table data: staged edits applied in one transaction</li>
+      <li>Create and alter tables, indexes, foreign keys, views and routines</li>
+      <li>SQL dump backups, database copy, CSV import and export</li>
+      <li>Saved passwords kept in the system keychain</li>
+    </ul>
+  </description>
+  <launchable type="desktop-id">io.github.abdulohab.openyog.desktop</launchable>
+  <url type="homepage">https://github.com/AbdulOhab/openyog</url>
+  <url type="bugtracker">https://github.com/AbdulOhab/openyog/issues</url>
+  <developer id="io.github.abdulohab">
+    <name>Abdul Ohab</name>
+  </developer>
+  <provides>
+    <binary>openyog</binary>
+  </provides>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="0.1.0" date="2026-10-21"/>
+  </releases>
+</component>
