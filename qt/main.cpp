@@ -103,6 +103,7 @@ int main(int argc, char *argv[])
     QString useDbArg;           /* --usedb=NAME selftest */
     QString expandPgDbArg;      /* --expandpgdb=NAME selftest */
     bool runAgain = false;      /* --runagain selftest: F9 a second time before the screenshot */
+    QString sessionTestArg;     /* --sessiontest=FILE.sqlite selftest */
     QString editorSql;          /* --sql=TEXT selftest: put TEXT in the editor (with --runagain:
                                  * run it) */
     QStringList completeAts;    /* --completeat=TEXT selftest (repeatable): print what
@@ -164,6 +165,8 @@ int main(int argc, char *argv[])
             shotDumpDlg = true;
         if(a == QStringLiteral("--runagain"))
             runAgain = true;
+        if(a.startsWith(QStringLiteral("--sessiontest=")))
+            sessionTestArg = a.mid(QStringLiteral("--sessiontest=").size());
         if(a.startsWith(QStringLiteral("--sql=")))
             editorSql = a.mid(QStringLiteral("--sql=").size());
         if(a.startsWith(QStringLiteral("--completeat=")))
@@ -1941,6 +1944,20 @@ int main(int argc, char *argv[])
         return rc;
     }
 
+    /* --sessiontest=FILE.sqlite selftest (headless): a connection's query
+     * tabs survive closing and reopening it (SessionStore) */
+    if(!sessionTestArg.isEmpty()) {
+        ConnectionParams p;
+        p.driverType = SqlDriverType::Sqlite;
+        p.filePath = sessionTestArg;
+        p.name = QStringLiteral("sessiontest");
+        MainWindow w;
+        rc = w.selftestSessionRoundTrip(p) ? 0 : 1;
+        QThreadPool::globalInstance()->waitForDone();
+        dbDriverFor(SqlDriverType::Mysql)->libraryShutdown();
+        return rc;
+    }
+
     /* --schemahtmltest=out.html selftest (headless): autoconnect, build the
      * schema HTML, write it to disk, exit */
     if(!schemaHtmlArg.isEmpty() && doAutoConnect) {
@@ -2182,6 +2199,8 @@ int main(int argc, char *argv[])
     } else {
         MainWindow w;
         w.show();
+        /* once the window is up: the last session's connections and tabs */
+        QTimer::singleShot(0, &w, [&w] { w.restoreLastSession(); });
         rc = QApplication::exec();
     }
 

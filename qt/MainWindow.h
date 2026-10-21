@@ -35,8 +35,15 @@ private slots:
     void switchTab(int delta);
 
 public:
-    /* programmatic path used by the --autoconnect selftest (main.cpp) */
-    bool openAndRun(const ConnectionParams &params);
+    /* programmatic path used by the --autoconnect selftest (main.cpp);
+     * interactive=false reports a failed connect in the status bar instead
+     * of a message box (the startup reconnect) */
+    bool openAndRun(const ConnectionParams &params, bool interactive = true);
+    /* reopen the connections open when the app last quit, each with its
+     * query tabs (SessionStore) — unless switched off in Preferences */
+    void restoreLastSession();
+    /* --sessiontest= selftest: tabs survive closing and reopening `params` */
+    bool selftestSessionRoundTrip(const ConnectionParams &params);
     void openTableData(const QString &db, const QString &table);
     void setDataViewMode(const QString &mode);        /* selftest: "text" | "grid" */
     QString selftestCellText(int row, int col) const; /* --celltext= selftest: grid cell's text */
@@ -88,7 +95,13 @@ public:
     /* --schemahtmltest=out.html selftest */
     bool selftestSchemaHtml(const QString &outFile);
 
+protected:
+    void closeEvent(QCloseEvent *event) override;
+
 private:
+    /* every open connection's query tabs, and which are open, into
+     * SessionStore — on quit, on closing a tab, and once a minute */
+    void saveSessionState();
     ConnectionTab *currentTab() const;
     /* sum of every tab's live server connections (primary + PostgreSQL
      * side connections) — what the status bar's "Connections: N" shows */

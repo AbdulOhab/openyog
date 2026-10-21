@@ -120,6 +120,7 @@ add_executable(openyog
     qt/ConnectionTabSchema.cpp qt/ConnectionTabTools.cpp
     qt/QueryModel.h        qt/QueryModel.cpp
     qt/ConnectionStore.h   qt/ConnectionStore.cpp
+    qt/SessionStore.h      qt/SessionStore.cpp
     qt/SecretStore.h       qt/SecretStore.cpp
     qt/FavoritesStore.h    qt/FavoritesStore.cpp
     qt/ObjectBrowser.h     qt/ObjectBrowser.cpp

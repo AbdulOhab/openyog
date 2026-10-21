@@ -11,6 +11,7 @@
 #include "Icons.h"
 #include "ObjectBrowser.h"
 #include "RecentFiles.h"
+#include "SessionStore.h"
 #include "Theme.h"
 #include "db/IDbConnection.h"
 
@@ -42,7 +43,9 @@
 #include <QPushButton>
 #include <QFrame>
 #include <QKeySequence>
+#include <QCloseEvent>
 #include <QStatusBar>
+#include <QTimer>
 #include <QStackedWidget>
 #include <QTabWidget>
 #include <QTextStream>
@@ -63,6 +66,12 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
 {
     setWindowTitle(QStringLiteral("OpenYog"));
     resize(1200, 760);
+
+    /* unsaved queries survive a crash too, not just a clean quit */
+    auto *autosave = new QTimer(this);
+    autosave->setInterval(60 * 1000);
+    connect(autosave, &QTimer::timeout, this, &MainWindow::saveSessionState);
+    autosave->start();
 
     /* app icon at the left of the menu bar — visible regardless of whether the
      * window manager draws a title-bar icon (SQLyog shows one here too).
@@ -317,7 +326,17 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
             p.user = o.value("user").toString();
             p.database = o.value("database").toString();
             p.filePath = o.value("filepath").toString();
-            if(p.driverType == SqlDriverType::Mysql) {
+            /* the saved connection of that name, if it's the same server,
+             * has the password (keychain); otherwise ask — any server
+             * connection, not SQLite's file */
+            ConnectionParams saved;
+            const bool known = ConnectionStore::load(p.name, &saved) &&
+                               saved.driverType == p.driverType && saved.host == p.host &&
+                               saved.port == p.port && saved.user == p.user;
+            if(known) {
+                p = saved;
+                p.database = o.value("database").toString(saved.database);
+            } else if(p.driverType != SqlDriverType::Sqlite) {
                 bool ok = false;
                 p.password = QInputDialog::getText(
                     this, QStringLiteral("Open Session"),
@@ -1144,6 +1163,9 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
         auto *dblClickBox =
             new QCheckBox(QStringLiteral("Paste object name in editor on double-click"), &dlg);
         dblClickBox->setChecked(ObjectBrowserDoubleClick::pasteNameInEditor());
+        auto *restoreBox = new QCheckBox(
+            QStringLiteral("Reopen last session's connections and query tabs on startup"), &dlg);
+        restoreBox->setChecked(SessionStore::restoreOnStartup());
         auto *colorBtn = new QPushButton(
             browserColor.isValid() ? browserColor.name() : QStringLiteral("(theme default)"), &dlg);
         connect(colorBtn, &QPushButton::clicked, &dlg, [&] {
@@ -1160,6 +1182,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
         form->addRow(QStringLiteral("Query timeout (seconds)"), timeoutSpin);
         form->addRow(QStringLiteral("Object browser selection color"), colorBtn);
         form->addRow(QString(), dblClickBox);
+        form->addRow(QString(), restoreBox);
         auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
         connect(buttons, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
         connect(buttons, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
@@ -1175,6 +1198,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
         ConnectionTab::setQueryTimeoutSecs(timeoutSpin->value());
         ObjectBrowserColor::save(browserColor);
         ObjectBrowserDoubleClick::setPasteNameInEditor(dblClickBox->isChecked());
+        SessionStore::setRestoreOnStartup(restoreBox->isChecked());
         openDataOnDbl->setChecked(!dblClickBox->isChecked());
     });
     QAction *queryTimeout = tools->addAction(QStringLiteral("Query &Timeout…"));
@@ -1804,14 +1828,17 @@ void MainWindow::newConnection()
     openAndRun(dlg.params());
 }
 
-bool MainWindow::openAndRun(const ConnectionParams &params)
+bool MainWindow::openAndRun(const ConnectionParams &params, bool interactive)
 {
     auto *tab = new ConnectionTab(params, this);
     if(!tab->isConnected()) {
-        QMessageBox::warning(this, QStringLiteral("Connection failed"),
-                             QStringLiteral("Could not connect to %1@%2:%3.")
-                                 .arg(params.user, params.host)
-                                 .arg(params.port));
+        const QString msg = QStringLiteral("Could not connect to %1@%2:%3.")
+                                .arg(params.user, params.host)
+                                .arg(params.port);
+        if(interactive)
+            QMessageBox::warning(this, QStringLiteral("Connection failed"), msg);
+        else
+            statusBar()->showMessage(msg, 10000);
         delete tab;
         return false;
     }
@@ -1819,6 +1846,7 @@ bool MainWindow::openAndRun(const ConnectionParams &params)
     ConnectionStore::save(params);
     const int index = m_tabs->addTab(tab, tab->title());
     m_tabs->setCurrentIndex(index);
+    tab->restoreEditors(SessionStore::editors(params.name));
 
     /* stash connection info for "New Connection Using Current Settings" —
      * driverType/filePath included so that action actually reconnects with
@@ -2219,7 +2247,79 @@ void MainWindow::selftestPickDropdownSchema(const QString &schema)
 void MainWindow::closeTab(int index)
 {
     QWidget *w = m_tabs->widget(index);
+    if(auto *t = qobject_cast<ConnectionTab *>(w))
+        SessionStore::setEditors(t->params().name, t->editorStates());
     m_tabs->removeTab(index);
     delete w;
     syncToolbarToCurrentTab();
+}
+
+void MainWindow::saveSessionState()
+{
+    QStringList open;
+    for(int i = 0; i < m_tabs->count(); ++i)
+        if(auto *t = qobject_cast<ConnectionTab *>(m_tabs->widget(i))) {
+            SessionStore::setEditors(t->params().name, t->editorStates());
+            open << t->params().name;
+        }
+    open.removeDuplicates();
+    SessionStore::setOpenConnections(open);
+}
+
+void MainWindow::closeEvent(QCloseEvent *event)
+{
+    saveSessionState();
+    QMainWindow::closeEvent(event);
+}
+
+void MainWindow::restoreLastSession()
+{
+    if(!SessionStore::restoreOnStartup())
+        return;
+    for(const QString &name : SessionStore::openConnections()) {
+        ConnectionParams p;
+        if(!ConnectionStore::load(name, &p))
+            continue; /* deleted since */
+        statusBar()->showMessage(QStringLiteral("Reconnecting to %1…").arg(name));
+        QApplication::processEvents(); /* show that before the connect blocks */
+        openAndRun(p, false);
+    }
+}
+
+bool MainWindow::selftestSessionRoundTrip(const ConnectionParams &params)
+{
+    bool ok = true;
+    const auto check = [&](bool pass, const char *what) {
+        ok = ok && pass;
+        QTextStream(stdout) << "sessiontest " << what << (pass ? "  PASS\n" : "  FAIL\n");
+    };
+    SessionStore::setEditors(params.name, {}); /* whatever an earlier run left */
+    if(!openAndRun(params))
+        return false;
+    ConnectionTab *tab = currentTab();
+    tab->setEditorTextForTest(QStringLiteral("SELECT 1;\nSELECT 2;"));
+    tab->openEditorWithSql(QStringLiteral("Totals"),
+                           QStringLiteral("SELECT COUNT(*) FROM employees"));
+    const QList<SessionStore::EditorState> before = tab->editorStates();
+
+    closeTab(m_tabs->indexOf(tab));
+    check(SessionStore::editors(params.name).size() == 2, "closing the tab saves both query tabs");
+
+    if(!openAndRun(params))
+        return false;
+    const QList<SessionStore::EditorState> after = currentTab()->editorStates();
+    check(after.size() == 2, "reopening restores them, without an extra empty Query 1");
+    check(after.size() == 2 && after[0].title == before[0].title &&
+              after[0].text == before[0].text && after[1].title == before[1].title &&
+              after[1].text == before[1].text,
+          "titles and text come back as they were");
+    check(after.size() == 2 && after[0].cursor == before[0].cursor, "the caret comes back too");
+    if(after.size() == 2)
+        QTextStream(stdout) << "  caret before=" << before[0].cursor << " after=" << after[0].cursor
+                            << '\n';
+
+    saveSessionState();
+    check(SessionStore::openConnections() == QStringList{params.name},
+          "the open connection is remembered for the next start");
+    return ok;
 }

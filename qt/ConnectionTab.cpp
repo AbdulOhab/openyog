@@ -970,6 +970,38 @@ void ConnectionTab::dumpTable(const QString &database, const QString &table)
     runDumpDialog(db, {table});
 }
 
+QList<SessionStore::EditorState> ConnectionTab::editorStates() const
+{
+    QList<SessionStore::EditorState> out;
+    for(int i = 0; i < m_editorTabs->count(); ++i)
+        if(auto *ed = qobject_cast<SqlEditor *>(m_editorTabs->widget(i)))
+            out.append({m_editorTabs->tabText(i), ed->toPlainText(), ed->cursorPosition()});
+    return out;
+}
+
+/* the tabs this connection had last time, in place of the fresh tab's own
+ * empty "Query 1"; the first one in front */
+void ConnectionTab::restoreEditors(const QList<SessionStore::EditorState> &states)
+{
+    if(states.isEmpty())
+        return;
+    SqlEditor *fresh = currentEditor();
+    SqlEditor *first = nullptr;
+    for(const SessionStore::EditorState &s : states) {
+        SqlEditor *ed =
+            openEditorWithSql(s.title.isEmpty() ? QStringLiteral("Query") : s.title, s.text);
+        int line = 0, index = 0;
+        ed->getLineIndex(s.cursor, &line, &index);
+        ed->setCursorPosition(line, index);
+        if(!first)
+            first = ed;
+    }
+    if(fresh && fresh->toPlainText().trimmed().isEmpty())
+        closeEditorTab(m_editorTabs->indexOf(fresh));
+    m_editorTabs->setCurrentWidget(first);
+    m_editor = first;
+}
+
 SqlEditor *ConnectionTab::openEditorWithSql(const QString &title, const QString &sql)
 {
     auto *ed = new SqlEditor(this);

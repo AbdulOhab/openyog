@@ -20,6 +20,7 @@ openyog_unit_test(tst_schemasql    "${QT_SRC}/SchemaSql.cpp" "${QT_SRC}/SqlSplit
 openyog_unit_test(tst_resultexport "${QT_SRC}/ResultExport.cpp")
 openyog_unit_test(tst_delimitedtext "${QT_SRC}/DelimitedText.cpp" "${QT_SRC}/ResultExport.cpp")
 openyog_unit_test(tst_sqlcompletion "${QT_SRC}/SqlCompletion.cpp" "${QT_SRC}/SqlSplit.cpp")
+openyog_unit_test(tst_sessionstore "${QT_SRC}/SessionStore.cpp")
 
 # ConnectionStore against an in-memory keychain: FakeSecretStore.cpp takes
 # qt/SecretStore.cpp's place, so the keychain, INI-fallback and migration
@@ -47,6 +48,7 @@ file(CHMOD "${SELFTEST_RUNTIME}" DIRECTORY_PERMISSIONS OWNER_READ OWNER_WRITE OW
 set(SELFTEST_ENV
     "QT_QPA_PLATFORM=offscreen"
     "XDG_CONFIG_HOME=${CMAKE_CURRENT_BINARY_DIR}/xdg-config"
+    "XDG_DATA_HOME=${CMAKE_CURRENT_BINARY_DIR}/xdg-data"
     "XDG_RUNTIME_DIR=${SELFTEST_RUNTIME}"
     "DBUS_SESSION_BUS_ADDRESS=unix:path=${SELFTEST_RUNTIME}/no-bus")
 foreach(flag comptest stmtattest casetest filtertest icontest shortcuttest)
@@ -64,7 +66,7 @@ set_tests_properties(selftest_exporttest PROPERTIES ENVIRONMENT "${SELFTEST_ENV}
 # tables of their own); without the CLI they're left out rather than failing.
 find_program(SQLITE3_CLI sqlite3)
 if(SQLITE3_CLI)
-    foreach(flag sqlitetest sqlitecreatetabletest sqliteindextest sqlitemisctest)
+    foreach(flag sqlitetest sqlitecreatetabletest sqliteindextest sqlitemisctest sessiontest)
         set(db "${CMAKE_CURRENT_BINARY_DIR}/fixture-${flag}.sqlite")
         add_test(NAME ${flag}_fixture
                  COMMAND "${CMAKE_COMMAND}" "-DSQLITE3=${SQLITE3_CLI}"

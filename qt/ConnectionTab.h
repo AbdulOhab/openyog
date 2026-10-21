@@ -10,6 +10,7 @@
 #pragma once
 
 #include "ConnectionParams.h"
+#include "SessionStore.h"
 #include "SqlCompletion.h"
 #include "SqlEditor.h"
 #include "QueryModel.h"
@@ -276,6 +277,9 @@ public slots:
     /* new editor tab pre-filled with `sql` and titled `title` (schema-object
      * editors open here, like SQLyog, instead of a modal dialog) */
     SqlEditor *openEditorWithSql(const QString &title, const QString &sql);
+    /* the query tabs as SessionStore keeps them, and back */
+    QList<SessionStore::EditorState> editorStates() const;
+    void restoreEditors(const QList<SessionStore::EditorState> &states);
     void openTableData(const QString &db, const QString &table);
     void setDataViewMode(const QString &mode);       /* selftest: "text" | "grid" */
     QString cellTextForTest(int row, int col) const; /* selftest: grid cell's displayed text */
