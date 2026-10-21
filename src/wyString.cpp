@@ -29,6 +29,17 @@
 #include <stdarg.h>
 #include <wchar.h>
 #include <ctype.h>
+
+/* PORT: upstream switches the process locale to UTF-8 around every
+ * wide-char conversion by naming en_US.utf8, a locale that only exists where
+ * someone generated it. C.UTF-8 (built into glibc since 2.35) is the
+ * fallback, so the conversions also work in a bare container or on a system
+ * with only, say, bn_BD.UTF-8 generated. */
+static void SetUtf8Locale()
+{
+    if(!setlocale(LC_ALL, "en_US.utf8") && !setlocale(LC_ALL, "C.UTF-8"))
+        setlocale(LC_ALL, "C.utf8");
+}
 #endif
 
 #define NOT_ENOUGH_MEMORY _("Not enough memory, application terminated! ")
@@ -59,7 +70,7 @@ wyString::wyString(const wyWChar* initbuf)
 	wyInt32 length = WideCharToMultiByte(CP_UTF8, 0, initbuf, -1, NULL, 0, NULL, NULL);
 #else
     //set codepage to UTF-8
-    setlocale(LC_ALL, "en_US.utf8");
+    SetUtf8Locale();
     wyInt32 length = wcstombs(NULL, initbuf, 0);
 #endif
 
@@ -181,7 +192,7 @@ wyString::SetAs(const wyWChar* toset)
 	wyInt32 length = WideCharToMultiByte(CP_UTF8, 0, toset, -1, NULL, 0, NULL, NULL);
 #else
     //set codepage to UTF-8
-    setlocale(LC_ALL, "en_US.utf8");
+    SetUtf8Locale();
     wyInt32 length = wcstombs(NULL, toset, 0);
 #endif
     
@@ -212,7 +223,7 @@ wyString::SetAs(const wyWChar* toset, wyInt32 length)
 #ifdef _WIN32
 	lengthofutf8 = WideCharToMultiByte(CP_UTF8, 0, toset, -1, utf8, length, NULL, NULL);
 #else
-	setlocale(LC_ALL, "en_US.utf8");
+	SetUtf8Locale();
     lengthofutf8 = wcstombs(utf8, toset, length);
 #endif
 	
@@ -289,7 +300,7 @@ wyString::SetAs(const wyChar* toset, wyBool ismysql41)
 #else
         //Conversion to WideCharacter
         lengthwidechar = mbstowcs(widecharbuff, toset, lengthtoallocate);
-        setlocale(LC_ALL, "en_US.utf8");
+        SetUtf8Locale();
         lengthtoallocate = wcstombs(NULL, widecharbuff, lengthwidechar);
 #endif
 		
@@ -510,7 +521,7 @@ wyString::GetAsWideChar(wyUInt32 *len, wyBool isreadonly)
 	
 	return m_widecharbuffer;
 #else
-    setlocale(LC_ALL,"en_US.utf8");
+    SetUtf8Locale();
 
     widelen = mbstowcs(m_widecharbuffer, m_strdata, (m_strsize * sizeof(wyWChar)));
     
@@ -972,7 +983,7 @@ wyString::GetAsAnsi()
 	delete[] lpszw;
 	return m_ansibuffer;
 #else
-    setlocale(LC_ALL,"en_US.utf8");
+    SetUtf8Locale();
     length = mbstowcs(NULL, m_strdata, m_strsize);
     
     if(m_ansibuffer)
