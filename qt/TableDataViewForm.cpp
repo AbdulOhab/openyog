@@ -1,11 +1,12 @@
 /* TableDataView, the Form and Text views and the row checkboxes.
  * The class is declared in TableDataView.h; TableDataView.cpp holds the core. */
 #include "TableDataView.h"
-#include <QToolButton>
-#include <QStackedWidget>
-#include <QPlainTextEdit>
 #include "TableDataModel.h"
 #include "FormView.h"
+
+#include <QPlainTextEdit>
+#include <QStackedWidget>
+#include <QToolButton>
 
 void TableDataView::setViewMode(int mode)
 {

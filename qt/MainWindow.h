@@ -99,6 +99,35 @@ protected:
     void closeEvent(QCloseEvent *event) override;
 
 private:
+    /* the constructor's parts: one menu each, then toolbars + status bar */
+    void buildFileMenu();
+    void buildEditMenu();
+    void buildFavoritesMenu();
+    void buildDatabaseMenu();
+    void buildTableMenu();
+    void buildOthersMenu();
+    void buildToolsMenu();
+    void buildPowertoolsMenu();
+    void buildTransactionsMenu();
+    void buildWindowMenu();
+    void buildHelpMenu();
+    void buildToolbarAndStatusBar();
+    /* the actions one builder makes and a later one (a toolbar) reuses */
+    struct SharedActions
+    {
+        QAction *newConn = nullptr;
+        QAction *newEditor = nullptr;
+        QAction *openDataOnDbl = nullptr;
+        QAction *manageIdx = nullptr;
+        QAction *manageFk = nullptr;
+        QAction *copyDb = nullptr;
+        QAction *exportRows = nullptr;
+        QAction *runScript = nullptr;
+        QAction *expTblData = nullptr;
+    } m_shared;
+    void onSelectedTable(void (ConnectionTab::*fn)(const QString &, const QString &));
+    void runTx(const QString &sql);
+
     /* every open connection's query tabs, and which are open, into
      * SessionStore — on quit, on closing a tab, and once a minute */
     void saveSessionState();

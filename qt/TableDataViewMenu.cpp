@@ -1,13 +1,13 @@
 /* TableDataView, the grid's context menu: copy, export, and jumping along a foreign key to the
  * referenced row. The class is declared in TableDataView.h; TableDataView.cpp holds the core. */
 #include "TableDataView.h"
-#include <QClipboard>
 #include "TableDataModel.h"
 #include "ExportDialog.h"
 #include "ResultExport.h"
 #include "db/IDbConnection.h"
 
 #include <QApplication>
+#include <QClipboard>
 #include <QDialog>
 #include <QMenu>
 

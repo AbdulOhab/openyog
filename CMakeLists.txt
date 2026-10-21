@@ -115,6 +115,7 @@ add_executable(openyog
     qt/db/PostgresConnection.h qt/db/PostgresConnection.cpp
     qt/db/SshTunnel.h          qt/db/SshTunnel.cpp
     qt/MainWindow.h        qt/MainWindow.cpp
+    qt/MainWindowMenus.cpp qt/MainWindowToolsMenus.cpp qt/MainWindowSelftest.cpp # MainWindow, split by area
     qt/ConnectionDialog.h  qt/ConnectionDialog.cpp
     qt/ConnectionTab.h     qt/ConnectionTab.cpp
     qt/ConnectionTabCopy.cpp   qt/ConnectionTabImport.cpp   # ConnectionTab, split by area

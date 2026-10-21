@@ -2,7 +2,6 @@
  * NULL/empty/default, and the BLOB/long-text cell editor. The class is declared in TableDataView.h;
  * TableDataView.cpp holds the core. */
 #include "TableDataView.h"
-#include <QToolButton>
 #include "TableDataModel.h"
 #include "FormView.h"
 #include "ExportDialog.h"
@@ -21,6 +20,7 @@
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QTabWidget>
+#include <QToolButton>
 #include <QVBoxLayout>
 
 #include <algorithm>
