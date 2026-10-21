@@ -1847,7 +1847,9 @@ bool MainWindow::openAndRun(const ConnectionParams &params, bool interactive)
                                  why.isEmpty() ? msg : msg + QStringLiteral("\n\n") + why);
         } else {
             statusBar()->showMessage(why.isEmpty() ? msg : msg + QLatin1Char(' ') + why, 15000);
-            qWarning("%s %s", qPrintable(msg), qPrintable(why));
+            /* straight to stderr: qWarning() goes to the journal whenever
+             * stderr isn't a terminal, i.e. in every scripted selftest run */
+            QTextStream(stderr) << msg << ' ' << why << '\n';
         }
         delete tab;
         return false;

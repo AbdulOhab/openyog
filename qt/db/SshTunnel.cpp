@@ -134,15 +134,23 @@ bool authenticate(ssh_session s, const ConnectionParams &p, QString *error)
         *error = QStringLiteral("the SSH server refused the key %1").arg(p.sshKeyFile);
         return false;
     }
-    if(!secret.isEmpty() &&
-       ssh_userauth_password(s, nullptr, secret.constData()) == SSH_AUTH_SUCCESS)
-        return true;
+    /* a given password's own failure is the one worth reporting, not the
+     * agent/default-key fallback's that runs after it */
+    QString passwordError;
+    if(!secret.isEmpty()) {
+        if(ssh_userauth_password(s, nullptr, secret.constData()) == SSH_AUTH_SUCCESS)
+            return true;
+        passwordError = QStringLiteral("wrong password, or the server doesn't take passwords (%1)")
+                            .arg(sshError(s));
+    }
     if(ssh_userauth_publickey_auto(s, nullptr, nullptr) == SSH_AUTH_SUCCESS)
         return true;
     *error = QStringLiteral("SSH login as %1@%2 failed: %3")
                  .arg(p.sshUser, p.sshHost,
-                      secret.isEmpty() ? QStringLiteral("no password given, and no key accepted")
-                                       : sshError(s));
+                      !passwordError.isEmpty()
+                          ? passwordError
+                          : QStringLiteral("no password given, and no ssh-agent or ~/.ssh key "
+                                           "was accepted"));
     return false;
 }
 
