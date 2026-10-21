@@ -1620,10 +1620,18 @@ int main(int argc, char *argv[])
                                !typeKey(QStringLiteral("SELECT * FROM orders WHERE o_"), Qt::Key_T,
                                         QStringLiteral("t"))
                                     .isEmpty();
+            /* 5. a caret several lines down: the offset has to count the
+             * newlines before it, or the context comes from the wrong spot */
+            const QStringList down =
+                hitsFor(QStringLiteral("SELECT 1;\n\n\n\nSELECT * FROM employees e WHERE e."));
+            const bool okDown =
+                down == QStringList{QStringLiteral("emp_id"), QStringLiteral("emp_name")};
+            QTextStream(stdout) << "comptest: 'e.' four lines down = " << down.join(',')
+                                << (okDown ? "  PASS\n" : "  FAIL\n");
             QTextStream(stdout) << "comptest: typing 'o.' pops orders columns = " << dot.join(',')
                                 << (okDot ? "  PASS" : "  FAIL") << " | no popup inside a string"
                                 << (okStr ? "  PASS\n" : "  FAIL\n");
-            return (ok && okT && okC && ok1 && ok3 && okDot && okStr) ? 0 : 1;
+            return (ok && okT && okC && ok1 && ok3 && okDot && okStr && okDown) ? 0 : 1;
         }
         if(a.startsWith(QStringLiteral("--opentable="))) {
             const QStringList parts = a.mid(12).split(':');

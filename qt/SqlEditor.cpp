@@ -138,14 +138,17 @@ void SqlEditor::setPlainText(const QString &text_)
 /* Scintilla positions are UTF-8 byte offsets; everything text-oriented in
  * this app (statementAt, the ";" scanners, SqlFormat) works in QString
  * units — convert via Qsci's (line, index), which are already character
- * units, and sum the line lengths */
+ * units, and sum the lengths of the lines before, each with its own line
+ * end ("\n" or "\r\n", exactly as toPlainText() has them: leaving those out
+ * put the caret one character early per line, so F9 ran the wrong
+ * statement and completion read the wrong clause further down a script) */
 int SqlEditor::cursorPosition() const
 {
     int line = 0, index = 0;
     getCursorPosition(&line, &index);
     int abs = 0;
     for(int l = 0; l < line; ++l)
-        abs += lineTextNoEol(l).length();
+        abs += text(l).length();
     return abs + index;
 }
 
@@ -160,7 +163,7 @@ void SqlEditor::getLineIndex(int pos, int *line, int *index) const
             *index = rest;
             return;
         }
-        rest -= len + 1; /* + the '\n' */
+        rest -= text(l).length(); /* the line and its own line end */
     }
     *line = n - 1;
     *index = lineTextNoEol(n - 1).length();
