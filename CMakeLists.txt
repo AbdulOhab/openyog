@@ -141,6 +141,8 @@ add_executable(openyog
     qt/FindBar.h           qt/FindBar.cpp
     qt/SqlFormat.h         qt/SqlFormat.cpp
     qt/TableDataView.h     qt/TableDataView.cpp
+    qt/TableDataModel.h
+    qt/TableDataViewEdit.cpp qt/TableDataViewMenu.cpp qt/TableDataViewForm.cpp # TableDataView, split by area
     qt/FormView.h          qt/FormView.cpp
     qt/InfoPanel.h         qt/InfoPanel.cpp
     qt/CustomFilterDialog.h qt/CustomFilterDialog.cpp
