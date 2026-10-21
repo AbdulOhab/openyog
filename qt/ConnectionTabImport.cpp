@@ -2,6 +2,7 @@
  * The class is declared in ConnectionTab.h; ConnectionTab.cpp holds the
  * core (editors, query execution, results, object browser). */
 #include "ConnectionTab.h"
+#include "DelimitedText.h"
 #include "TableDataView.h"
 
 #include "db/IDbDriver.h"
@@ -66,73 +67,6 @@ QPlainTextEdit *importFilePreview(QWidget *p, const QString &path, int lines = 1
         pv->setPlainText(ls.join(QString()).trimmed());
     }
     return pv;
-}
-
-/* minimal CSV/TSV-style parser: honours a quote char (with doubled-quote
- * escaping) and a separate escape char inside quotes, and treats both \n
- * and \r\n as a line end regardless of the dialog's "Line separator" pick
- * — used only by the SQLite import path, which has no server-side loader
- * to hand the raw separator/terminator strings to. */
-QList<QStringList> parseDelimitedText(const QString &text, QChar sep, QChar quote, QChar esc)
-{
-    QList<QStringList> rows;
-    QStringList cur;
-    QString field;
-    bool inQuotes = false;
-    const int n = text.size();
-    for(int i = 0; i < n;) {
-        const QChar c = text[i];
-        if(inQuotes) {
-            if(!esc.isNull() && esc != quote && c == esc && i + 1 < n) {
-                field += text[i + 1];
-                i += 2;
-                continue;
-            }
-            if(!quote.isNull() && c == quote) {
-                if(i + 1 < n && text[i + 1] == quote) {
-                    field += quote;
-                    i += 2;
-                    continue;
-                }
-                inQuotes = false;
-                ++i;
-                continue;
-            }
-            field += c;
-            ++i;
-            continue;
-        }
-        if(!quote.isNull() && c == quote) {
-            inQuotes = true;
-            ++i;
-            continue;
-        }
-        if(c == sep) {
-            cur << field;
-            field.clear();
-            ++i;
-            continue;
-        }
-        if(c == QLatin1Char('\r')) {
-            ++i;
-            continue;
-        }
-        if(c == QLatin1Char('\n')) {
-            cur << field;
-            field.clear();
-            rows << cur;
-            cur.clear();
-            ++i;
-            continue;
-        }
-        field += c;
-        ++i;
-    }
-    if(!field.isEmpty() || !cur.isEmpty()) {
-        cur << field;
-        rows << cur;
-    }
-    return rows;
 }
 
 } // namespace

@@ -127,6 +127,7 @@ add_executable(openyog
     qt/SchemaSql.h         qt/SchemaSql.cpp
     qt/SqlSplit.h          qt/SqlSplit.cpp
     qt/ResultExport.h      qt/ResultExport.cpp
+    qt/DelimitedText.h     qt/DelimitedText.cpp
     qt/ExportDialog.h      qt/ExportDialog.cpp
     qt/UserManagerDialog.h qt/UserManagerDialog.cpp
     qt/ForeignKeyDialog.h  qt/ForeignKeyDialog.cpp

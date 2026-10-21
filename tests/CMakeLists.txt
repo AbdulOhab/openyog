@@ -18,6 +18,7 @@ openyog_unit_test(tst_sqlsplit     "${QT_SRC}/SqlSplit.cpp")
 openyog_unit_test(tst_sqlformat    "${QT_SRC}/SqlFormat.cpp")
 openyog_unit_test(tst_schemasql    "${QT_SRC}/SchemaSql.cpp" "${QT_SRC}/SqlSplit.cpp")
 openyog_unit_test(tst_resultexport "${QT_SRC}/ResultExport.cpp")
+openyog_unit_test(tst_delimitedtext "${QT_SRC}/DelimitedText.cpp" "${QT_SRC}/ResultExport.cpp")
 
 # ConnectionStore against an in-memory keychain: FakeSecretStore.cpp takes
 # qt/SecretStore.cpp's place, so the keychain, INI-fallback and migration
