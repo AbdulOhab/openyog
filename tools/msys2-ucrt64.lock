@@ -26,6 +26,7 @@ mingw-w64-ucrt-x86_64-libjpeg-turbo-3.2.0-1-any.pkg.tar.zst 7c001d00df557cfee969
 mingw-w64-ucrt-x86_64-libmariadbclient-3.4.11-1-any.pkg.tar.zst 3221353e10de28d23aa8d2e8fb4d5c0bce66dcc73032cdc80670aec82d6a3407
 mingw-w64-ucrt-x86_64-libpng-1.6.59-1-any.pkg.tar.zst 7f8448e06eceba8f8ce130390addea49f767bdf8f6b7e7eede8ca6d595e3d3a8
 mingw-w64-ucrt-x86_64-libpsl-0.21.5-3-any.pkg.tar.zst d96e0bb50ac3f8b6e44a39ea8de8d186f7b08f6938b0676eb69a7ba1f127bcf4
+mingw-w64-ucrt-x86_64-libssh-0.12.2-1-any.pkg.tar.zst 1be494f5fad8bf1210a1eeaccdd07d3e8319f4d13cd79a9302ae196fcc96da8b
 mingw-w64-ucrt-x86_64-libssh2-1.11.1-2-any.pkg.tar.zst 0e91316dfa4979dcabbfa9e71528ec9882ece619ce549cb25312089b4754fa65
 mingw-w64-ucrt-x86_64-libstdc++-16.2.0-6-any.pkg.tar.zst 33c5e58a85a538cf843a8672991cce591f0231d66da3b66a57629712d64be17f
 mingw-w64-ucrt-x86_64-libtasn1-4.21.0-1-any.pkg.tar.zst d098b27834c3b25142b6f5aa9a0ca5731a8e4334c232786406cb149dd8bde2ba

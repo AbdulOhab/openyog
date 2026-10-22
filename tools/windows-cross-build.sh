@@ -17,6 +17,10 @@
 # Environment: BUILD (default build-mingw), QT_HOST_PATH (default /usr),
 # WINEPREFIX (default $BUILD/wine: the selftests get a wine prefix of their
 # own, and --keychaintest writes to its Credential Manager, not ~/.wine's).
+# With OPENYOG_TEST_SSH=host:port:user:password (an SSH server that allows
+# forwarding) and OPENYOG_TEST_PG=host:port:user:password:db (a PostgreSQL
+# server as seen from it), a query also runs through an SSH tunnel; its
+# known_hosts is $BUILD/ssh, not ~/.ssh.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUILD="${BUILD:-$ROOT/build-mingw}"
@@ -130,6 +134,19 @@ if command -v wine >/dev/null; then
             echo "wine $t: FAILED"; fails=$((fails + 1))
         fi
     done
+    if [ -n "${OPENYOG_TEST_SSH:-}" ] && [ -n "${OPENYOG_TEST_PG:-}" ]; then
+        mkdir -p "$BUILD/ssh"
+        out=$(cd "$DEPLOY" && OPENYOG_SSH_DIR="$(winepath -w "$BUILD/ssh")" timeout 300 \
+              wine openyog.exe "--autoconnectpg=$OPENYOG_TEST_PG" "--ssh=$OPENYOG_TEST_SSH" \
+              --sshtrust "--sql=SELECT 'through the tunnel'" --runagain --printresults \
+              "--screenshot=$(winepath -w "$BUILD/ssh-tunnel.png")" 2>&1) || true
+        if grep -q '1 row(s)' <<<"$out"; then
+            echo "wine SSH tunnel: ok"
+        else
+            echo "$out" | grep -v '^MESA' >&2
+            echo "wine SSH tunnel: FAILED"; fails=$((fails + 1))
+        fi
+    fi
     wineserver -k 2>/dev/null || true
     [ "$fails" = 0 ] || { echo "$fails selftest(s) failed under wine" >&2; exit 1; }
 else

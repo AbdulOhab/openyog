@@ -80,7 +80,7 @@ Requires a C++17 compiler, CMake ≥ 3.21, Ninja, Qt 6, QScintilla (Qt 6
 build), MariaDB client headers, libpq, and SQLite3. QtKeychain is optional:
 with it, saved connection passwords go to the OS keychain (GNOME Keyring,
 KWallet …); without it they stay base64-encoded in `connections.ini`.
-libssh is optional too: it adds SSH tunnels (Linux only for now). On
+libssh is optional too: it adds SSH tunnels (Linux and Windows). On
 Arch / CachyOS:
 
 ```bash
@@ -138,8 +138,13 @@ plugins) and `build-mingw/openyog-win-deploy.zip`: copy the zip's whole
 contents to a Windows machine, not just `openyog.exe`. With wine installed
 the script then runs selftests on the result in a wine prefix of its own,
 among them `--keychaintest` (saved passwords go to Windows Credential
-Manager). Tested under wine only so far, not on real Windows hardware.
-SSH tunnels aren't in the Windows build yet.
+Manager); given `OPENYOG_TEST_SSH` and `OPENYOG_TEST_PG` (see the script's
+header) it also runs a query through an SSH tunnel. Tested under wine only
+so far, not on real Windows hardware. SSH tunnels are in the Windows build
+too; there `known_hosts` is `%USERPROFILE%\.ssh\known_hosts`.
+
+To add a package to the Windows build without moving the locked ones:
+`tools/fetch-msys2-sysroot.py --add <name>`.
 
 When the host Qt moves to a new version, pin the same one for Windows:
 `tools/fetch-msys2-sysroot.py --update --pin qt6-base=<version>-<pkgrel>`.

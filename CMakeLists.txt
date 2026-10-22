@@ -183,18 +183,22 @@ else()
     message(STATUS "QtKeychain not found: saved passwords stay base64 in connections.ini")
 endif()
 
-# SSH tunnels (qt/db/SshTunnel) through libssh (Arch: libssh). Optional, and
-# Linux-only for now (the forwarding loop is POSIX sockets + poll): without
-# it SshTunnel compiles to stubs and the SSH tab says it isn't available.
+# SSH tunnels (qt/db/SshTunnel) through libssh (Arch: libssh; the Windows
+# build: MSYS2's). Optional, on Linux and Windows (the forwarding loop is
+# POSIX sockets or Winsock): without it SshTunnel compiles to stubs and the
+# SSH tab says it isn't available.
 find_path(LIBSSH_INCLUDE_DIR libssh/libssh.h)
 find_library(LIBSSH_LIBRARY NAMES ssh)
-if(LIBSSH_INCLUDE_DIR AND LIBSSH_LIBRARY AND CMAKE_SYSTEM_NAME STREQUAL "Linux")
+if(LIBSSH_INCLUDE_DIR AND LIBSSH_LIBRARY AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR WIN32))
     target_compile_definitions(openyog PRIVATE OPENYOG_HAVE_SSH)
     target_include_directories(openyog PRIVATE ${LIBSSH_INCLUDE_DIR})
     target_link_libraries(openyog PRIVATE ${LIBSSH_LIBRARY})
+    if(WIN32)
+        target_link_libraries(openyog PRIVATE ws2_32)
+    endif()
     message(STATUS "libssh found: SSH tunnels enabled")
 else()
-    message(STATUS "libssh not found (or not Linux): SSH tunnels disabled")
+    message(STATUS "libssh not found (or not Linux / Windows): SSH tunnels disabled")
 endif()
 
 # Windows only: compile qt/openyog.rc so the .exe carries its own icon. windres

@@ -104,11 +104,21 @@ jobs:
     runs-on: ubuntu-latest
     # Arch's mingw-w64-gcc is UCRT, like the MSYS2 packages the build links
     container: archlinux:latest
+    # a database for the SSH tunnel check under wine
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: root
+          POSTGRES_DB: openyog_test
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 30
     steps:
       - name: Install dependencies
         run: |
           pacman -Syu --noconfirm --needed \
-            base-devel git cmake ninja python zip mingw-w64-gcc wine
+            base-devel git cmake ninja python zip mingw-w64-gcc wine openssh
 
       - uses: actions/checkout@v4
 
@@ -139,11 +149,21 @@ jobs:
           path: build-mingw/sysroot/cache
           key: msys2-${{ hashFiles('tools/msys2-ucrt64.lock') }}
 
-      # builds, deploys, then runs --version, --stmtattest, --icontest and
-      # --keychaintest under wine
+      # as in the Linux job: the Windows exe's tunnel goes through it
+      - name: Start an SSH server
+        run: |
+          ssh-keygen -A
+          useradd -m tunnel
+          echo 'tunnel:tunnelpw' | chpasswd
+          /usr/bin/sshd -o PasswordAuthentication=yes -o AllowTcpForwarding=yes
+
+      # builds, deploys, then runs --version, --stmtattest, --icontest,
+      # --keychaintest and a query through an SSH tunnel under wine
       - name: Build, deploy, wine selftests
         env:
           QT_HOST_PATH: /opt/qt/${{ steps.qt.outputs.version }}/gcc_64
+          OPENYOG_TEST_SSH: 127.0.0.1:22:tunnel:tunnelpw
+          OPENYOG_TEST_PG: postgres:5432:postgres:root:openyog_test
         run: tools/windows-cross-build.sh --zip
 
       - uses: actions/upload-artifact@v4

@@ -398,13 +398,23 @@ endif()
 # in a container reaching the host's servers as host.containers.internal).
 set(OPENYOG_TEST_SSH "" CACHE STRING
     "host:port:user:password of an SSH server for the tunnel selftests")
-set(OPENYOG_TEST_SSH_MYSQL "${OPENYOG_TEST_MYSQL}" CACHE STRING
-    "the MySQL test database as seen from the SSH host")
-set(OPENYOG_TEST_SSH_PG "${OPENYOG_TEST_PG}" CACHE STRING
-    "the PostgreSQL test database as seen from the SSH host")
+set(OPENYOG_TEST_SSH_MYSQL "" CACHE STRING
+    "the MySQL test database as seen from the SSH host (empty: OPENYOG_TEST_MYSQL)")
+set(OPENYOG_TEST_SSH_PG "" CACHE STRING
+    "the PostgreSQL test database as seen from the SSH host (empty: OPENYOG_TEST_PG)")
+# (a cache default would be whatever OPENYOG_TEST_* was on the first
+# configure, empty for good if that was before it was set)
+set(ssh_mysql "${OPENYOG_TEST_SSH_MYSQL}")
+if(NOT ssh_mysql)
+    set(ssh_mysql "${OPENYOG_TEST_MYSQL}")
+endif()
+set(ssh_pg "${OPENYOG_TEST_SSH_PG}")
+if(NOT ssh_pg)
+    set(ssh_pg "${OPENYOG_TEST_PG}")
+endif()
 if(OPENYOG_TEST_SSH AND OPENYOG_TEST_MYSQL)
     add_test(NAME selftest_mysql_ssh
-             COMMAND openyog "--autoconnect=${OPENYOG_TEST_SSH_MYSQL}" "--ssh=${OPENYOG_TEST_SSH}"
+             COMMAND openyog "--autoconnect=${ssh_mysql}" "--ssh=${OPENYOG_TEST_SSH}"
                      --sshtrust "--screenshot=${CMAKE_CURRENT_BINARY_DIR}/mysql-ssh.png"
                      "--completeat=SELECT * FROM employees e WHERE e.")
     set_tests_properties(selftest_mysql_ssh PROPERTIES
@@ -414,7 +424,7 @@ if(OPENYOG_TEST_SSH AND OPENYOG_TEST_MYSQL)
 endif()
 if(OPENYOG_TEST_SSH AND OPENYOG_TEST_PG)
     add_test(NAME selftest_pg_ssh
-             COMMAND openyog "--autoconnectpg=${OPENYOG_TEST_SSH_PG}" "--ssh=${OPENYOG_TEST_SSH}"
+             COMMAND openyog "--autoconnectpg=${ssh_pg}" "--ssh=${OPENYOG_TEST_SSH}"
                      --sshtrust "--screenshot=${CMAKE_CURRENT_BINARY_DIR}/pg-ssh.png"
                      "--completeat=SELECT * FROM employees e JOIN emp_dept d ON ")
     set_tests_properties(selftest_pg_ssh PROPERTIES

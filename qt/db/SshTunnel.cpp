@@ -7,12 +7,17 @@
 
 #include <libssh/libssh.h>
 
+#ifdef _WIN32
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#else
 #include <arpa/inet.h>
 #include <fcntl.h>
 #include <netinet/in.h>
 #include <poll.h>
 #include <sys/socket.h>
 #include <unistd.h>
+#endif
 
 #include <atomic>
 #include <cerrno>
@@ -20,6 +25,115 @@
 #include <vector>
 
 namespace {
+
+/* the few socket calls that differ between Winsock and POSIX */
+#ifdef _WIN32
+using Socket = SOCKET;
+const Socket kNoSocket = INVALID_SOCKET;
+using PollFd = WSAPOLLFD;
+
+void startSockets()
+{
+    static const bool started = [] {
+        WSADATA data;
+        return WSAStartup(MAKEWORD(2, 2), &data) == 0;
+    }();
+    (void)started;
+}
+int pollSockets(std::vector<PollFd> &fds, int timeoutMs)
+{
+    return WSAPoll(fds.data(), ULONG(fds.size()), timeoutMs);
+}
+/* the call failed only for now: no data yet, or no room */
+bool transient()
+{
+    const int e = WSAGetLastError();
+    return e == WSAEWOULDBLOCK || e == WSAEINTR;
+}
+Socket newSocket(int type)
+{
+    return ::socket(AF_INET, type, 0);
+}
+Socket acceptSocket(Socket listener)
+{
+    const Socket s = ::accept(listener, nullptr, nullptr);
+    u_long nonBlocking = 1;
+    if(s != INVALID_SOCKET)
+        ioctlsocket(s, FIONBIO, &nonBlocking);
+    return s;
+}
+int receiveSome(Socket s, char *buf, int size)
+{
+    return ::recv(s, buf, size, 0);
+}
+int sendSome(Socket s, const char *buf, int size)
+{
+    return ::send(s, buf, size, 0);
+}
+void closeSocket(Socket s)
+{
+    ::closesocket(s);
+}
+#else
+using Socket = int;
+const Socket kNoSocket = -1;
+using PollFd = pollfd;
+
+void startSockets() {}
+int pollSockets(std::vector<PollFd> &fds, int timeoutMs)
+{
+    return ::poll(fds.data(), nfds_t(fds.size()), timeoutMs);
+}
+bool transient()
+{
+    return errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR;
+}
+Socket newSocket(int type)
+{
+    return ::socket(AF_INET, type | SOCK_CLOEXEC, 0);
+}
+Socket acceptSocket(Socket listener)
+{
+    return ::accept4(listener, nullptr, nullptr, SOCK_NONBLOCK | SOCK_CLOEXEC);
+}
+int receiveSome(Socket s, char *buf, int size)
+{
+    return int(::recv(s, buf, size_t(size), 0));
+}
+int sendSome(Socket s, const char *buf, int size)
+{
+    return int(::send(s, buf, size_t(size), MSG_NOSIGNAL));
+}
+void closeSocket(Socket s)
+{
+    ::close(s);
+}
+#endif
+
+/* a socket on 127.0.0.1, any free port: `type` SOCK_STREAM listening, or
+ * SOCK_DGRAM connected to itself; kNoSocket on failure */
+Socket loopbackSocket(int type, int *port)
+{
+    const Socket s = newSocket(type);
+    if(s == kNoSocket)
+        return kNoSocket;
+    sockaddr_in addr{};
+    addr.sin_family = AF_INET;
+    addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    addr.sin_port = 0;
+    socklen_t len = sizeof addr;
+    if(::bind(s, reinterpret_cast<sockaddr *>(&addr), sizeof addr) != 0 ||
+       ::getsockname(s, reinterpret_cast<sockaddr *>(&addr), &len) != 0 ||
+       (type == SOCK_STREAM
+            ? ::listen(s, 8)
+            : ::connect(s, reinterpret_cast<sockaddr *>(&addr), sizeof addr)) != 0) {
+        closeSocket(s);
+        return kNoSocket;
+    }
+    if(port)
+        *port = ntohs(addr.sin_port);
+    return s;
+}
 
 QString sshError(ssh_session s)
 {
@@ -30,6 +144,7 @@ QString sshError(ssh_session s)
  * ssh_connect() also applies ~/.ssh/config for the host. */
 ssh_session connectSession(const ConnectionParams &p, QString *error)
 {
+    startSockets();
     ssh_session s = ssh_new();
     if(!s) {
         *error = QStringLiteral("could not create an SSH session");
@@ -158,7 +273,7 @@ bool authenticate(ssh_session s, const ConnectionParams &p, QString *error)
  * and its channel */
 struct Pipe
 {
-    int fd = -1;
+    Socket fd = kNoSocket;
     ssh_channel channel = nullptr;
     QByteArray toSocket; /* channel data the socket couldn't take yet */
     bool socketEof = false;
@@ -171,9 +286,9 @@ void closePipe(Pipe &p)
         ssh_channel_free(p.channel);
         p.channel = nullptr;
     }
-    if(p.fd >= 0) {
-        ::close(p.fd);
-        p.fd = -1;
+    if(p.fd != kNoSocket) {
+        closeSocket(p.fd);
+        p.fd = kNoSocket;
     }
 }
 
@@ -182,9 +297,12 @@ void closePipe(Pipe &p)
 struct SshTunnel::Impl
 {
     ssh_session session = nullptr;
-    int listenFd = -1;
+    Socket listenFd = kNoSocket;
     int localPort = 0;
-    int wake[2] = {-1, -1}; /* the destructor writes here to stop the worker */
+    /* the destructor sends here to stop the worker: a datagram socket
+     * connected to itself, which poll() takes on every platform (a pipe
+     * isn't a socket to Winsock) */
+    Socket wake = kNoSocket;
     QByteArray remoteHost;
     int remotePort = 0;
     std::vector<Pipe> pipes;
@@ -211,11 +329,11 @@ struct SshTunnel::Impl
     {
         char buf[16384];
         if(revents & (POLLIN | POLLHUP | POLLERR)) {
-            const ssize_t n = ::read(p.fd, buf, sizeof buf);
+            const int n = receiveSome(p.fd, buf, sizeof buf);
             if(n > 0) {
                 if(ssh_channel_write(p.channel, buf, uint32_t(n)) == SSH_ERROR)
                     return false;
-            } else if(n == 0 || (errno != EAGAIN && errno != EINTR)) {
+            } else if(n == 0 || !transient()) {
                 p.socketEof = true;
                 ssh_channel_send_eof(p.channel);
             }
@@ -229,11 +347,10 @@ struct SshTunnel::Impl
             p.toSocket.append(buf, n);
         }
         while(!p.toSocket.isEmpty()) {
-            const ssize_t w =
-                ::send(p.fd, p.toSocket.constData(), size_t(p.toSocket.size()), MSG_NOSIGNAL);
+            const int w = sendSome(p.fd, p.toSocket.constData(), int(p.toSocket.size()));
             if(w > 0)
-                p.toSocket.remove(0, int(w));
-            else if(w < 0 && (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR))
+                p.toSocket.remove(0, w);
+            else if(w < 0 && transient())
                 break;
             else
                 return false;
@@ -246,16 +363,16 @@ struct SshTunnel::Impl
     void run()
     {
         while(!stopping) {
-            std::vector<pollfd> fds;
-            fds.push_back({wake[0], POLLIN, 0});
+            std::vector<PollFd> fds;
+            fds.push_back({wake, POLLIN, 0});
             fds.push_back({listenFd, POLLIN, 0});
-            fds.push_back({ssh_get_fd(session), POLLIN, 0});
+            fds.push_back({Socket(ssh_get_fd(session)), POLLIN, 0});
             for(const Pipe &p : pipes)
-                fds.push_back(
-                    {p.fd,
-                     short(p.socketEof ? 0 : POLLIN) | short(p.toSocket.isEmpty() ? 0 : POLLOUT),
-                     0});
-            if(::poll(fds.data(), nfds_t(fds.size()), 200) < 0 && errno != EINTR)
+                fds.push_back({p.fd,
+                               short(short(p.socketEof ? 0 : POLLIN) |
+                                     short(p.toSocket.isEmpty() ? 0 : POLLOUT)),
+                               0});
+            if(pollSockets(fds, 200) < 0 && !transient())
                 break;
             if(fds[0].revents)
                 break;
@@ -273,14 +390,14 @@ struct SshTunnel::Impl
             }
             /* new local connections last: they have no slot in fds yet */
             if(fds[1].revents & POLLIN) {
-                const int fd = ::accept4(listenFd, nullptr, nullptr, SOCK_NONBLOCK | SOCK_CLOEXEC);
-                if(fd >= 0) {
+                const Socket fd = acceptSocket(listenFd);
+                if(fd != kNoSocket) {
                     Pipe p;
                     p.fd = fd;
                     if(openChannel(p))
                         pipes.push_back(p);
                     else
-                        ::close(fd);
+                        closeSocket(fd);
                 }
             }
         }
@@ -294,14 +411,14 @@ SshTunnel::~SshTunnel()
     if(d->worker.joinable()) {
         d->stopping = true;
         const char c = 0;
-        [[maybe_unused]] const ssize_t ignored = ::write(d->wake[1], &c, 1);
+        sendSome(d->wake, &c, 1);
         d->worker.join();
     }
     for(Pipe &p : d->pipes)
         closePipe(p);
-    for(int fd : {d->listenFd, d->wake[0], d->wake[1]})
-        if(fd >= 0)
-            ::close(fd);
+    for(Socket fd : {d->listenFd, d->wake})
+        if(fd != kNoSocket)
+            closeSocket(fd);
     closeSession(d->session);
 }
 
@@ -379,21 +496,12 @@ std::shared_ptr<SshTunnel> SshTunnel::open(const ConnectionParams &params, QStri
 
     d.remoteHost = params.host.toUtf8();
     d.remotePort = params.port;
-    d.listenFd = ::socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0);
-    sockaddr_in addr{};
-    addr.sin_family = AF_INET;
-    addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-    addr.sin_port = 0; /* any free port */
-    socklen_t len = sizeof addr;
-    if(d.listenFd < 0 ||
-       ::bind(d.listenFd, reinterpret_cast<sockaddr *>(&addr), sizeof addr) != 0 ||
-       ::listen(d.listenFd, 8) != 0 ||
-       ::getsockname(d.listenFd, reinterpret_cast<sockaddr *>(&addr), &len) != 0 ||
-       ::pipe2(d.wake, O_CLOEXEC) != 0) {
+    d.listenFd = loopbackSocket(SOCK_STREAM, &d.localPort);
+    d.wake = loopbackSocket(SOCK_DGRAM, nullptr);
+    if(d.listenFd == kNoSocket || d.wake == kNoSocket) {
         *error = QStringLiteral("could not open the tunnel's local port");
         return nullptr;
     }
-    d.localPort = ntohs(addr.sin_port);
 
     /* try one channel now, so a server that forbids forwarding or can't
      * reach the database says so here rather than as a dropped connection */
@@ -411,7 +519,7 @@ std::shared_ptr<SshTunnel> SshTunnel::open(const ConnectionParams &params, QStri
     return t;
 }
 
-#else /* no libssh, or not POSIX */
+#else /* no libssh */
 
 struct SshTunnel::Impl
 {};

@@ -12,8 +12,8 @@
  * The UI asks first — checkHostKey(), and trustHostKey() once the user has
  * compared the fingerprint — and a changed key is always refused.
  *
- * Built only with libssh on a POSIX system (OPENYOG_HAVE_SSH); otherwise
- * available() is false and open() fails with an explanation. */
+ * Built with libssh (OPENYOG_HAVE_SSH), on Linux and on Windows (Winsock);
+ * without it available() is false and open() fails with an explanation. */
 #pragma once
 
 #include "../ConnectionParams.h"

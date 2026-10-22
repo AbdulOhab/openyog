@@ -13,6 +13,9 @@ sysroot.
         rewrite the lock from the repository as it is now: the packages
         below plus their dependencies, at the versions it lists, except for
         each --pin (e.g. --pin qt6-base=6.11.2-2)
+    tools/fetch-msys2-sysroot.py --add NAME [--add NAME ...]
+        add packages (and the dependencies the lock doesn't have yet) at the
+        repository's current versions, leaving every locked one as it is
 
 The repository is rolling, hence the lock: the Windows Qt has to be the
 version of the host Qt that supplies moc/rcc/uic, so qt6-base usually needs a
@@ -33,7 +36,7 @@ REPO = "https://repo.msys2.org/mingw/ucrt64/"
 PREFIX = "mingw-w64-ucrt-x86_64-"
 LOCK = Path(__file__).with_name("msys2-ucrt64.lock")
 WANTED = ["qt6-base", "qscintilla-qt6", "qtkeychain-qt6", "libmariadbclient",
-          "postgresql", "sqlite3"]
+          "postgresql", "sqlite3", "libssh"]
 # dependencies of a package's scripts or bindings, not of any DLL loaded here:
 # glib2's code generators (python), sqlite3's Tcl extension
 SKIP = ["python", "python-packaging", "tcl"]
@@ -117,12 +120,48 @@ def update(pins, cache):
         todo += [d for d in pkgs[name]["depends"]
                  if d.startswith(PREFIX) and d[len(PREFIX):] not in SKIP]
     pin_note = ", ".join(f"{n}={v}" for n, v in pins.items()) or "none"
+    write_lock([f"{pkgs[n]['filename']} {pkgs[n]['sha256']}" for n in seen],
+               f"# pins: {pin_note}")
+
+
+def write_lock(entries, pin_line):
     lines = ["# MSYS2 UCRT64 packages for the Windows cross build, one file and its",
              "# SHA-256 per line. Written by tools/fetch-msys2-sysroot.py --update;",
-             f"# pins: {pin_note}"]
-    lines += [f"{pkgs[n]['filename']} {pkgs[n]['sha256']}" for n in sorted(seen)]
+             pin_line]
+    lines += sorted(entries)
     LOCK.write_text("\n".join(lines) + "\n")
-    print(f"{LOCK}: {len(seen)} packages")
+    print(f"{LOCK}: {len(entries)} packages")
+
+
+def locked_name(filename):
+    """mingw-w64-ucrt-x86_64-libssh2-1.11.1-2-any.pkg.tar.zst -> ...-libssh2"""
+    return filename.removesuffix("-any.pkg.tar.zst").rsplit("-", 2)[0]
+
+
+def add(names, cache):
+    """the locked packages stay; `names` and what they need that isn't
+    locked come in at the repository's current versions"""
+    text = LOCK.read_text()
+    entries = [l for l in text.splitlines() if l.strip() and not l.startswith("#")]
+    pin_line = next((l for l in text.splitlines() if l.startswith("# pins:")), "# pins: none")
+    locked = {locked_name(e.split()[0]) for e in entries}
+    db = cache / "ucrt64.db"
+    fetch(REPO + "ucrt64.db", db)
+    pkgs, provides = parse_db(db)
+    todo = [PREFIX + n for n in names]
+    while todo:
+        want = todo.pop()
+        name = want if want in pkgs or want in locked else provides.get(want)
+        if name is None:
+            sys.exit(f"not in the repository: {want}")
+        if name in locked:
+            continue
+        locked.add(name)
+        entries.append(f"{pkgs[name]['filename']} {pkgs[name]['sha256']}")
+        print(f"add {pkgs[name]['filename']}")
+        todo += [d for d in pkgs[name]["depends"]
+                 if d.startswith(PREFIX) and d[len(PREFIX):] not in SKIP]
+    write_lock(entries, pin_line)
 
 
 def unpack(out, cache):
@@ -152,7 +191,12 @@ def main():
     ap.add_argument("dir", nargs="?", help="where to unpack (DIR/ucrt64, DIR/cache)")
     ap.add_argument("--update", action="store_true", help="rewrite the lock file")
     ap.add_argument("--pin", action="append", default=[], metavar="NAME=VERSION")
+    ap.add_argument("--add", action="append", default=[], metavar="NAME")
     args = ap.parse_args()
+    if args.add:
+        with tempfile.TemporaryDirectory() as tmp:
+            add(args.add, Path(tmp))
+        return
     if args.update:
         with tempfile.TemporaryDirectory() as tmp:
             cache = Path(args.dir).resolve() / "cache" if args.dir else Path(tmp)
