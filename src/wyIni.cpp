@@ -1182,7 +1182,7 @@ wyIni::RemoveAll(const wyChar *sec)
 	{
 		temp_sec->m_datafirst = tmp->m_next;
 		temp_sec->m_datasize--;
-		free(tmp);
+		delete tmp;
 		remove++;
 		tmp = temp_sec->m_datafirst;
 	}
@@ -1196,6 +1196,9 @@ wyIni::RemoveSel(const wyChar *sec,wyChar *key)
 	return Remove(sec,key);
 }
 
+// PORT: records and sections are new'd (Append, AddSection): delete them, not
+// free(), which skipped their wyString members' destructors (ASan reported the
+// alloc-dealloc mismatch)
 // remove all record
 wyInt32  
 wyIni::RemoveAll(struct tagSection *sec)
@@ -1211,7 +1214,7 @@ wyIni::RemoveAll(struct tagSection *sec)
 	{
 		sec->m_datafirst = tmp->m_next;
 		sec->m_datasize--;
-		free(tmp);
+		delete tmp;
 		remove++;
 		tmp = sec->m_datafirst;
 	}
@@ -1232,7 +1235,7 @@ wyIni::RemoveSection(const wyChar *sec)
 		RemoveAll(esection);
 		m_content->m_first = esection->m_next;
 		m_content->m_sectionsize--;
-		free(esection);
+		delete esection;
 		return 1;
 	}
 	
@@ -1244,7 +1247,7 @@ wyIni::RemoveSection(const wyChar *sec)
 			temp = esection->m_next;				
 			esection->m_next = esection->m_next->m_next;
 			m_content->m_sectionsize--;
-			free(temp);				
+			delete temp;				
 			break;
 		}		
 		esection = esection->m_next;
@@ -1265,7 +1268,7 @@ wyIni::Clear()
 	{
 		m_content->m_first = tmp->m_next;
 		m_content->m_sectionsize--;
-		free(tmp);
+		delete tmp;
 		tmp = m_content->m_first;
 	}	
 }
