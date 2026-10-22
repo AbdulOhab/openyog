@@ -4,6 +4,8 @@
  * The class is declared in ConnectionTab.h; ConnectionTab.cpp holds the
  * core (editors, query execution, results, object browser). */
 #include "ConnectionTab.h"
+#include "Icons.h"
+#include "SchemaDesigner.h"
 #include "TableDataView.h"
 
 #include "ExportDialog.h"
@@ -319,6 +321,39 @@ void ConnectionTab::promptSchemaHtml(const QString &database)
     f.write(html.toUtf8());
     QMessageBox::information(this, QStringLiteral("Create Schema HTML"),
                              QStringLiteral("Saved to %1").arg(file));
+}
+
+SchemaDesigner *ConnectionTab::openSchemaDesigner(const QString &database)
+{
+    if(!m_conn)
+        return nullptr;
+    const QString db = database.isEmpty() ? defaultDb() : database;
+    if(db.isEmpty()) {
+        QMessageBox::information(this, QStringLiteral("Schema Designer"),
+                                 QStringLiteral("Select a database first."));
+        return nullptr;
+    }
+    /* m_conn is the GUI thread's own (queries run on a worker connection) */
+    auto *designer =
+        new SchemaDesigner(db, [this, db] { return SchemaDiagram::load(m_conn, db); }, this);
+    /* the data shows in the result pane, which a designer in front hides */
+    connect(designer, &SchemaDesigner::openTableRequested, this,
+            [this](const QString &db, const QString &table) {
+                m_resultTabs->show();
+                m_resultsHiddenForDesigner = false;
+                openTableData(db, table);
+            });
+    connect(designer, &SchemaDesigner::alterTableRequested, this, &ConnectionTab::promptAlterTable);
+    connect(designer, &SchemaDesigner::foreignKeysRequested, this,
+            &ConnectionTab::promptManageForeignKeys);
+    const int histIdx = m_editorTabs->indexOf(m_historyPage);
+    const int idx = m_editorTabs->insertTab(
+        histIdx == -1 ? m_editorTabs->count() : histIdx, designer,
+        Icons::get(QStringLiteral("schemadesigner_16.ico")), QStringLiteral("Schema: %1").arg(db));
+    m_editorTabs->setTabToolTip(idx, QStringLiteral("Schema Designer: %1").arg(db));
+    m_editorTabs->setCurrentIndex(idx);
+    designer->reload();
+    return designer;
 }
 
 void ConnectionTab::exportCurrent()

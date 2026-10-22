@@ -17,6 +17,8 @@
  *   openyog --pgtest=host:port:user:pw:db              PostgreSQL driver shape self-check
  *   openyog --autoconnectfile=FILE.sqlite [--opentable=db:t] [--editcell=r:c:v]
  *           --screenshot=FILE.png       same data-grid selftests, SQLite driver
+ *   openyog --autoconnect…=… --schemadesigner[=FILE.png] --screenshot=FILE.png
+ *           open the Schema Designer, print its tables and links
  *   openyog --autoconnectpg=h:p:u:pw:db --explain=json|plain --screenshot=FILE.png
  *           … same downstream machinery as --autoconnect=, PostgreSQL driver
  */
@@ -80,7 +82,10 @@ int main(int argc, char *argv[])
                             * context menu's labels + enabled states over that cell */
     QString mkObj;         /* --mkobj=VIEW|PROCEDURE|… selftest */
     QString explainMode;   /* --explain=json|plain selftest: Explain "SELECT 1" */
-    bool showDataTab = false;   /* --showdatatab selftest: switch to Table Data, print its table */
+    bool showDataTab = false;    /* --showdatatab selftest: switch to Table Data, print its table */
+    bool schemaDesigner = false; /* --schemadesigner[=FILE.png] selftest: open File ▸ New Schema
+                                  * Designer, print its tables/links (and export the image) */
+    QString schemaDesignerExport;
     QString infoSearch;         /* --infosearch=TEXT selftest: type it into the Info tab's search */
     bool showInfoTab = false;   /* --showinfotab selftest: switch to the Info result tab */
     QString useDbArg;           /* --usedb=NAME selftest */
@@ -316,6 +321,11 @@ int main(int argc, char *argv[])
             infoSearch = a.mid(QStringLiteral("--infosearch=").size());
         if(a == QStringLiteral("--showdatatab"))
             showDataTab = true;
+        if(a == QStringLiteral("--schemadesigner") ||
+           a.startsWith(QStringLiteral("--schemadesigner="))) {
+            schemaDesigner = true;
+            schemaDesignerExport = a.mid(QStringLiteral("--schemadesigner=").size());
+        }
         if(a.startsWith(QStringLiteral("--usedb=")))
             useDbArg = a.mid(QStringLiteral("--usedb=").size());
         if(a.startsWith(QStringLiteral("--expandpgdb=")))
@@ -835,6 +845,9 @@ int main(int argc, char *argv[])
                             << "infosearch: " << w->selftestInfoSearch(infoSearch) << '\n';
                     if(showDataTab)
                         QTextStream(stdout) << "datatab: " << w->selftestShowDataTab() << '\n';
+                    if(schemaDesigner)
+                        for(const QString &line : w->selftestSchemaDesigner(schemaDesignerExport))
+                            QTextStream(stdout) << line << '\n';
                     /* mkObj/runAgain/explain can pop a guard QMessageBox
                      * whose modal loop blocks this callback right where the
                      * call is made — schedule the screenshot BEFORE those

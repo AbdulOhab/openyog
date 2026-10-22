@@ -49,8 +49,10 @@ public:
     QString selftestCellText(int row, int col) const; /* --celltext= selftest: grid cell's text */
     QString selftestTdMenuDump(int row, int col);     /* --tdmenu= selftest: context-menu dump */
     void openSchemaObjectTab(const QString &objType); /* selftest */
-    void selftestUseDatabase(const QString &db);      /* --usedb= selftest */
-    void selftestExpandDatabase(const QString &name); /* --expandpgdb= selftest */
+    /* --schemadesigner selftest: open it, describe it, export it when `exportFile` is set */
+    QStringList selftestSchemaDesigner(const QString &exportFile);
+    void selftestUseDatabase(const QString &db);           /* --usedb= selftest */
+    void selftestExpandDatabase(const QString &name);      /* --expandpgdb= selftest */
     void selftestSelectBrowserItem(const QString &path);   /* --selecttreepath= selftest */
     void selftestClickBrowserItem(const QString &path);    /* --clicktreepath= selftest */
     void selftestCollapseBrowserItem(const QString &path); /* --collapsetreepath= selftest */

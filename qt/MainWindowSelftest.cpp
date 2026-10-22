@@ -5,6 +5,7 @@
 #include "ConnectionDialog.h"
 #include "ConnectionTab.h"
 #include "ObjectBrowser.h"
+#include "SchemaDesigner.h"
 #include "SessionStore.h"
 #include "db/IDbConnection.h"
 
@@ -376,4 +377,18 @@ bool MainWindow::selftestSessionRoundTrip(const ConnectionParams &params)
     check(SessionStore::openConnections() == QStringList{params.name},
           "the open connection is remembered for the next start");
     return ok;
+}
+
+QStringList MainWindow::selftestSchemaDesigner(const QString &exportFile)
+{
+    auto *tab = currentTab();
+    SchemaDesigner *designer = tab ? tab->openSchemaDesigner() : nullptr;
+    if(!designer)
+        return {QStringLiteral("schemadesigner: not opened")};
+    QStringList out = designer->dumpForTest();
+    if(!exportFile.isEmpty())
+        out << QStringLiteral("schemadesigner export: %1")
+                   .arg(designer->exportImage(exportFile) ? QStringLiteral("ok")
+                                                          : QStringLiteral("FAILED"));
+    return out;
 }

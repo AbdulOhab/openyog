@@ -28,6 +28,7 @@
 
 #include <memory>
 
+class SchemaDesigner;
 class IDbConnection;
 class LiveConnection;
 class ObjectBrowser;
@@ -168,6 +169,10 @@ public:
      * default). Global, not per-tab — mirrors Theme::load()/save(). */
     static int queryTimeoutSecs();
     static void setQueryTimeoutSecs(int secs);
+
+    /* File ▸ New Schema Designer: a diagram tab for `database` (default: the
+     * current one) */
+    SchemaDesigner *openSchemaDesigner(const QString &database = {});
 
 public slots:
     void runQuery();                /* F9 — selection or current statement */
@@ -366,6 +371,7 @@ private:
     FindBar *m_findBar = nullptr;
 
     QTabWidget *m_resultTabs = nullptr;
+    bool m_resultsHiddenForDesigner = false; /* see the m_editorTabs currentChanged hookup */
     QPlainTextEdit *m_messages = nullptr;
     /* upstream ObjectInfo.cpp: Column/Index/Foreign-Key/DDL metadata for
      * whatever schema object was last single-clicked in the tree — an

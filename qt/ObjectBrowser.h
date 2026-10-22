@@ -155,6 +155,7 @@ signals:
     void importXmlRequested(const QString &db, const QString &table);
     void exportTableRequested(const QString &db, const QString &table);
     void dumpDatabaseRequested(const QString &db);
+    void schemaDesignerRequested(const QString &db);
     /* schema objects — objType is the SQL keyword: VIEW / PROCEDURE / FUNCTION
      * / TRIGGER / EVENT */
     void createObjectRequested(const QString &db, const QString &objType);

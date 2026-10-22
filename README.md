@@ -38,6 +38,11 @@ Early but usable for day-to-day work against a local server. Working now:
 - **Schema**: Create Table (F4), Alter Table (F6), Manage Indexes (F7),
   Foreign Keys (F10), Rename / Drop / Truncate / Duplicate Table, Create /
   Drop / Copy Database, all dialect-aware across the three backends.
+- **Schema Designer** (File ▸ New Schema Designer, Ctrl+Alt+D, or a
+  database's right-click menu): the database's tables and foreign keys as a
+  diagram, laid out automatically. Drag tables around, zoom, find or hide a
+  table, and export the diagram as an image; double-click a table to alter
+  it. It only reads the schema: changes go through the usual dialogs.
 - **Export**: Backup database as a SQL dump; export a result set as CSV.
 - **Themes**: light (SQLyog "Flat" palette) and dark.
 

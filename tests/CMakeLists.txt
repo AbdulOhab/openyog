@@ -21,6 +21,7 @@ openyog_unit_test(tst_resultexport "${QT_SRC}/ResultExport.cpp")
 openyog_unit_test(tst_delimitedtext "${QT_SRC}/DelimitedText.cpp" "${QT_SRC}/ResultExport.cpp")
 openyog_unit_test(tst_sqlcompletion "${QT_SRC}/SqlCompletion.cpp" "${QT_SRC}/SqlSplit.cpp")
 openyog_unit_test(tst_sessionstore "${QT_SRC}/SessionStore.cpp")
+openyog_unit_test(tst_schemadiagram "${QT_SRC}/SchemaDiagram.cpp")
 
 # ConnectionStore against an in-memory keychain: FakeSecretStore.cpp takes
 # qt/SecretStore.cpp's place, so the keychain, INI-fallback and migration
@@ -98,6 +99,23 @@ if(SQLITE3_CLI)
     set_tests_properties(selftest_dump_roundtrip PROPERTIES
                          FIXTURES_REQUIRED dump_db
                          ENVIRONMENT "${SELFTEST_ENV}")
+
+    # Schema Designer: the fixture's tables and its foreign key, no table
+    # drawn over another, and the diagram saved as an image
+    set(db "${CMAKE_CURRENT_BINARY_DIR}/fixture-schemadesigner.sqlite")
+    add_test(NAME schemadesigner_fixture
+             COMMAND "${CMAKE_COMMAND}" "-DSQLITE3=${SQLITE3_CLI}"
+                     "-DSQL=${CMAKE_CURRENT_SOURCE_DIR}/fixtures/sqlite_fixture.sql"
+                     "-DDB=${db}" -P "${CMAKE_CURRENT_SOURCE_DIR}/make_fixture_db.cmake")
+    set_tests_properties(schemadesigner_fixture PROPERTIES FIXTURES_SETUP schemadesigner_db)
+    add_test(NAME selftest_schemadesigner
+             COMMAND openyog "--autoconnectfile=${db}"
+                     "--schemadesigner=${CMAKE_CURRENT_BINARY_DIR}/schemadesigner.png"
+                     "--screenshot=${CMAKE_CURRENT_BINARY_DIR}/schemadesigner-window.png")
+    set_tests_properties(selftest_schemadesigner PROPERTIES
+        FIXTURES_REQUIRED schemadesigner_db
+        ENVIRONMENT "${SELFTEST_ENV}"
+        PASS_REGULAR_EXPRESSION "schemadesigner: database=main tables=3 links=1 overlaps=0\nschemadesigner link [^:]*: employees \\(dept_id\\) -> emp_dept \\(id\\)\nschemadesigner export: ok")
 else()
     message(STATUS "sqlite3 CLI not found: skipping the SQLite selftests")
 endif()
@@ -150,8 +168,14 @@ if(OPENYOG_TEST_MYSQL)
                      "--completeat=SELECT * FROM employees e JOIN emp_dept d ON ")
     set_tests_properties(selftest_mysql_complete_join PROPERTIES PASS_REGULAR_EXPRESSION
         "ON \\]: d\\.id = e\\.dept_id \\|")
+    add_test(NAME selftest_mysql_schemadesigner
+             COMMAND openyog "--autoconnect=${OPENYOG_TEST_MYSQL}" "--schemadesigner"
+                     "--screenshot=${CMAKE_CURRENT_BINARY_DIR}/mysql-schemadesigner.png")
+    set_tests_properties(selftest_mysql_schemadesigner PROPERTIES PASS_REGULAR_EXPRESSION
+        "overlaps=0\n.*link fk_emp_dept: employees \\(dept_id\\) -> emp_dept \\(id\\)")
     set_tests_properties(smoketest_mysql selftest_mysql_schema selftest_mysql_dump_roundtrip
-                         selftest_mysql_complete selftest_mysql_complete_join PROPERTIES
+                         selftest_mysql_complete selftest_mysql_complete_join
+                         selftest_mysql_schemadesigner PROPERTIES
                          FIXTURES_REQUIRED mysql_db RESOURCE_LOCK mysql_db
                          ENVIRONMENT "${SELFTEST_ENV}")
 endif()
@@ -187,8 +211,14 @@ if(OPENYOG_TEST_PG)
                      "--completeat=SELECT * FROM employees e JOIN emp_dept d ON ")
     set_tests_properties(selftest_pg_complete_join PROPERTIES PASS_REGULAR_EXPRESSION
         "ON \\]: d\\.id = e\\.dept_id \\|")
+    add_test(NAME selftest_pg_schemadesigner
+             COMMAND openyog "--autoconnectpg=${OPENYOG_TEST_PG}" "--schemadesigner"
+                     "--screenshot=${CMAKE_CURRENT_BINARY_DIR}/pg-schemadesigner.png")
+    set_tests_properties(selftest_pg_schemadesigner PROPERTIES PASS_REGULAR_EXPRESSION
+        "database=public tables=[0-9]+ links=[0-9]+ overlaps=0\n.*: employees \\(dept_id\\) -> emp_dept \\(id\\)")
     set_tests_properties(selftest_pg_metadata selftest_pg_schema selftest_pg_multidb
                          selftest_pg_dump_roundtrip selftest_pg_complete selftest_pg_complete_join
+                         selftest_pg_schemadesigner
                          PROPERTIES
                          FIXTURES_REQUIRED pg_db RESOURCE_LOCK pg_db
                          ENVIRONMENT "${SELFTEST_ENV}")

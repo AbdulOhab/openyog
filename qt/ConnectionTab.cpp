@@ -1,4 +1,5 @@
 #include "ConnectionTab.h"
+#include "SchemaDesigner.h"
 #include "ObjectBrowser.h"
 #include "RecentFiles.h"
 #include "TableDataView.h"
@@ -331,6 +332,19 @@ ConnectionTab::ConnectionTab(const ConnectionParams &params, QWidget *parent)
     m_editorTabs->setMovable(true);
     m_editorTabs->tabBar()->setExpanding(false); /* SQLyog left-aligns tabs */
     connect(m_editorTabs, &QTabWidget::tabCloseRequested, this, &ConnectionTab::closeEditorTab);
+    /* a Schema Designer gets the whole height: the result pane steps aside
+     * while one is in front and comes back for the other tabs (unless it had
+     * been hidden by hand) */
+    connect(m_editorTabs, &QTabWidget::currentChanged, this, [this](int) {
+        const bool designer = qobject_cast<SchemaDesigner *>(m_editorTabs->currentWidget());
+        if(designer && m_resultTabs->isVisible()) {
+            m_resultTabs->hide();
+            m_resultsHiddenForDesigner = true;
+        } else if(!designer && m_resultsHiddenForDesigner) {
+            m_resultTabs->show();
+            m_resultsHiddenForDesigner = false;
+        }
+    });
     m_editorTabs->setCornerWidget(
         [&] {
             auto *plus = new QPushButton(QStringLiteral("+"), this);
@@ -490,6 +504,8 @@ ConnectionTab::ConnectionTab(const ConnectionParams &params, QWidget *parent)
             &ConnectionTab::promptManageForeignKeys);
     connect(m_browser, &ObjectBrowser::dumpDatabaseRequested, this,
             [this](const QString &db) { promptDumpDatabase(db); });
+    connect(m_browser, &ObjectBrowser::schemaDesignerRequested, this,
+            [this](const QString &db) { openSchemaDesigner(db); });
     connect(m_browser, &ObjectBrowser::copyDatabaseRequested, this,
             [this](const QString &db) { promptCopyDatabase(db); });
     connect(m_browser, &ObjectBrowser::importCsvRequested, this, &ConnectionTab::promptImportCsv);
