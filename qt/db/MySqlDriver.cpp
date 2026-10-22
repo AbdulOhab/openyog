@@ -33,6 +33,15 @@ static MYSQL *tryConnect(const ConnectionParams &params, bool localInfile, bool 
         mysql_ssl_set(c, key.isEmpty() ? nullptr : key.constData(),
                       cert.isEmpty() ? nullptr : cert.constData(),
                       ca.isEmpty() ? nullptr : ca.constData(), nullptr, nullptr);
+    } else {
+        /* no TLS asked for: don't let the library insist on it. Connector/C
+         * 3.4 built with DEFAULT_SSL_VERIFY_SERVER_CERT (MSYS2's, so the
+         * Windows build) turns TLS on whenever peer verification is on, and
+         * refuses a server without TLS ("SSL is required, but the server
+         * does not support it"); MYSQL_OPT_SSL_ENFORCE=0 can't undo that.
+         * Built without it (Arch's) it already behaves like this. */
+        my_bool verify = 0;
+        mysql_options(c, MYSQL_OPT_SSL_VERIFY_SERVER_CERT, &verify);
     }
     if(!mysql_real_connect(c, params.host.toUtf8().constData(), params.user.toUtf8().constData(),
                            params.password.toUtf8().constData(),
