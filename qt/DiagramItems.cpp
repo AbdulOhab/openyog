@@ -280,19 +280,41 @@ void Link::updatePath()
     setPath(path);
 }
 
-QRectF Link::boundingRect() const
+namespace {
+QFont labelFont()
 {
-    QRectF r = path().boundingRect().adjusted(-14, -14, 14, 14);
-    if(!m_label.isEmpty())
-        r = r.united(QRectF(path().pointAtPercent(0.5), QSizeF()).adjusted(-40, -12, 40, 12));
-    return r;
+    QFont f = QApplication::font();
+    f.setPointSizeF(f.pointSizeF() * 0.8);
+    f.setBold(true);
+    return f;
+}
+} // namespace
+
+QRectF Link::labelRect() const
+{
+    if(m_label.isEmpty())
+        return {};
+    const QFontMetricsF fm(labelFont());
+    const QSizeF size(fm.horizontalAdvance(m_label) + 10, fm.height() + 2);
+    const QPointF mid = path().pointAtPercent(0.5);
+    return QRectF(mid - QPointF(size.width() / 2, size.height() / 2), size);
 }
 
+QRectF Link::boundingRect() const
+{
+    const QRectF r = path().boundingRect().adjusted(-14, -14, 14, 14);
+    return m_label.isEmpty() ? r : r.united(labelRect().adjusted(-2, -2, 2, 2));
+}
+
+/* the line, and the label (right-clicked as often as the line itself) */
 QPainterPath Link::shape() const
 {
     QPainterPathStroker s;
     s.setWidth(8);
-    return s.createStroke(path());
+    QPainterPath shape = s.createStroke(path());
+    if(!m_label.isEmpty())
+        shape.addRect(labelRect());
+    return shape;
 }
 
 void Link::paint(QPainter *p, const QStyleOptionGraphicsItem *, QWidget *)
@@ -317,19 +339,11 @@ void Link::paint(QPainter *p, const QStyleOptionGraphicsItem *, QWidget *)
     p->drawEllipse(m_end, 3, 3);
     if(m_label.isEmpty())
         return;
-    QFont f = QApplication::font();
-    f.setPointSizeF(f.pointSizeF() * 0.8);
-    f.setBold(true);
-    const QFontMetricsF fm(f);
-    const QPointF mid = path().pointAtPercent(0.5);
-    const QRectF tag =
-        QRectF(QPointF(), QSizeF(fm.horizontalAdvance(m_label) + 10, fm.height() + 2))
-            .translated(mid.x() - (fm.horizontalAdvance(m_label) + 10) / 2,
-                        mid.y() - (fm.height() + 2) / 2);
+    const QRectF tag = labelRect();
     p->setPen(QPen(pen.color(), 1));
     p->setBrush(m_colors->box);
     p->drawRoundedRect(tag, 3, 3);
-    p->setFont(f);
+    p->setFont(labelFont());
     p->setPen(m_colors->text);
     p->drawText(tag, Qt::AlignCenter, m_label);
 }

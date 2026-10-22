@@ -67,8 +67,12 @@ void MainWindow::buildFileMenu()
         if(auto *t = currentTab())
             t->addEditorTab();
     });
-    addDisabled(file, QStringLiteral("New Query &Builder\tCtrl+K"))
-        ->setIcon(Icons::get(QStringLiteral("entmenu.ico")));
+    QAction *builder = file->addAction(QStringLiteral("New Query &Builder\tCtrl+K"));
+    builder->setIcon(Icons::get(QStringLiteral("entmenu.ico")));
+    connect(builder, &QAction::triggered, this, [this] {
+        if(auto *t = currentTab())
+            t->openQueryBuilder();
+    });
     QAction *designer = file->addAction(QStringLiteral("Ne&w Schema Designer\tCtrl+Alt+D"));
     designer->setIcon(Icons::get(QStringLiteral("entmenu.ico")));
     connect(designer, &QAction::triggered, this, [this] {

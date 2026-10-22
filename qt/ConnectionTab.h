@@ -28,6 +28,7 @@
 
 #include <memory>
 
+class QueryBuilder;
 class SchemaDesigner;
 class IDbConnection;
 class LiveConnection;
@@ -173,6 +174,12 @@ public:
     /* File ▸ New Schema Designer: a diagram tab for `database` (default: the
      * current one) */
     SchemaDesigner *openSchemaDesigner(const QString &database = {});
+    /* File ▸ New Query Builder: a query-building tab for `database` (default:
+     * the current one) */
+    QueryBuilder *openQueryBuilder(const QString &database = {});
+    /* --querybuilder selftest: rows `sql` returns on this tab's connection, or
+     * -1 and why not */
+    int queryRowCountForTest(const QString &sql, QString *error);
 
 public slots:
     void runQuery();                /* F9 — selection or current statement */

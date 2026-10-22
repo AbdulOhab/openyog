@@ -50,6 +50,28 @@ Model load(IDbConnection *conn, const QString &db)
     return fromRows(tables, columns, conn->listAllForeignKeys(db));
 }
 
+Table loadTable(IDbConnection *conn, const QString &db, const QString &table)
+{
+    Table t{table, {}};
+    for(const QStringList &row : conn->listColumns(db, table).rows)
+        t.columns.append({row.value(0), row.value(1), row.value(3) == QStringLiteral("PRI"), false,
+                          row.value(2) == QStringLiteral("NO")});
+    /* listForeignKeys: Name Column Ref_table Ref_column */
+    QSet<QString> fkColumns;
+    for(const QStringList &row : conn->listForeignKeys(db, table).rows)
+        fkColumns.insert(row.value(1));
+    for(Column &c : t.columns)
+        c.foreignKey = fkColumns.contains(c.name);
+    return t;
+}
+
+QList<Link> loadForeignKeys(IDbConnection *conn, const QString &db)
+{
+    return fromRows(conn->listTables(db, QStringLiteral("BASE TABLE")), {},
+                    conn->listAllForeignKeys(db))
+        .links;
+}
+
 namespace {
 
 constexpr double kRankGap = 90;  /* between columns of tables: room for the lines */

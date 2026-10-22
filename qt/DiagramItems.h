@@ -121,6 +121,8 @@ public:
     void paint(QPainter *p, const QStyleOptionGraphicsItem *, QWidget *) override;
 
 private:
+    QRectF labelRect() const; /* empty without a label */
+
     Table *m_from, *m_to;
     QString m_fromColumn, m_toColumn;
     const Colors *m_colors;

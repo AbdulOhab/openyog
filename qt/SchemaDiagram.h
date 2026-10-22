@@ -56,6 +56,13 @@ struct Model
 /* the base tables of `db` (no views), their columns and foreign keys */
 Model load(IDbConnection *conn, const QString &db);
 
+/* one table or view and its columns, foreign key columns marked; no columns
+ * when there is no such table */
+Table loadTable(IDbConnection *conn, const QString &db, const QString &table);
+
+/* the foreign keys between `db`'s base tables, without their columns */
+QList<Link> loadForeignKeys(IDbConnection *conn, const QString &db);
+
 /* load()'s assembly, from listColumns() rows per table (SHOW COLUMNS shape)
  * and listAllForeignKeys() rows: table, constraint, column, referenced
  * table, referenced column */

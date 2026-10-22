@@ -5,6 +5,7 @@
 #include "ConnectionDialog.h"
 #include "ConnectionTab.h"
 #include "ObjectBrowser.h"
+#include "QueryBuilder.h"
 #include "SchemaDesigner.h"
 #include "SessionStore.h"
 #include "db/IDbConnection.h"
@@ -390,5 +391,25 @@ QStringList MainWindow::selftestSchemaDesigner(const QString &exportFile)
         out << QStringLiteral("schemadesigner export: %1")
                    .arg(designer->exportImage(exportFile) ? QStringLiteral("ok")
                                                           : QStringLiteral("FAILED"));
+    return out;
+}
+
+QStringList MainWindow::selftestQueryBuilder(const QString &spec)
+{
+    auto *tab = currentTab();
+    QueryBuilder *builder = tab ? tab->openQueryBuilder() : nullptr;
+    if(!builder)
+        return {QStringLiteral("querybuilder: not opened")};
+    for(const QString &part : spec.split(QLatin1Char('+'), Qt::SkipEmptyParts))
+        builder->addTable(
+            part.section(QLatin1Char(':'), 0, 0),
+            part.section(QLatin1Char(':'), 1).split(QLatin1Char(','), Qt::SkipEmptyParts));
+    const QString sql = builder->sql();
+    QStringList out{QStringLiteral("querybuilder sql:")};
+    out << sql.split(QLatin1Char('\n'));
+    QString error;
+    const int rows = tab->queryRowCountForTest(sql, &error);
+    out << (rows < 0 ? QStringLiteral("querybuilder run failed: ") + error
+                     : QStringLiteral("querybuilder rows: %1").arg(rows));
     return out;
 }

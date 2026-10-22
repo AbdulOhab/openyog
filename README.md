@@ -43,6 +43,13 @@ Early but usable for day-to-day work against a local server. Working now:
   diagram, laid out automatically. Drag tables around, zoom, find or hide a
   table, and export the diagram as an image; double-click a table to alter
   it. It only reads the schema: changes go through the usual dialogs.
+- **Query Builder** (File ▸ New Query Builder, Ctrl+K, or a database's
+  right-click menu): build a SELECT by pointing. Add tables from a list (they
+  join along their foreign keys on their own, or drag a column onto another
+  table's to join by hand; right-click a join for LEFT / RIGHT), tick
+  columns, then give them aliases, aggregates, sorting and conditions in the
+  grid. The SQL follows every change and goes to a query editor or runs
+  straight away.
 - **Export**: Backup database as a SQL dump; export a result set as CSV.
 - **Themes**: light (SQLyog "Flat" palette) and dark.
 

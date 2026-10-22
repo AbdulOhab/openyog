@@ -5,6 +5,7 @@
  * core (editors, query execution, results, object browser). */
 #include "ConnectionTab.h"
 #include "Icons.h"
+#include "QueryBuilder.h"
 #include "SchemaDesigner.h"
 #include "TableDataView.h"
 
@@ -354,6 +355,54 @@ SchemaDesigner *ConnectionTab::openSchemaDesigner(const QString &database)
     m_editorTabs->setCurrentIndex(idx);
     designer->reload();
     return designer;
+}
+
+QueryBuilder *ConnectionTab::openQueryBuilder(const QString &database)
+{
+    if(!m_conn)
+        return nullptr;
+    const QString db = database.isEmpty() ? defaultDb() : database;
+    if(db.isEmpty()) {
+        QMessageBox::information(this, QStringLiteral("Query Builder"),
+                                 QStringLiteral("Select a database first."));
+        return nullptr;
+    }
+    /* m_conn at call time: the GUI thread's own connection */
+    QueryBuilder::Backend backend;
+    backend.tables = [this, db] {
+        return m_conn->listTables(db, QStringLiteral("BASE TABLE")) +
+               m_conn->listTables(db, QStringLiteral("VIEW"));
+    };
+    backend.table = [this, db](const QString &table) {
+        return SchemaDiagram::loadTable(m_conn, db, table);
+    };
+    backend.foreignKeys = [this, db] { return SchemaDiagram::loadForeignKeys(m_conn, db); };
+    backend.quote = [this](const QString &ident) { return m_conn->quoteIdent(ident); };
+    auto *builder = new QueryBuilder(db, backend, this);
+    connect(builder, &QueryBuilder::copyToEditorRequested, this,
+            [this](const QString &sql) { openEditorWithSql(QStringLiteral("Built Query"), sql); });
+    /* the results show in the result pane, which a builder in front hides */
+    connect(builder, &QueryBuilder::runRequested, this, [this](const QString &sql) {
+        m_resultTabs->show();
+        m_resultsHiddenForDesigner = false;
+        runStatements(QStringList{sql}, QStringLiteral("Query Builder"));
+    });
+    const int histIdx = m_editorTabs->indexOf(m_historyPage);
+    const int idx =
+        m_editorTabs->insertTab(histIdx == -1 ? m_editorTabs->count() : histIdx, builder,
+                                Icons::get(QStringLiteral("querybuilder_16.ico")),
+                                QStringLiteral("Query Builder: %1").arg(db));
+    m_editorTabs->setTabToolTip(idx, QStringLiteral("Query Builder: %1").arg(db));
+    m_editorTabs->setCurrentIndex(idx);
+    return builder;
+}
+
+int ConnectionTab::queryRowCountForTest(const QString &sql, QString *error)
+{
+    DbResultSet rs;
+    if(!m_conn || !m_conn->query(sql, &rs, error))
+        return -1;
+    return int(rs.rows.size());
 }
 
 void ConnectionTab::exportCurrent()

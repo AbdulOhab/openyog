@@ -155,6 +155,8 @@ add_executable(openyog
     qt/DiagramItems.h      qt/DiagramItems.cpp
     qt/SchemaDiagram.h     qt/SchemaDiagram.cpp
     qt/SchemaDesigner.h    qt/SchemaDesigner.cpp
+    qt/QueryBuild.h        qt/QueryBuild.cpp
+    qt/QueryBuilder.h      qt/QueryBuilder.cpp
 )
 # QScintilla (the query editor): system package, same pattern as the
 # client libraries above — on Arch, `sudo pacman -S qscintilla-qt6`

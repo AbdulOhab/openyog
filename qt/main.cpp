@@ -86,6 +86,8 @@ int main(int argc, char *argv[])
     bool schemaDesigner = false; /* --schemadesigner[=FILE.png] selftest: open File ▸ New Schema
                                   * Designer, print its tables/links (and export the image) */
     QString schemaDesignerExport;
+    QString queryBuilderSpec;   /* --querybuilder=table:col,col+table:col selftest: add
+                                 * them to a Query Builder, print and run its SQL */
     QString infoSearch;         /* --infosearch=TEXT selftest: type it into the Info tab's search */
     bool showInfoTab = false;   /* --showinfotab selftest: switch to the Info result tab */
     QString useDbArg;           /* --usedb=NAME selftest */
@@ -321,6 +323,8 @@ int main(int argc, char *argv[])
             infoSearch = a.mid(QStringLiteral("--infosearch=").size());
         if(a == QStringLiteral("--showdatatab"))
             showDataTab = true;
+        if(a.startsWith(QStringLiteral("--querybuilder=")))
+            queryBuilderSpec = a.mid(QStringLiteral("--querybuilder=").size());
         if(a == QStringLiteral("--schemadesigner") ||
            a.startsWith(QStringLiteral("--schemadesigner="))) {
             schemaDesigner = true;
@@ -847,6 +851,9 @@ int main(int argc, char *argv[])
                         QTextStream(stdout) << "datatab: " << w->selftestShowDataTab() << '\n';
                     if(schemaDesigner)
                         for(const QString &line : w->selftestSchemaDesigner(schemaDesignerExport))
+                            QTextStream(stdout) << line << '\n';
+                    if(!queryBuilderSpec.isEmpty())
+                        for(const QString &line : w->selftestQueryBuilder(queryBuilderSpec))
                             QTextStream(stdout) << line << '\n';
                     /* mkObj/runAgain/explain can pop a guard QMessageBox
                      * whose modal loop blocks this callback right where the

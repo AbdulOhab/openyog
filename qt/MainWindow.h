@@ -51,6 +51,8 @@ public:
     void openSchemaObjectTab(const QString &objType); /* selftest */
     /* --schemadesigner selftest: open it, describe it, export it when `exportFile` is set */
     QStringList selftestSchemaDesigner(const QString &exportFile);
+    /* --querybuilder=table:col,col+table:col selftest: build it, print the SQL, run it */
+    QStringList selftestQueryBuilder(const QString &spec);
     void selftestUseDatabase(const QString &db);           /* --usedb= selftest */
     void selftestExpandDatabase(const QString &name);      /* --expandpgdb= selftest */
     void selftestSelectBrowserItem(const QString &path);   /* --selecttreepath= selftest */

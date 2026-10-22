@@ -434,6 +434,9 @@ void ObjectBrowser::populateDatabaseMenu(QMenu &menu, const QString &db)
     menu.addAction(Icons::get(QStringLiteral("schemadesigner_16.ico")),
                    QStringLiteral("Schema Desi&gner"), this,
                    [this, db] { emit schemaDesignerRequested(db); });
+    menu.addAction(Icons::get(QStringLiteral("querybuilder_16.ico")),
+                   QStringLiteral("Query B&uilder"), this,
+                   [this, db] { emit queryBuilderRequested(db); });
     menu.addAction(QStringLiteral("&Backup Database As SQL Dump…"), this,
                    [this, db] { emit dumpDatabaseRequested(db); });
     menu.addSeparator();
