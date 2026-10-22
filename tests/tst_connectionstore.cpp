@@ -7,6 +7,7 @@
  * in the real config dir (QStandardPaths test mode would still write under
  * $HOME). */
 #include "ConnectionStore.h"
+#include "PrivateFiles.h"
 #include "FakeSecretStore.h"
 
 #include <QDir>
@@ -71,6 +72,8 @@ private slots:
     void sshSettingsAndSecretRoundTrip();
     void sshOffDropsItsSecret();
     void removeAndRenameCarryTheSshSecret();
+    void fileIsTheOwnersAlone();
+    void startupProtectsOldFiles();
 
 private:
     QTemporaryDir m_configHome;
@@ -270,6 +273,45 @@ void TestConnectionStore::removeAndRenameCarryTheSshSecret()
 
     ConnectionStore::remove(QStringLiteral("b"));
     QVERIFY(FakeSecretStore::entries().isEmpty());
+}
+
+namespace {
+const QFile::Permissions kOthers = QFile::ReadGroup | QFile::WriteGroup | QFile::ExeGroup |
+                                   QFile::ReadOther | QFile::WriteOther | QFile::ExeOther;
+}
+
+/* the INI can hold a base64 password: nobody but its owner may read it */
+void TestConnectionStore::fileIsTheOwnersAlone()
+{
+#ifndef Q_OS_UNIX
+    QSKIP("Unix file modes");
+#else
+    FakeSecretStore::reset(false); /* the password ends up in the INI */
+    ConnectionStore::save(mysqlParams(QStringLiteral("prod")));
+    QVERIFY(iniText().contains(QLatin1String(kSecretB64)));
+    QCOMPARE(QFile::permissions(iniPath()) & kOthers, QFile::Permissions());
+    QVERIFY(QFile::permissions(iniPath()) & QFile::ReadOwner);
+#endif
+}
+
+/* files an earlier version left readable by everyone, fixed at startup */
+void TestConnectionStore::startupProtectsOldFiles()
+{
+#ifndef Q_OS_UNIX
+    QSKIP("Unix file modes");
+#else
+    writeLegacyIni();
+    const QString dir = QFileInfo(iniPath()).path();
+    QFile::setPermissions(iniPath(), QFile::ReadOwner | QFile::WriteOwner | QFile::ReadGroup |
+                                         QFile::ReadOther);
+    QFile::setPermissions(dir, QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner |
+                                   QFile::ReadGroup | QFile::ExeGroup | QFile::ReadOther |
+                                   QFile::ExeOther);
+    PrivateFiles::protectAppFolders();
+    QCOMPARE(QFile::permissions(iniPath()) & kOthers, QFile::Permissions());
+    QCOMPARE(QFile::permissions(dir) & kOthers, QFile::Permissions());
+    QVERIFY(QFile::permissions(dir) & QFile::ExeOwner);
+#endif
 }
 
 QTEST_GUILESS_MAIN(TestConnectionStore)

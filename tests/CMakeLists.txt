@@ -20,7 +20,7 @@ openyog_unit_test(tst_schemasql    "${QT_SRC}/SchemaSql.cpp" "${QT_SRC}/SqlSplit
 openyog_unit_test(tst_resultexport "${QT_SRC}/ResultExport.cpp")
 openyog_unit_test(tst_delimitedtext "${QT_SRC}/DelimitedText.cpp" "${QT_SRC}/ResultExport.cpp")
 openyog_unit_test(tst_sqlcompletion "${QT_SRC}/SqlCompletion.cpp" "${QT_SRC}/SqlSplit.cpp")
-openyog_unit_test(tst_sessionstore "${QT_SRC}/SessionStore.cpp")
+openyog_unit_test(tst_sessionstore "${QT_SRC}/SessionStore.cpp" "${QT_SRC}/PrivateFiles.cpp")
 openyog_unit_test(tst_schemadiagram "${QT_SRC}/SchemaDiagram.cpp")
 openyog_unit_test(tst_querybuild "${QT_SRC}/QueryBuild.cpp")
 openyog_unit_test(tst_schemasync "${QT_SRC}/SchemaSync.cpp")
@@ -28,7 +28,8 @@ openyog_unit_test(tst_schemasync "${QT_SRC}/SchemaSync.cpp")
 # ConnectionStore against an in-memory keychain: FakeSecretStore.cpp takes
 # qt/SecretStore.cpp's place, so the keychain, INI-fallback and migration
 # paths all run without a real Secret Service
-openyog_unit_test(tst_connectionstore FakeSecretStore.cpp "${QT_SRC}/ConnectionStore.cpp")
+openyog_unit_test(tst_connectionstore FakeSecretStore.cpp "${QT_SRC}/ConnectionStore.cpp"
+                  "${QT_SRC}/PrivateFiles.cpp")
 target_link_libraries(tst_connectionstore PRIVATE wycore ${MARIADB_LIBRARY} ${SQLITE3_LIBRARY})
 # upstream headers (Datatype.h's MSVC pragmas, wyString.h's comments) — the
 # same noise wycore itself silences

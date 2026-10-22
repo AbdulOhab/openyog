@@ -3,7 +3,9 @@
  * session.json never lands in the real data dir. */
 #include "SessionStore.h"
 
+#include <QDir>
 #include <QFile>
+#include <QStandardPaths>
 #include <QTemporaryDir>
 #include <QTest>
 
@@ -21,6 +23,7 @@ private slots:
     void openConnections();
     void restoreOnStartupDefaultsOn();
     void corruptFileIsTreatedAsEmpty();
+    void fileIsTheOwnersAlone();
 
 private:
     QTemporaryDir m_dataHome;
@@ -97,6 +100,22 @@ void TestSessionStore::corruptFileIsTreatedAsEmpty()
     /* and the next save writes a good file again */
     SessionStore::setOpenConnections({QStringLiteral("x")});
     QCOMPARE(SessionStore::openConnections(), QStringList{"x"});
+}
+
+/* it holds query text: nobody but its owner may read it */
+void TestSessionStore::fileIsTheOwnersAlone()
+{
+#ifndef Q_OS_UNIX
+    QSKIP("Unix file modes");
+#else
+    SessionStore::setEditors(QStringLiteral("prod"), {{"Query 1", "SELECT 1", 0}});
+    const QString path = QDir(QStandardPaths::writableLocation(QStandardPaths::AppDataLocation))
+                             .filePath(QStringLiteral("session.json"));
+    QVERIFY(QFile::exists(path));
+    QCOMPARE(QFile::permissions(path) &
+                 (QFile::ReadGroup | QFile::WriteGroup | QFile::ReadOther | QFile::WriteOther),
+             QFile::Permissions());
+#endif
 }
 
 QTEST_GUILESS_MAIN(TestSessionStore)

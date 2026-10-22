@@ -1,4 +1,5 @@
 #include "ConnectionTab.h"
+#include "PrivateFiles.h"
 #include "QueryBuilder.h"
 #include "SchemaDesigner.h"
 #include "ObjectBrowser.h"
@@ -131,6 +132,7 @@ void appendHistoryLine(const QString &conn, const QString &sql)
     one.replace('\n', QLatin1Char(' ')).replace('\r', QString());
     QTextStream(&f) << QDateTime::currentDateTime().toString(Qt::ISODate) << '\t' << conn << '\t'
                     << one << '\n';
+    PrivateFiles::restrict(historyPath()); /* query text: the owner's alone */
 }
 
 /* the last `max` history lines for `conn`, oldest first, as "[time date] sql" */

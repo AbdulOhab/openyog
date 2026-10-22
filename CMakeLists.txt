@@ -158,6 +158,7 @@ add_executable(openyog
     qt/QueryBuild.h        qt/QueryBuild.cpp
     qt/QueryBuilder.h      qt/QueryBuilder.cpp
     qt/SchemaSync.h        qt/SchemaSync.cpp
+    qt/PrivateFiles.h      qt/PrivateFiles.cpp
     qt/SchemaSyncDialog.h  qt/SchemaSyncDialog.cpp
 )
 # QScintilla (the query editor): system package, same pattern as the

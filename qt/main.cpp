@@ -23,6 +23,7 @@
  *           … same downstream machinery as --autoconnect=, PostgreSQL driver
  */
 #include "MainWindow.h"
+#include "PrivateFiles.h"
 #include "Selftest.h"
 #include "ConnectionDialog.h"
 #include "ConnectionParams.h"
@@ -401,6 +402,8 @@ int main(int argc, char *argv[])
     app.setAttribute(Qt::AA_DontShowIconsInMenus, false);
     QApplication::setApplicationName(QStringLiteral("OpenYog"));
     QApplication::setOrganizationName(QStringLiteral("OpenYog"));
+    /* saved connections, history, the last session: the user's alone */
+    PrivateFiles::protectAppFolders();
     QApplication::setApplicationVersion(QStringLiteral(OPENYOG_VERSION));
     /* the installed .desktop file's name (CMakeLists.txt install rules):
      * lets a Wayland compositor match the window to its entry and icon */

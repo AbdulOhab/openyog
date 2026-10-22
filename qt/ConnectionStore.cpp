@@ -1,4 +1,5 @@
 #include "ConnectionStore.h"
+#include "PrivateFiles.h"
 
 #include "SecretStore.h"
 #include "wyIni.h"
@@ -187,6 +188,9 @@ void ConnectionStore::save(const ConnectionParams &params)
     const QByteArray p = iniPath().toUtf8();
 
     wyIni::IniWriteString(n, "driver", toUtf8(driverTypeToString(params.driverType)), p);
+    /* the file exists now; the owner's alone before any password goes in
+     * (wyIni rewrites it in place, so the mode stays) */
+    PrivateFiles::restrict(iniPath());
 
     if(params.driverType == SqlDriverType::Sqlite) {
         wyIni::IniWriteString(n, "filepath", toUtf8(params.filePath), p);

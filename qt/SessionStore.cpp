@@ -1,4 +1,5 @@
 #include "SessionStore.h"
+#include "PrivateFiles.h"
 
 #include <QDir>
 #include <QFile>
@@ -31,7 +32,8 @@ void save(const QJsonObject &root)
     if(!f.open(QIODevice::WriteOnly))
         return;
     f.write(QJsonDocument(root).toJson());
-    f.commit();
+    if(f.commit())
+        PrivateFiles::restrict(sessionPath()); /* query text: the owner's alone */
 }
 } // namespace
 
