@@ -18,13 +18,13 @@ if(WIN32)
     add_compile_definitions(UNICODE _UNICODE)
 endif()
 
-# The bundled include/mysql (Connector/C 2.3.3) predates the system client lib;
-# resolve <mysql/mysql.h> to the SYSTEM headers first. We do this by linking
-# <build>/shim/mysql -> the dir containing mysql/mysql.h (port/build.sh makes
-# the same link in its own tree), so both build paths share one precedence
-# story. The links live in the build tree, not the source tree: a native and
-# a mingw-w64 cross build each point at their own headers. The system
-# include/mysql dir is ALSO added as an include path directly: upstream's
+# <mysql/mysql.h> and <sqlite3.h> resolve to the client libraries the build
+# links: <build>/shim/mysql links to the system's mysql/ header dir and
+# <build>/shim/sqlite3.h to its sqlite3.h, ahead of include/ on the include
+# path (port/build.sh makes the same links in its own tree). The links live
+# in the build tree, not the source tree: a native and a mingw-w64 cross
+# build each point at their own headers. The system include/mysql dir is
+# ALSO added as an include path directly: upstream's
 # Windows spellings (Datatype.h's flat <mysql.h> under _WIN32, live again in
 # the mingw cross build) need mysql.h and its flat siblings (mariadb_com.h
 # ...) lookup-able together, which a single symlinked header can't provide.
@@ -34,19 +34,15 @@ find_path(MDB_MYSQL_DIR mysql/mysql.h
           REQUIRED)
 set(SHIM_DIR "${CMAKE_CURRENT_BINARY_DIR}/shim")
 file(REMOVE_RECURSE "${SHIM_DIR}")
-file(MAKE_DIRECTORY "${SHIM_DIR}/mysql")
-file(CREATE_LINK "${MDB_MYSQL_DIR}/mysql" "${SHIM_DIR}/mysql/mysql" SYMBOLIC)
+file(MAKE_DIRECTORY "${SHIM_DIR}")
+file(CREATE_LINK "${MDB_MYSQL_DIR}/mysql" "${SHIM_DIR}/mysql" SYMBOLIC)
 # where older configures put these links: left there, they'd shadow the
 # build tree's (port/shim is still on the include path for its own headers)
 file(REMOVE_RECURSE "${CMAKE_CURRENT_SOURCE_DIR}/port/shim/mysql")
 file(REMOVE "${CMAKE_CURRENT_SOURCE_DIR}/port/shim/mysql.h"
             "${CMAKE_CURRENT_SOURCE_DIR}/port/shim/sqlite3.h")
 
-# Same story for sqlite3.h: include/sqlite3.h is a bundled amalgamation
-# header that predates the system libsqlite3 we link against below — shim
-# it to the system header so headers and the linked .so actually match
-# (also fixes src/wySqlite.cpp, previously only exercised via smoketest's
-# own explicit ${SQLITE3_LIBRARY} link against the mismatched bundled header).
+# Same for sqlite3.h, the system libsqlite3's header.
 find_path(SYS_SQLITE3_DIR sqlite3.h
           PATHS /usr/include /usr/local/include
           DOC "Directory containing sqlite3.h"
