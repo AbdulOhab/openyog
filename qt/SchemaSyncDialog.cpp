@@ -198,14 +198,22 @@ void SchemaSyncDialog::compareNow()
     m_filling = true;
     QHash<QString, QTreeWidgetItem *> tables;
     for(const Change &c : std::as_const(m_changes)) {
-        QTreeWidgetItem *table = tables.value(c.table);
+        /* a table's changes under it; a view, routine or trigger on its own */
+        const QString group = c.kind + QLatin1Char('\n') + c.table;
+        QTreeWidgetItem *table = tables.value(group);
         if(!table) {
+            static const QHash<QString, QString> icons = {
+                {QString(), QStringLiteral("table.ico")},
+                {QStringLiteral("VIEW"), QStringLiteral("alterview.ico")},
+                {QStringLiteral("PROCEDURE"), QStringLiteral("process.ico")},
+                {QStringLiteral("FUNCTION"), QStringLiteral("alterfunction.ico")},
+                {QStringLiteral("TRIGGER"), QStringLiteral("altertrigger.ico")}};
             table = new QTreeWidgetItem(m_tree, {c.table});
-            table->setIcon(0, Icons::get(QStringLiteral("table.ico")));
+            table->setIcon(0, Icons::get(icons.value(c.kind, QStringLiteral("table.ico"))));
             table->setFlags(table->flags() | Qt::ItemIsUserCheckable | Qt::ItemIsAutoTristate);
             table->setCheckState(0, Qt::Unchecked);
             table->setExpanded(true);
-            tables.insert(c.table, table);
+            tables.insert(group, table);
         }
         QString what = SchemaSync::describe(c);
         if(c.action == Action::DropTable || c.action == Action::DropColumn)
@@ -256,11 +264,12 @@ void SchemaSyncDialog::updateScript()
     m_script->setReadOnly(true);
     if(m_targetEndpoint >= 0)
         m_status->setText(m_changes.isEmpty()
-                              ? QStringLiteral("%1 and %2 have the same tables, columns, keys and "
-                                               "foreign keys.")
+                              ? QStringLiteral("%1 and %2 have the same tables, columns, keys, "
+                                               "foreign keys, views, routines and triggers.")
                                     .arg(m_source.database, m_target.database)
-                              : QStringLiteral("%1 differences, %2 picked. Dropping a table or a "
-                                               "column, and table options, start unticked.")
+                              : QStringLiteral("%1 differences, %2 picked. Dropping a table, a "
+                                               "column, a view, routine or trigger, and table "
+                                               "options, start unticked.")
                                     .arg(m_changes.size())
                                     .arg(picked.size()));
     m_open->setEnabled(!picked.isEmpty());

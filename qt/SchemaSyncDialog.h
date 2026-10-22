@@ -4,8 +4,8 @@
  * it to the target's query editor or a file.
  *
  * It never changes a database itself: the script is there to be read and
- * run by hand. Dropping a table or a column, and table option changes, start
- * unticked. SchemaSync does the comparing and writing; this is the picking. */
+ * run by hand. Dropping a table, a column, a view, routine or trigger, and
+ * table option changes, start unticked. SchemaSync does the comparing and writing; this is the picking. */
 #pragma once
 
 #include "SchemaSync.h"

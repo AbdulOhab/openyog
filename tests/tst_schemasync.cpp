@@ -280,6 +280,152 @@ private slots:
         QVERIFY(sql.contains("-- Not done here:\n--   employees: change column name ("));
     }
 
+    void mySqlObjects()
+    {
+        Schema source, target;
+        source.database = "shop";
+        target.database = "shop_copy";
+        /* the same view, but for its definer and the database naming its tables */
+        source.objects << Object{"VIEW", "v_same",
+                                 "CREATE ALGORITHM=UNDEFINED DEFINER=`root`@`%` SQL SECURITY "
+                                 "DEFINER VIEW `v_same` AS select `shop`.`t`.`a` AS `a` from "
+                                 "`shop`.`t`"};
+        target.objects << Object{"VIEW", "v_same",
+                                 "CREATE ALGORITHM=UNDEFINED DEFINER=`app`@`localhost` SQL "
+                                 "SECURITY DEFINER VIEW `v_same` AS select `shop_copy`.`t`.`a` AS "
+                                 "`a` from `shop_copy`.`t`"};
+        source.objects << Object{"VIEW", "v_changed",
+                                 "CREATE DEFINER=`root`@`%` VIEW `v_changed` AS select 2 AS `x`"};
+        target.objects << Object{"VIEW", "v_changed",
+                                 "CREATE DEFINER=`root`@`%` VIEW `v_changed` AS select 1 AS `x`"};
+        source.objects << Object{"PROCEDURE", "p_new",
+                                 "CREATE DEFINER=`root`@`%` PROCEDURE `p_new`()\nBEGIN\n  SELECT "
+                                 "1;\n  SELECT 2;\nEND"};
+        source.objects << Object{"TRIGGER", "trg",
+                                 "CREATE DEFINER=`root`@`%` TRIGGER `trg` BEFORE INSERT ON `t` FOR "
+                                 "EACH ROW SET NEW.a = 1"};
+        target.objects << Object{"TRIGGER", "trg",
+                                 "CREATE DEFINER=`root`@`%` TRIGGER `trg` BEFORE INSERT ON `t` FOR "
+                                 "EACH ROW SET NEW.a = 2"};
+        /* a function and a procedure don't share names */
+        target.objects << Object{"FUNCTION", "p_new",
+                                 "CREATE FUNCTION `p_new`() RETURNS int RETURN 1"};
+
+        const QList<Change> changes = compare(source, target);
+        QCOMPARE(changes.size(), 4); /* not v_same */
+        const Change *view = find(changes, Action::AlterObject, "v_changed");
+        QVERIFY(view);
+        QCOMPARE(view->kind, QStringLiteral("VIEW"));
+        QCOMPARE(view->sql, QStringList{"CREATE OR REPLACE VIEW `v_changed` AS select 2 AS `x`"});
+        QVERIFY(view->prepare.isEmpty());
+        QCOMPARE(describe(*view), QStringLiteral("change view"));
+
+        const Change *proc = find(changes, Action::CreateObject, "p_new");
+        QVERIFY(proc && proc->compound && proc->pickedByDefault);
+        const Change *trigger = find(changes, Action::AlterObject, "trg");
+        QVERIFY(trigger);
+        QCOMPARE(trigger->prepare, QStringList{"DROP TRIGGER IF EXISTS `trg`"});
+        const Change *function = find(changes, Action::DropObject, "p_new");
+        QVERIFY(function && !function->pickedByDefault);
+        QCOMPARE(function->sql, QStringList{"DROP FUNCTION IF EXISTS `p_new`"});
+
+        const QString sql = script(changes, source, target);
+        /* drops first; then routines, views, triggers; compound bodies whole */
+        QVERIFY(sql.indexOf("DROP FUNCTION") < sql.indexOf("CREATE PROCEDURE"));
+        QVERIFY(sql.indexOf("DROP TRIGGER") < sql.indexOf("CREATE PROCEDURE"));
+        QVERIFY(sql.indexOf("CREATE PROCEDURE") < sql.indexOf("CREATE OR REPLACE VIEW"));
+        QVERIFY(sql.indexOf("CREATE OR REPLACE VIEW") < sql.indexOf("CREATE TRIGGER"));
+        QVERIFY2(sql.contains("DELIMITER $$\nCREATE PROCEDURE `p_new`()\nBEGIN\n  SELECT 1;\n  "
+                              "SELECT 2;\nEND\n$$\nDELIMITER ;"),
+                 qPrintable(sql));
+        QVERIFY(!sql.contains("DEFINER=`"));
+    }
+
+    void viewsAfterTheViewsTheyRead()
+    {
+        const QList<Object> views =
+            orderViews({{"VIEW", "a_top", "CREATE VIEW a_top AS SELECT * FROM m_mid"},
+                        {"VIEW", "m_mid", "CREATE VIEW m_mid AS SELECT * FROM \"z_base\""},
+                        {"VIEW", "z_base", "CREATE VIEW z_base AS SELECT 1 AS m_middle"},
+                        {"VIEW", "loop1", "CREATE VIEW loop1 AS SELECT * FROM loop2"},
+                        {"VIEW", "loop2", "CREATE VIEW loop2 AS SELECT * FROM loop1"}});
+        QStringList names;
+        for(const Object &v : views)
+            names << v.name;
+        QCOMPARE(names.size(), 5);
+        QVERIFY(names.indexOf("z_base") < names.indexOf("m_mid"));
+        QVERIFY(names.indexOf("m_mid") < names.indexOf("a_top"));
+    }
+
+    void postgresObjectsAcrossSchemas()
+    {
+        Schema source, target;
+        source.driver = target.driver = SqlDriverType::Postgres;
+        source.database = "public";
+        target.database = "sync_target";
+        source.objects << Object{"FUNCTION", "f",
+                                 "CREATE OR REPLACE FUNCTION public.f()\n RETURNS trigger\n "
+                                 "LANGUAGE plpgsql\nAS $function$\nBEGIN\n  RETURN NEW;\nEND;\n"
+                                 "$function$\n"};
+        target.objects << Object{"FUNCTION", "f",
+                                 "CREATE OR REPLACE FUNCTION sync_target.f()\n RETURNS trigger\n "
+                                 "LANGUAGE plpgsql\nAS $function$\nBEGIN\n  RETURN NULL;\nEND;\n"
+                                 "$function$\n"};
+        source.objects << Object{"VIEW", "v",
+                                 "CREATE VIEW \"public\".\"v\" AS\n SELECT e.id\n   FROM employees "
+                                 "e;"};
+        target.objects << Object{"VIEW", "v",
+                                 "CREATE VIEW \"sync_target\".\"v\" AS\n SELECT e.id\n   FROM "
+                                 "sync_target.employees e;"};
+        source.objects << Object{"TRIGGER", "trg",
+                                 "CREATE TRIGGER trg BEFORE INSERT ON public.employees FOR EACH "
+                                 "ROW EXECUTE FUNCTION f()"};
+        target.objects << Object{"TRIGGER", "old_trg",
+                                 "CREATE TRIGGER old_trg BEFORE UPDATE ON sync_target.employees "
+                                 "FOR EACH ROW EXECUTE FUNCTION sync_target.f()"};
+
+        const QList<Change> changes = compare(source, target);
+        QCOMPARE(changes.size(), 3); /* the view is the same one */
+        const Change *f = find(changes, Action::AlterObject, "f");
+        QVERIFY(f && f->prepare.isEmpty() && !f->compound);
+        QVERIFY2(f->sql.value(0).startsWith("CREATE OR REPLACE FUNCTION \"sync_target\".f()"),
+                 qPrintable(f->sql.value(0)));
+        const Change *trg = find(changes, Action::CreateObject, "trg");
+        QVERIFY(trg);
+        QCOMPARE(trg->sql, QStringList{"CREATE TRIGGER trg BEFORE INSERT ON \"sync_target\"."
+                                       "employees FOR EACH ROW EXECUTE FUNCTION f()"});
+        const Change *old = find(changes, Action::DropObject, "old_trg");
+        QVERIFY(old);
+        QCOMPARE(old->sql, QStringList{"DROP TRIGGER IF EXISTS \"old_trg\" ON "
+                                       "sync_target.employees"});
+
+        /* unqualified names in the CREATEs resolve in the target schema */
+        const QString sql = script(changes, source, target);
+        QVERIFY(sql.contains("BEGIN;\nSELECT set_config('search_path', '\"sync_target\", ' || "
+                             "current_setting('search_path'), true);\n"));
+        QVERIFY(!sql.contains("DELIMITER"));
+        QVERIFY(sql.indexOf("FUNCTION \"sync_target\".f()") < sql.indexOf("CREATE TRIGGER"));
+    }
+
+    void sqliteObjects()
+    {
+        Schema source, target;
+        source.driver = target.driver = SqlDriverType::Sqlite;
+        source.database = target.database = "main";
+        source.objects << Object{"VIEW", "v", "CREATE VIEW v AS SELECT 2"}
+                       << Object{"TRIGGER", "t",
+                                 "CREATE TRIGGER t AFTER INSERT ON x BEGIN SELECT 1; SELECT 2; "
+                                 "END"};
+        target.objects << Object{"VIEW", "v", "CREATE VIEW v AS SELECT 1"};
+        const QList<Change> changes = compare(source, target);
+        QCOMPARE(changes.size(), 2);
+        const Change *v = find(changes, Action::AlterObject, "v");
+        QVERIFY(v);
+        QCOMPARE(v->prepare, QStringList{"DROP VIEW IF EXISTS \"v\""}); /* no OR REPLACE */
+        QCOMPARE(v->sql, QStringList{"CREATE VIEW v AS SELECT 2"});
+        QVERIFY(find(changes, Action::CreateObject, "t")->compound);
+    }
+
     void identicalSchemasMatch()
     {
         Schema a{SqlDriverType::Mysql, "a", {parseMySql("employees", kSourceEmployees)}};

@@ -26,3 +26,16 @@ CREATE TABLE sync_target.legacy_notes (
 
 -- emp_dept is missing altogether: created
 INSERT INTO sync_target.employees (name, salary) VALUES ('Old timer', 100);
+
+-- the view reads less: replaced; the trigger function returns something
+-- else: replaced; the trigger is missing: created; legacy_fn isn't in the
+-- source: dropped (when picked)
+CREATE VIEW sync_target.v_employee_dept AS SELECT e.id FROM sync_target.employees e;
+
+CREATE FUNCTION sync_target.trg_no_negative_salary() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    RETURN NULL;
+END;
+$$;
+
+CREATE FUNCTION sync_target.legacy_fn() RETURNS integer LANGUAGE sql AS $$ SELECT 1 $$;

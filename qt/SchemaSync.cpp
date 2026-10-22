@@ -5,6 +5,9 @@
 #include <QRegularExpression>
 #include <QSet>
 
+#include <algorithm>
+#include <functional>
+
 namespace SchemaSync {
 
 namespace {
@@ -97,6 +100,35 @@ QString normalized(const QString &definition, const Schema &side)
             break;
     }
     return collapse(definition);
+}
+
+/* MySQL: DEFINER=`user`@`host`, which says who created it, not what it is */
+QString withoutDefiner(const QString &create)
+{
+    static const QRegularExpression definer(
+        QStringLiteral(
+            "\\bDEFINER\\s*=\\s*(?:`[^`]*`|'[^']*'|[^\\s@]+)@(?:`[^`]*`|'[^']*'|\\S+)\\s*"),
+        QRegularExpression::CaseInsensitiveOption);
+    return QString(create).remove(definer);
+}
+
+/* a view's, routine's or trigger's CREATE without what differs between two
+ * copies of the same one: MySQL's definer, the database / schema's own name
+ * qualifying what is in it, a trailing ';', the layout */
+QString objectNormalized(const QString &create, const Schema &side)
+{
+    QString s = create.trimmed();
+    while(s.endsWith(QLatin1Char(';')))
+        s.chop(1);
+    switch(side.driver) {
+        case SqlDriverType::Mysql:
+            return collapse(withoutDefiner(s).remove(quoteMySql(side.database) + QLatin1Char('.')));
+        case SqlDriverType::Postgres:
+            return normalizePostgres(s, side.database);
+        case SqlDriverType::Sqlite:
+            break;
+    }
+    return collapse(s);
 }
 
 /* PostgreSQL: the source schema's name, wherever it qualifies something,
@@ -310,7 +342,89 @@ Schema load(IDbConnection *conn, const QString &db)
             }
         }
     }
+
+    /* views, routines and triggers; on PostgreSQL not the ones an extension
+     * put there (pg_stat_statements' views, uuid-ossp's functions…): those
+     * come and go with CREATE EXTENSION */
+    QSet<QString> fromExtensions;
+    if(s.driver == SqlDriverType::Postgres) {
+        const QString schema = QString(db).replace(QLatin1Char('\''), QStringLiteral("''"));
+        DbResultSet rs;
+        conn->query(QStringLiteral("SELECT c.relname FROM pg_depend d "
+                                   "JOIN pg_class c ON c.oid = d.objid "
+                                   "JOIN pg_namespace n ON n.oid = c.relnamespace "
+                                   "WHERE d.deptype = 'e' AND d.classid = 'pg_class'::regclass "
+                                   "AND n.nspname = '%1' "
+                                   "UNION SELECT p.proname FROM pg_depend d "
+                                   "JOIN pg_proc p ON p.oid = d.objid "
+                                   "JOIN pg_namespace n ON n.oid = p.pronamespace "
+                                   "WHERE d.deptype = 'e' AND d.classid = 'pg_proc'::regclass "
+                                   "AND n.nspname = '%1'")
+                        .arg(schema),
+                    &rs, nullptr);
+        for(const QStringList &row : rs.rows)
+            fromExtensions.insert(row.value(0));
+    }
+    const auto object = [&](const QString &kind, const QString &name) {
+        QString error;
+        return Object{kind, name, conn->showCreate(kind, db, name, &error).trimmed()};
+    };
+    QList<Object> routines, views, triggers;
+    QSet<QString> seen;
+    for(const QStringList &row : conn->listRoutines(db).rows) {
+        const QString kind = row.value(1).toUpper() == QStringLiteral("PROCEDURE")
+                                 ? QStringLiteral("PROCEDURE")
+                                 : QStringLiteral("FUNCTION");
+        /* an overloaded PostgreSQL routine: showCreate() reads one of them */
+        if(fromExtensions.contains(row.value(0)) || seen.contains(kind + row.value(0)))
+            continue;
+        seen.insert(kind + row.value(0));
+        routines << object(kind, row.value(0));
+    }
+    for(const QString &name : conn->listTables(db, QStringLiteral("VIEW")))
+        if(!fromExtensions.contains(name))
+            views << object(QStringLiteral("VIEW"), name);
+    for(const QString &name : conn->listTriggers(db))
+        triggers << object(QStringLiteral("TRIGGER"), name);
+    const auto byName = [](const Object &a, const Object &b) {
+        return a.kind == b.kind ? a.name < b.name : a.kind < b.kind;
+    };
+    std::sort(routines.begin(), routines.end(), byName);
+    std::sort(views.begin(), views.end(), byName);
+    std::sort(triggers.begin(), triggers.end(), byName);
+    for(const QList<Object> &list : {routines, orderViews(views), triggers})
+        for(const Object &o : list)
+            if(!o.create.isEmpty())
+                s.objects << o;
     return s;
+}
+
+QList<Object> orderViews(const QList<Object> &views)
+{
+    /* B before A when A's CREATE names B: as a word, quoted or not */
+    const auto names = [](const Object &a, const Object &b) {
+        const QRegularExpression word(QStringLiteral("(?<![\\w$])") +
+                                      QRegularExpression::escape(b.name) +
+                                      QStringLiteral("(?![\\w$])"));
+        return a.create.contains(word);
+    };
+    QList<Object> ordered;
+    QSet<QString> done, onPath;
+    const std::function<void(int)> visit = [&](int i) {
+        const Object &v = views[i];
+        if(done.contains(v.name) || onPath.contains(v.name))
+            return; /* a cycle is cut where the walk meets itself */
+        onPath.insert(v.name);
+        for(int j = 0; j < views.size(); ++j)
+            if(j != i && names(v, views[j]))
+                visit(j);
+        onPath.remove(v.name);
+        done.insert(v.name);
+        ordered << v;
+    };
+    for(int i = 0; i < views.size(); ++i)
+        visit(i);
+    return ordered;
 }
 
 namespace {
@@ -500,6 +614,96 @@ public:
                    : alter(tableName, QStringLiteral("DROP CONSTRAINT ") + ident(name));
     }
 
+    /* the source's CREATE, for the target */
+    QString objectSql(const Object &o) const
+    {
+        QString s = o.create.trimmed();
+        while(s.endsWith(QLatin1Char(';')))
+            s.chop(1);
+        switch(m_target.driver) {
+            case SqlDriverType::Mysql:
+                /* unqualified, it lands in the target: the script USEs it */
+                return withoutDefiner(s).remove(quoteMySql(m_source.database) + QLatin1Char('.'));
+            case SqlDriverType::Postgres:
+                return moveSchema(s, m_source.database, m_target.database);
+            case SqlDriverType::Sqlite:
+                break;
+        }
+        return s;
+    }
+    static QString orReplace(const QString &create)
+    {
+        static const QRegularExpression lead(
+            QStringLiteral("^\\s*CREATE\\s+(?:OR\\s+REPLACE\\s+)?"),
+            QRegularExpression::CaseInsensitiveOption);
+        return QString(create).replace(lead, QStringLiteral("CREATE OR REPLACE "));
+    }
+    /* `o` is the target's */
+    QString dropObject(const Object &o, QString *note) const
+    {
+        switch(m_target.driver) {
+            case SqlDriverType::Mysql:
+                return QStringLiteral("DROP %1 IF EXISTS %2").arg(o.kind, quoteMySql(o.name));
+            case SqlDriverType::Postgres: {
+                if(o.kind != QStringLiteral("TRIGGER"))
+                    return QStringLiteral("DROP %1 IF EXISTS %2.%3")
+                        .arg(o.kind, quoteDouble(m_target.database), quoteDouble(o.name));
+                /* DROP TRIGGER name ON table: the table from its definition */
+                static const QRegularExpression on(
+                    QStringLiteral("\\bON\\s+((?:(?:\"(?:[^\"]|\"\")+\"|[A-Za-z_][\\w$]*)\\.)?"
+                                   "(?:\"(?:[^\"]|\"\")+\"|[A-Za-z_][\\w$]*))\\s+FOR\\b"),
+                    QRegularExpression::CaseInsensitiveOption);
+                const auto m = on.match(o.create);
+                if(!m.hasMatch()) {
+                    *note = QStringLiteral("the trigger's table isn't in its definition");
+                    return {};
+                }
+                return QStringLiteral("DROP TRIGGER IF EXISTS %1 ON %2")
+                    .arg(quoteDouble(o.name), m.captured(1));
+            }
+            case SqlDriverType::Sqlite:
+                break;
+        }
+        return QStringLiteral("DROP %1 IF EXISTS %2").arg(o.kind, quoteDouble(o.name));
+    }
+    /* a body of statements of its own, which a plain ';' would cut short;
+     * PostgreSQL's are dollar-quoted already */
+    bool compound(const QString &kind) const
+    {
+        switch(m_target.driver) {
+            case SqlDriverType::Mysql:
+                return kind != QStringLiteral("VIEW");
+            case SqlDriverType::Sqlite:
+                return kind == QStringLiteral("TRIGGER");
+            case SqlDriverType::Postgres:
+                break;
+        }
+        return false;
+    }
+    void createObject(Change &c, const Object &o) const
+    {
+        c.sql << objectSql(o);
+        c.compound = compound(o.kind);
+    }
+    /* replaced in place where the dialect can (what depends on it stays),
+     * dropped and created again where it can't */
+    void alterObject(Change &c, const Object &from, const Object &to) const
+    {
+        const bool postgres = m_target.driver == SqlDriverType::Postgres;
+        c.compound = compound(from.kind);
+        if(from.kind == QStringLiteral("VIEW") && m_target.driver != SqlDriverType::Sqlite) {
+            c.sql << orReplace(objectSql(from));
+        } else if(postgres && from.kind != QStringLiteral("TRIGGER")) {
+            c.sql << orReplace(objectSql(from)); /* pg_get_functiondef's own form */
+        } else {
+            const QString drop = dropObject(to, &c.note);
+            if(drop.isEmpty())
+                return;
+            c.prepare << drop;
+            c.sql << objectSql(from);
+        }
+    }
+
 private:
     const Schema &m_source;
     const Schema &m_target;
@@ -510,6 +714,14 @@ const Table *findTable(const Schema &s, const QString &name)
     for(const Table &t : s.tables)
         if(t.name == name)
             return &t;
+    return nullptr;
+}
+
+const Object *findObject(const Schema &s, const QString &kind, const QString &name)
+{
+    for(const Object &o : s.objects)
+        if(o.kind == kind && o.name == name)
+            return &o;
     return nullptr;
 }
 
@@ -652,6 +864,39 @@ QList<Change> compare(const Schema &source, const Schema &target)
         w.dropTable(c);
         out << c;
     }
+
+    for(const Object &so : source.objects) {
+        const Object *to = findObject(target, so.kind, so.name);
+        if(to && objectNormalized(so.create, source) == objectNormalized(to->create, target))
+            continue;
+        Change c;
+        c.kind = so.kind;
+        c.table = so.name;
+        c.source = so.create;
+        if(to) {
+            c.action = Action::AlterObject;
+            c.target = to->create;
+            w.alterObject(c, so, *to);
+        } else {
+            c.action = Action::CreateObject;
+            w.createObject(c, so);
+        }
+        out << c;
+    }
+    for(const Object &to : target.objects) {
+        if(findObject(source, to.kind, to.name))
+            continue;
+        Change c;
+        c.action = Action::DropObject;
+        c.kind = to.kind;
+        c.table = to.name;
+        c.target = to.create;
+        c.pickedByDefault = false;
+        const QString drop = w.dropObject(to, &c.note);
+        if(!drop.isEmpty())
+            c.sql << drop;
+        out << c;
+    }
     return out;
 }
 
@@ -683,63 +928,90 @@ QString describe(const Change &c)
             return QStringLiteral("drop foreign key %1").arg(n);
         case Action::AlterOptions:
             return QStringLiteral("change table options");
+        case Action::CreateObject:
+            return QStringLiteral("create %1").arg(c.kind.toLower());
+        case Action::AlterObject:
+            return QStringLiteral("change %1").arg(c.kind.toLower());
+        case Action::DropObject:
+            return QStringLiteral("drop %1").arg(c.kind.toLower());
     }
     return {};
 }
 
 QString script(const QList<Change> &changes, const Schema &source, const Schema &target)
 {
-    /* the order statements can run in: foreign keys out first (an index or
-     * column they use can't go while they're there), columns and keys, the
-     * missing tables, the extra ones, foreign keys back in last (everything
-     * they point at exists by then) */
-    const auto phase = [](Action a) {
-        switch(a) {
-            case Action::DropForeignKey:
+    /* the order statements can run in: views, routines and triggers out
+     * first (one may read what the rest takes away), then foreign keys (an
+     * index or column they use can't go while they're there), columns and
+     * keys, the missing tables, the extra ones, foreign keys back in
+     * (everything they point at exists by then), and last the routines, the
+     * views (they may call the routines) and the triggers */
+    const auto phase = [](const Change &c) {
+        switch(c.action) {
+            case Action::DropObject:
                 return 0;
-            case Action::DropKey:
+            case Action::DropForeignKey:
                 return 1;
-            case Action::DropColumn:
+            case Action::DropKey:
                 return 2;
-            case Action::AlterColumn:
+            case Action::DropColumn:
                 return 3;
-            case Action::AddColumn:
+            case Action::AlterColumn:
                 return 4;
+            case Action::AddColumn:
+                return 5;
             case Action::AddKey:
             case Action::AlterKey:
-                return 5;
-            case Action::AlterOptions:
                 return 6;
-            case Action::CreateTable:
+            case Action::AlterOptions:
                 return 7;
-            case Action::DropTable:
+            case Action::CreateTable:
                 return 8;
+            case Action::DropTable:
+                return 9;
             case Action::AddForeignKey:
             case Action::AlterForeignKey:
-                return 9;
+                return 10;
+            case Action::CreateObject:
+            case Action::AlterObject:
+                return c.kind == QStringLiteral("VIEW")      ? 12
+                       : c.kind == QStringLiteral("TRIGGER") ? 13
+                                                             : 11;
         }
-        return 9;
+        return 13;
     };
-    constexpr int kPhases = 10;
+    constexpr int kPhases = 14;
     QList<QStringList> blocks(kPhases);
     QStringList notDone;
+    bool objects = false;
     for(const Change &c : changes) {
         const QString title = QStringLiteral("-- %1: %2").arg(c.table, describe(c));
         if(c.sql.isEmpty() && c.prepare.isEmpty()) {
             notDone << QStringLiteral("--   %1: %2 (%3)").arg(c.table, describe(c), c.note);
             continue;
         }
+        objects = objects || c.action == Action::CreateObject || c.action == Action::AlterObject;
         if(!c.prepare.isEmpty()) {
-            /* an altered key / foreign key: its DROP with the drops */
-            const int at = c.action == Action::AlterForeignKey ? 0 : 1;
+            /* an altered object / key / foreign key: its DROP with the drops */
+            const int at = c.action == Action::AlterObject       ? 0
+                           : c.action == Action::AlterForeignKey ? 1
+                                                                 : 2;
             blocks[at] << title + QStringLiteral(" (drop the old one)");
             for(const QString &st : c.prepare)
                 blocks[at] << st + QLatin1Char(';');
         }
-        QStringList &b = blocks[phase(c.action)];
+        QStringList &b = blocks[phase(c)];
         b << title;
-        for(const QString &st : c.sql)
-            b << st + QLatin1Char(';');
+        if(c.compound) {
+            /* the newline before $$: a body may end in a '$' of its own */
+            b << QStringLiteral("DELIMITER $$");
+            for(const QString &st : c.sql)
+                b << st + QStringLiteral("\n$$");
+            b << QStringLiteral("DELIMITER ;");
+        } else {
+            for(const QString &st : c.sql)
+                b << st + QLatin1Char(';');
+        }
     }
 
     QStringList out;
@@ -754,6 +1026,13 @@ QString script(const QList<Change> &changes, const Schema &source, const Schema 
             out << QStringLiteral("BEGIN;");
             break;
     }
+    /* a view's or trigger's CREATE names what is in its own schema without
+     * it: found in the target's schema first while the script runs */
+    if(objects && target.driver == SqlDriverType::Postgres && source.database != target.database)
+        out << QStringLiteral("SELECT set_config('search_path', '%1, ' || "
+                              "current_setting('search_path'), true);")
+                   .arg(quoteDouble(target.database)
+                            .replace(QLatin1Char('\''), QStringLiteral("''")));
     for(const QStringList &b : std::as_const(blocks))
         if(!b.isEmpty())
             out << QString() << b;

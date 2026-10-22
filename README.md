@@ -59,9 +59,10 @@ Early but usable for day-to-day work against a local server. Working now:
   against the database's tables as they are then.
 - **Schema Sync** (Powertools ▸ Schema Synchronization Tool, Ctrl+Q): compare
   two databases of the same kind, on the same connection or two different
-  ones, and get the script that makes the target's tables, columns, keys and
-  foreign keys match the source's. Tick what to bring over; dropping a table
-  or a column starts unticked. The script goes to the target's query editor
+  ones, and get the script that makes the target's tables, columns, keys,
+  foreign keys, views, stored procedures, functions and triggers match the
+  source's. Tick what to bring over; dropping a table, a column or any other
+  object starts unticked. The script goes to the target's query editor
   or a file: nothing is run for you. SQLite changes it can't make in place
   (altering a column) are listed instead of scripted.
 - **Data Sync** (Powertools ▸ Database Synchronization Wizard, Ctrl+Alt+W):

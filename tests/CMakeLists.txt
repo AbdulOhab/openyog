@@ -266,7 +266,7 @@ if(OPENYOG_TEST_MYSQL)
              COMMAND openyog "--autoconnect=${OPENYOG_TEST_MYSQL}"
                      "--schemasync=${my_db}:${my_db}_sync:apply"
                      "--screenshot=${CMAKE_CURRENT_BINARY_DIR}/mysql-schemasync.png")
-    set_tests_properties(selftest_mysql_schemasync PROPERTIES PASS_REGULAR_EXPRESSION "schemasync: 10 changes\n.*employees: drop column retired \\(not picked\\)\n.*legacy_notes: drop table \\(not picked\\)\n.*schemasync after apply: 0 changes, 0 failed statements")
+    set_tests_properties(selftest_mysql_schemasync PROPERTIES PASS_REGULAR_EXPRESSION "schemasync: 15 changes\n.*employees: drop column retired \\(not picked\\)\n.*legacy_notes: drop table \\(not picked\\)\n.*calc_tax: create function\n.*refresh_stats: change procedure\n.*v_employee_dept: change view\n.*trg_employees_no_negative_salary: create trigger\n.*legacy_cleanup: drop procedure \\(not picked\\)\n.*DELIMITER \\$\\$\nCREATE PROCEDURE `refresh_stats`.*schemasync after apply: 0 changes, 0 failed statements")
     # Data Sync: <db>_data, the fixture's tables with rows that differ every
     # way, brought in line with the fixture's rows; comparing again finds none
     add_test(NAME mysql_data_fixture
@@ -363,7 +363,7 @@ if(OPENYOG_TEST_PG)
              COMMAND openyog "--autoconnectpg=${OPENYOG_TEST_PG}"
                      "--schemasync=public:sync_target:apply"
                      "--screenshot=${CMAKE_CURRENT_BINARY_DIR}/pg-schemasync.png")
-    set_tests_properties(selftest_pg_schemasync PROPERTIES PASS_REGULAR_EXPRESSION "schemasync: 10 changes\n.*employees: drop column retired \\(not picked\\)\n.*legacy_notes: drop table \\(not picked\\)\n.*schemasync after apply: 0 changes, 0 failed statements")
+    set_tests_properties(selftest_pg_schemasync PROPERTIES PASS_REGULAR_EXPRESSION "schemasync: 14 changes\n.*employees: drop column retired \\(not picked\\)\n.*legacy_notes: drop table \\(not picked\\)\n.*trg_no_negative_salary: change function\n.*v_employee_dept: change view\n.*trg_employees_no_negative_salary: create trigger\n.*legacy_fn: drop function \\(not picked\\)\n.*schemasync after apply: 0 changes, 0 failed statements")
     # Data Sync: the datasync_target schema's rows brought in line with public's
     add_test(NAME pg_data_fixture
              COMMAND "${CMAKE_COMMAND}" -DMODE=pg-fixture "-DSERVER=${OPENYOG_TEST_PG}"
