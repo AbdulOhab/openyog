@@ -7,9 +7,12 @@
 #include "ObjectBrowser.h"
 #include "QueryBuilder.h"
 #include "SchemaDesigner.h"
+#include "SchemaSyncDialog.h"
+#include "SqlSplit.h"
 #include "SessionStore.h"
 #include "db/IDbConnection.h"
 
+#include <QApplication>
 #include <QFile>
 #include <QTextStream>
 
@@ -411,5 +414,66 @@ QStringList MainWindow::selftestQueryBuilder(const QString &spec)
     const int rows = tab->queryRowCountForTest(sql, &error);
     out << (rows < 0 ? QStringLiteral("querybuilder run failed: ") + error
                      : QStringLiteral("querybuilder rows: %1").arg(rows));
+    return out;
+}
+
+QStringList MainWindow::selftestSchemaSync(const QString &spec)
+{
+    auto *tab = currentTab();
+    const QStringList parts = spec.split(QLatin1Char(':'));
+    if(!tab || parts.size() < 2)
+        return {QStringLiteral("schemasync: need a connection and SOURCE:TARGET")};
+    const auto changeLines = [](const QList<SchemaSync::Change> &changes) {
+        QStringList out;
+        for(const SchemaSync::Change &c : changes)
+            out << QStringLiteral("schemasync change %1: %2%3%4")
+                       .arg(c.table, SchemaSync::describe(c),
+                            c.pickedByDefault ? QString() : QStringLiteral(" (not picked)"),
+                            c.note.isEmpty() ? QString()
+                                             : QStringLiteral(" (not done: %1)").arg(c.note));
+        return out;
+    };
+    const SchemaSync::Schema source = tab->syncSchema(parts[0]);
+    SchemaSync::Schema target = tab->syncSchema(parts[1]);
+    const QList<SchemaSync::Change> changes = SchemaSync::compare(source, target);
+    QStringList out{QStringLiteral("schemasync: %1 changes").arg(changes.size())};
+    out << changeLines(changes);
+
+    /* what the dialog shows: picked by default, plus what can't be done */
+    SchemaSyncDialog dialog({{tab->title(),
+                              tab->driverType(),
+                              [tab] { return tab->databases(); },
+                              [tab] { return tab->defaultDb(); },
+                              [tab](const QString &db) { return tab->syncSchema(db); },
+                              {}}},
+                            this);
+    dialog.compareForTest(0, parts[0], 0, parts[1]);
+    for(const QString &part : parts.mid(2))
+        if(part.startsWith(QStringLiteral("shot="))) {
+            dialog.show();
+            QApplication::processEvents();
+            dialog.grab().save(part.mid(5));
+        }
+    out << QStringLiteral("schemasync script:") << dialog.scriptText().split(QLatin1Char('\n'));
+
+    if(parts.value(2) == QStringLiteral("apply")) {
+        /* every change it can make, the unpicked ones too */
+        const QString all = SchemaSync::script(changes, source, target);
+        int failed = 0;
+        for(const QString &statement : splitStatements(all, tab->driverType())) {
+            QString error;
+            if(tab->queryRowCountForTest(statement, &error) < 0) {
+                ++failed;
+                out << QStringLiteral("schemasync apply failed: %1 -- %2")
+                           .arg(statement.simplified(), error);
+            }
+        }
+        target = tab->syncSchema(parts[1]);
+        const QList<SchemaSync::Change> left = SchemaSync::compare(source, target);
+        out << QStringLiteral("schemasync after apply: %1 changes, %2 failed statements")
+                   .arg(left.size())
+                   .arg(failed);
+        out << changeLines(left);
+    }
     return out;
 }

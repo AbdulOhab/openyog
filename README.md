@@ -50,6 +50,13 @@ Early but usable for day-to-day work against a local server. Working now:
   columns, then give them aliases, aggregates, sorting and conditions in the
   grid. The SQL follows every change and goes to a query editor or runs
   straight away.
+- **Schema Sync** (Powertools ▸ Schema Synchronization Tool, Ctrl+Q): compare
+  two databases of the same kind, on the same connection or two different
+  ones, and get the script that makes the target's tables, columns, keys and
+  foreign keys match the source's. Tick what to bring over; dropping a table
+  or a column starts unticked. The script goes to the target's query editor
+  or a file: nothing is run for you. SQLite changes it can't make in place
+  (altering a column) are listed instead of scripted.
 - **Export**: Backup database as a SQL dump; export a result set as CSV.
 - **Themes**: light (SQLyog "Flat" palette) and dark.
 

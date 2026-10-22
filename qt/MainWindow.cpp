@@ -3,6 +3,7 @@
  * MainWindowMenus.cpp and MainWindowToolsMenus.cpp; the selftest hooks live
  * in MainWindowSelftest.cpp. */
 #include "MainWindow.h"
+#include "SchemaSyncDialog.h"
 #include "ConnectionDialog.h"
 #include "ConnectionStore.h"
 #include "ConnectionTab.h"
@@ -21,6 +22,7 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QMessageBox>
+#include <QPointer>
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QCloseEvent>
@@ -493,4 +495,45 @@ void MainWindow::restoreLastSession()
         QApplication::processEvents(); /* show that before the connect blocks */
         openAndRun(p, false);
     }
+}
+
+void MainWindow::openSchemaSync()
+{
+    /* every connected tab, the current one first (the default source) */
+    QList<ConnectionTab *> tabs;
+    if(ConnectionTab *current = currentTab(); current && current->isConnected())
+        tabs << current;
+    for(int i = 0; i < m_tabs->count(); ++i)
+        if(auto *t = qobject_cast<ConnectionTab *>(m_tabs->widget(i));
+           t && t->isConnected() && !tabs.contains(t))
+            tabs << t;
+    if(tabs.isEmpty()) {
+        QMessageBox::information(this, QStringLiteral("Schema Synchronization"),
+                                 QStringLiteral("Open a connection first."));
+        return;
+    }
+    QList<SchemaSyncDialog::Endpoint> endpoints;
+    for(ConnectionTab *t : std::as_const(tabs)) {
+        /* the dialog can outlive a tab closed behind it */
+        QPointer<ConnectionTab> tab(t);
+        SchemaSyncDialog::Endpoint e;
+        e.label = t->title();
+        e.driver = t->driverType();
+        e.databases = [tab] { return tab ? tab->databases() : QStringList(); };
+        e.currentDatabase = [tab] { return tab ? tab->defaultDb() : QString(); };
+        e.load = [tab](const QString &db) {
+            return tab ? tab->syncSchema(db) : SchemaSync::Schema();
+        };
+        e.openInEditor = [this, tab](const QString &sql) {
+            if(!tab)
+                return;
+            m_tabs->setCurrentWidget(tab);
+            tab->openEditorWithSql(QStringLiteral("Schema Sync"), sql);
+            activateWindow();
+        };
+        endpoints << e;
+    }
+    auto *dialog = new SchemaSyncDialog(endpoints, this);
+    dialog->setAttribute(Qt::WA_DeleteOnClose);
+    dialog->show();
 }

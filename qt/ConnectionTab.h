@@ -10,6 +10,7 @@
 #pragma once
 
 #include "ConnectionParams.h"
+#include "SchemaSync.h"
 #include "SessionStore.h"
 #include "SqlCompletion.h"
 #include "SqlEditor.h"
@@ -177,6 +178,8 @@ public:
     /* File ▸ New Query Builder: a query-building tab for `database` (default:
      * the current one) */
     QueryBuilder *openQueryBuilder(const QString &database = {});
+    /* Schema Sync: `database`'s tables as SchemaSync reads them */
+    SchemaSync::Schema syncSchema(const QString &database);
     /* --querybuilder selftest: rows `sql` returns on this tab's connection, or
      * -1 and why not */
     int queryRowCountForTest(const QString &sql, QString *error);

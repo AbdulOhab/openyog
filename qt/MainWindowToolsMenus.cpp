@@ -345,8 +345,10 @@ void MainWindow::buildPowertoolsMenu()
         ->setIcon(Icons::get(QStringLiteral("dbsync_16.ico")));
     addDisabled(powertools, QStringLiteral("&Visual Data Comparison Wizard…\tCtrl+Alt+Q"))
         ->setIcon(Icons::get(QStringLiteral("Sync_16.ico")));
-    addDisabled(powertools, QStringLiteral("Schema &Synchronization Tool…\tCtrl+Q"))
-        ->setIcon(Icons::get(QStringLiteral("schema.ico")));
+    QAction *schemaSync =
+        powertools->addAction(QStringLiteral("Schema &Synchronization Tool…\tCtrl+Q"));
+    schemaSync->setIcon(Icons::get(QStringLiteral("schema.ico")));
+    connect(schemaSync, &QAction::triggered, this, &MainWindow::openSchemaSync);
     powertools->addSeparator();
     addDisabled(powertools, QStringLiteral("Import E&xternal Data…\tCtrl+Alt+O"))
         ->setIcon(Icons::get(QStringLiteral("odbc.ico")));

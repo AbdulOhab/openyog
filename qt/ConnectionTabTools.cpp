@@ -397,6 +397,13 @@ QueryBuilder *ConnectionTab::openQueryBuilder(const QString &database)
     return builder;
 }
 
+SchemaSync::Schema ConnectionTab::syncSchema(const QString &database)
+{
+    if(!m_conn)
+        return {};
+    return SchemaSync::load(m_conn, database);
+}
+
 int ConnectionTab::queryRowCountForTest(const QString &sql, QString *error)
 {
     DbResultSet rs;

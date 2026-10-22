@@ -53,6 +53,13 @@ public:
     QStringList selftestSchemaDesigner(const QString &exportFile);
     /* --querybuilder=table:col,col+table:col selftest: build it, print the SQL, run it */
     QStringList selftestQueryBuilder(const QString &spec);
+    /* --schemasync=SRC:TGT[:apply][:shot=FILE.png] selftest: compare two
+     * databases of the current connection, print the changes and the script;
+     * apply: run every change the script can make, then compare again; shot:
+     * save the dialog as it shows them */
+    QStringList selftestSchemaSync(const QString &spec);
+    /* Powertools ▸ Schema Synchronization Tool */
+    void openSchemaSync();
     void selftestUseDatabase(const QString &db);           /* --usedb= selftest */
     void selftestExpandDatabase(const QString &name);      /* --expandpgdb= selftest */
     void selftestSelectBrowserItem(const QString &path);   /* --selecttreepath= selftest */
