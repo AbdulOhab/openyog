@@ -8,8 +8,18 @@ on:
 
 jobs:
   linux:
-    name: Linux build + tests
+    name: Linux build + tests (${{ matrix.build }})
     runs-on: ubuntu-latest
+    # the same build and tests twice: as is, and with AddressSanitizer,
+    # UndefinedBehaviorSanitizer and LeakSanitizer
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - build: plain
+            flags: ""
+          - build: sanitizers
+            flags: "-fsanitize=address,undefined -fno-omit-frame-pointer -fno-sanitize-recover=undefined"
     # Arch matches the development setup (README's pacman line): current Qt 6
     # and qscintilla-qt6. Ubuntu LTS ships a Qt several minor versions older.
     container: archlinux:latest
@@ -47,6 +57,7 @@ jobs:
       # newer Arch clang may disagree on a few lines, in which case reformat
       # and commit rather than loosening the check
       - name: clang-format
+        if: matrix.build == 'plain'
         run: clang-format --dry-run --Werror qt/*.cpp qt/*.h qt/db/*.cpp qt/db/*.h tests/*.cpp tests/*.h
 
       # an SSH server in the job container for the tunnel selftests: it
@@ -64,12 +75,29 @@ jobs:
           -DOPENYOG_TEST_MYSQL=mariadb:3306:root:root:openyog_test
           -DOPENYOG_TEST_PG=postgres:5432:postgres:root:openyog_test
           -DOPENYOG_TEST_SSH=127.0.0.1:22:tunnel:tunnelpw
+          "-DCMAKE_C_FLAGS=${{ matrix.flags }}" "-DCMAKE_CXX_FLAGS=${{ matrix.flags }}"
+          "-DCMAKE_EXE_LINKER_FLAGS=${{ matrix.flags }}"
 
       - name: Build
         run: cmake --build build
 
+      # sanitizer reports go to files: a selftest judged by its output alone
+      # would pass with one printed after what it looks for
       - name: Test
-        run: ctest --test-dir build --output-on-failure
+        run: |
+          mkdir -p sanitizer
+          export ASAN_OPTIONS="detect_leaks=1:log_path=$PWD/sanitizer/asan"
+          export UBSAN_OPTIONS="print_stacktrace=1:halt_on_error=1:log_path=$PWD/sanitizer/ubsan"
+          ctest --test-dir build --output-on-failure
+
+      - name: Sanitizer reports
+        if: always() && matrix.build == 'sanitizers'
+        run: |
+          if ls sanitizer/* >/dev/null 2>&1; then
+            cat sanitizer/*
+            exit 1
+          fi
+          echo "no sanitizer reports"
 
   arch-package:
     name: Arch package (makepkg)

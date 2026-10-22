@@ -81,7 +81,9 @@ ctest --test-dir build-cmake --output-on-failure   # unit tests + selftests
 
 CI (`.github/workflows/ci.yml`) runs the same build, `ctest` (including
 the live MySQL/PostgreSQL selftests against throwaway MariaDB and PostgreSQL
-containers), and a `clang-format` check on every push and pull request. To
+containers), and a `clang-format` check on every push and pull request; it
+runs the tests a second time on a build with AddressSanitizer,
+UndefinedBehaviorSanitizer and LeakSanitizer, which fails on any report. To
 run the live selftests locally, point CMake at throwaway databases — their
 fixtures drop and recreate tables:
 
