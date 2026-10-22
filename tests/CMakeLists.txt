@@ -24,6 +24,11 @@ openyog_unit_test(tst_sessionstore "${QT_SRC}/SessionStore.cpp" "${QT_SRC}/Priva
 openyog_unit_test(tst_schemadiagram "${QT_SRC}/SchemaDiagram.cpp")
 openyog_unit_test(tst_querybuild "${QT_SRC}/QueryBuild.cpp")
 openyog_unit_test(tst_schemasync "${QT_SRC}/SchemaSync.cpp")
+# DataSync against real SQLite databases, through the app's own connection
+openyog_unit_test(tst_datasync "${QT_SRC}/DataSync.cpp" "${QT_SRC}/SqlDump.cpp"
+                  "${QT_SRC}/db/SqliteConnection.cpp")
+target_link_libraries(tst_datasync PRIVATE ${SQLITE3_LIBRARY})
+target_include_directories(tst_datasync PRIVATE "${SHIM_DIR}")
 
 # ConnectionStore against an in-memory keychain: FakeSecretStore.cpp takes
 # qt/SecretStore.cpp's place, so the keychain, INI-fallback and migration
@@ -218,15 +223,33 @@ if(OPENYOG_TEST_MYSQL)
                      "--schemasync=${my_db}:${my_db}_sync:apply"
                      "--screenshot=${CMAKE_CURRENT_BINARY_DIR}/mysql-schemasync.png")
     set_tests_properties(selftest_mysql_schemasync PROPERTIES PASS_REGULAR_EXPRESSION "schemasync: 10 changes\n.*employees: drop column retired \\(not picked\\)\n.*legacy_notes: drop table \\(not picked\\)\n.*schemasync after apply: 0 changes, 0 failed statements")
+    # Data Sync: <db>_data, the fixture's tables with rows that differ every
+    # way, brought in line with the fixture's rows; comparing again finds none
+    add_test(NAME mysql_data_fixture
+             COMMAND "${CMAKE_COMMAND}" -DMODE=mysql-fixture
+                     "-DSERVER=${my_host}:${my_port}:${my_user}:${my_password}:${my_db}_data"
+                     "-DCLI=${MYSQL_CLI}"
+                     "-DSQL=${CMAKE_CURRENT_SOURCE_DIR}/fixtures/mysql_datasync_target.sql"
+                     -P "${LIVE_SCRIPT}")
+    set_tests_properties(mysql_data_fixture PROPERTIES FIXTURES_SETUP mysql_data_db
+                         RESOURCE_LOCK mysql_db)
+    add_test(NAME selftest_mysql_datasync
+             COMMAND openyog "--autoconnect=${OPENYOG_TEST_MYSQL}"
+                     "--datasync=${my_db}:${my_db}_data:apply:shot=${CMAKE_CURRENT_BINARY_DIR}/mysql-datasync-dialog.png"
+                     "--screenshot=${CMAKE_CURRENT_BINARY_DIR}/mysql-datasync.png")
+    set_tests_properties(selftest_mysql_datasync PROPERTIES PASS_REGULAR_EXPRESSION
+        "datasync emp_dept: 0 insert, 1 update, 1 delete, 1 same\n.*datasync employees: 2 insert, 1 update, 1 delete, 1 same\n.*datasync: 6 row differences\ndatasync dialog: 2 of 2 tables differ.*\\[ \\] 1 to delete.*datasync after apply: 0 differences, 0 failed statements")
     set_tests_properties(smoketest_mysql selftest_mysql_schema selftest_mysql_dump_roundtrip
                          selftest_mysql_complete selftest_mysql_complete_join
                          selftest_mysql_schemadesigner selftest_mysql_querybuilder
-                         selftest_mysql_schemasync PROPERTIES
+                         selftest_mysql_schemasync selftest_mysql_datasync PROPERTIES
                          FIXTURES_REQUIRED mysql_db RESOURCE_LOCK mysql_db
                          ENVIRONMENT "${SELFTEST_ENV}")
     # (after the line above, which would otherwise replace it)
     set_tests_properties(selftest_mysql_schemasync PROPERTIES
                          FIXTURES_REQUIRED "mysql_db;mysql_sync_db")
+    set_tests_properties(selftest_mysql_datasync PROPERTIES
+                         FIXTURES_REQUIRED "mysql_db;mysql_data_db")
 endif()
 
 if(OPENYOG_TEST_PG)
@@ -284,14 +307,29 @@ if(OPENYOG_TEST_PG)
                      "--schemasync=public:sync_target:apply"
                      "--screenshot=${CMAKE_CURRENT_BINARY_DIR}/pg-schemasync.png")
     set_tests_properties(selftest_pg_schemasync PROPERTIES PASS_REGULAR_EXPRESSION "schemasync: 10 changes\n.*employees: drop column retired \\(not picked\\)\n.*legacy_notes: drop table \\(not picked\\)\n.*schemasync after apply: 0 changes, 0 failed statements")
+    # Data Sync: the datasync_target schema's rows brought in line with public's
+    add_test(NAME pg_data_fixture
+             COMMAND "${CMAKE_COMMAND}" -DMODE=pg-fixture "-DSERVER=${OPENYOG_TEST_PG}"
+                     "-DCLI=${PSQL_CLI}"
+                     "-DSQL=${CMAKE_CURRENT_SOURCE_DIR}/fixtures/pg_datasync_target.sql"
+                     "-DOUT=${CMAKE_CURRENT_BINARY_DIR}/pg-data-fixture" -P "${LIVE_SCRIPT}")
+    set_tests_properties(pg_data_fixture PROPERTIES FIXTURES_SETUP pg_data_db
+                         FIXTURES_REQUIRED pg_db RESOURCE_LOCK pg_db)
+    add_test(NAME selftest_pg_datasync
+             COMMAND openyog "--autoconnectpg=${OPENYOG_TEST_PG}"
+                     "--datasync=public:datasync_target:apply"
+                     "--screenshot=${CMAKE_CURRENT_BINARY_DIR}/pg-datasync.png")
+    set_tests_properties(selftest_pg_datasync PROPERTIES PASS_REGULAR_EXPRESSION
+        "datasync emp_dept: 0 insert, 1 update, 1 delete, 1 same\n.*datasync employees: 2 insert, 1 update, 1 delete, 1 same\n.*datasync: 6 row differences\n.*datasync after apply: 0 differences, 0 failed statements")
     set_tests_properties(selftest_pg_metadata selftest_pg_schema selftest_pg_multidb
                          selftest_pg_dump_roundtrip selftest_pg_complete selftest_pg_complete_join
                          selftest_pg_schemadesigner selftest_pg_querybuilder
-                         selftest_pg_schemasync
+                         selftest_pg_schemasync selftest_pg_datasync
                          PROPERTIES
                          FIXTURES_REQUIRED pg_db RESOURCE_LOCK pg_db
                          ENVIRONMENT "${SELFTEST_ENV}")
     set_tests_properties(selftest_pg_schemasync PROPERTIES FIXTURES_REQUIRED "pg_db;pg_sync_db")
+    set_tests_properties(selftest_pg_datasync PROPERTIES FIXTURES_REQUIRED "pg_db;pg_data_db")
 endif()
 
 # ---- SSH tunnel (optional, on top of the live servers above) ----------------

@@ -59,6 +59,12 @@ Early but usable for day-to-day work against a local server. Working now:
   or a column starts unticked. The script goes to the target's query editor
   or a file: nothing is run for you. SQLite changes it can't make in place
   (altering a column) are listed instead of scripted.
+- **Data Sync** (Powertools ▸ Database Synchronization Wizard, Ctrl+Alt+W):
+  compare the rows of the tables two databases share, matched by primary key,
+  and get the INSERT / UPDATE / DELETE script that makes the target's rows
+  match. Tick per table what to bring over (deletes start unticked); it runs
+  on a worker thread and keeps only keys and digests in memory, so big tables
+  are fine. The script goes to the target's query editor or a file.
 - **Export**: Backup database as a SQL dump; export a result set as CSV.
 - **Themes**: light (SQLyog "Flat" palette) and dark.
 

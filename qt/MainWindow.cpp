@@ -3,6 +3,7 @@
  * MainWindowMenus.cpp and MainWindowToolsMenus.cpp; the selftest hooks live
  * in MainWindowSelftest.cpp. */
 #include "MainWindow.h"
+#include "DataSyncDialog.h"
 #include "SchemaSyncDialog.h"
 #include "ConnectionDialog.h"
 #include "ConnectionStore.h"
@@ -534,6 +535,46 @@ void MainWindow::openSchemaSync()
         endpoints << e;
     }
     auto *dialog = new SchemaSyncDialog(endpoints, this);
+    dialog->setAttribute(Qt::WA_DeleteOnClose);
+    dialog->show();
+}
+
+void MainWindow::openDataSync()
+{
+    /* every connected tab, the current one first (the default source) */
+    QList<ConnectionTab *> tabs;
+    if(ConnectionTab *current = currentTab(); current && current->isConnected())
+        tabs << current;
+    for(int i = 0; i < m_tabs->count(); ++i)
+        if(auto *t = qobject_cast<ConnectionTab *>(m_tabs->widget(i));
+           t && t->isConnected() && !tabs.contains(t))
+            tabs << t;
+    if(tabs.isEmpty()) {
+        QMessageBox::information(this, QStringLiteral("Data Synchronization"),
+                                 QStringLiteral("Open a connection first."));
+        return;
+    }
+    QList<DataSyncDialog::Endpoint> endpoints;
+    for(ConnectionTab *t : std::as_const(tabs)) {
+        QPointer<ConnectionTab> tab(t);
+        DataSyncDialog::Endpoint e;
+        e.label = t->title();
+        e.driver = t->driverType();
+        e.databases = [tab] { return tab ? tab->databases() : QStringList(); };
+        e.currentDatabase = [tab] { return tab ? tab->defaultDb() : QString(); };
+        /* the tab's own connection settings: every statement names its
+         * database (MySQL) or schema (PostgreSQL) itself */
+        e.params = [params = t->params()](const QString &) { return params; };
+        e.openInEditor = [this, tab](const QString &sql) {
+            if(!tab)
+                return;
+            m_tabs->setCurrentWidget(tab);
+            tab->openEditorWithSql(QStringLiteral("Data Sync"), sql);
+            activateWindow();
+        };
+        endpoints << e;
+    }
+    auto *dialog = new DataSyncDialog(endpoints, this);
     dialog->setAttribute(Qt::WA_DeleteOnClose);
     dialog->show();
 }

@@ -156,6 +156,8 @@ add_executable(openyog
     qt/SchemaSync.h        qt/SchemaSync.cpp
     qt/PrivateFiles.h      qt/PrivateFiles.cpp
     qt/SchemaSyncDialog.h  qt/SchemaSyncDialog.cpp
+    qt/DataSync.h          qt/DataSync.cpp
+    qt/DataSyncDialog.h    qt/DataSyncDialog.cpp
 )
 # QScintilla (the query editor): system package, same pattern as the
 # client libraries above — on Arch, `sudo pacman -S qscintilla-qt6`

@@ -88,6 +88,7 @@ int main(int argc, char *argv[])
                                   * Designer, print its tables/links (and export the image) */
     QString schemaDesignerExport;
     bool printResults = false;  /* --printresults selftest: Messages and result tabs, at the end */
+    QString dataSyncSpec;       /* --datasync=SOURCE:TARGET[:apply] selftest */
     QString schemaSyncSpec;     /* --schemasync=SOURCE:TARGET[:apply][:shot=F] selftest */
     QString queryBuilderSpec;   /* --querybuilder=table:col,col+table:col selftest: add
                                  * them to a Query Builder, print and run its SQL */
@@ -328,6 +329,8 @@ int main(int argc, char *argv[])
             showDataTab = true;
         if(a == QStringLiteral("--printresults"))
             printResults = true;
+        if(a.startsWith(QStringLiteral("--datasync=")))
+            dataSyncSpec = a.mid(QStringLiteral("--datasync=").size());
         if(a.startsWith(QStringLiteral("--schemasync=")))
             schemaSyncSpec = a.mid(QStringLiteral("--schemasync=").size());
         if(a.startsWith(QStringLiteral("--querybuilder=")))
@@ -860,6 +863,9 @@ int main(int argc, char *argv[])
                         QTextStream(stdout) << "datatab: " << w->selftestShowDataTab() << '\n';
                     if(schemaDesigner)
                         for(const QString &line : w->selftestSchemaDesigner(schemaDesignerExport))
+                            QTextStream(stdout) << line << '\n';
+                    if(!dataSyncSpec.isEmpty())
+                        for(const QString &line : w->selftestDataSync(dataSyncSpec))
                             QTextStream(stdout) << line << '\n';
                     if(!schemaSyncSpec.isEmpty())
                         for(const QString &line : w->selftestSchemaSync(schemaSyncSpec))

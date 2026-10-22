@@ -351,8 +351,10 @@ void MainWindow::buildPowertoolsMenu()
 {
     /* ================= Powertools =================================== */
     QMenu *powertools = menuBar()->addMenu(QStringLiteral("&Powertools"));
-    addDisabled(powertools, QStringLiteral("Database S&ynchronization Wizard…\tCtrl+Alt+W"))
-        ->setIcon(Icons::get(QStringLiteral("dbsync_16.ico")));
+    QAction *dataSync =
+        powertools->addAction(QStringLiteral("Database S&ynchronization Wizard…\tCtrl+Alt+W"));
+    dataSync->setIcon(Icons::get(QStringLiteral("dbsync_16.ico")));
+    connect(dataSync, &QAction::triggered, this, &MainWindow::openDataSync);
     addDisabled(powertools, QStringLiteral("&Visual Data Comparison Wizard…\tCtrl+Alt+Q"))
         ->setIcon(Icons::get(QStringLiteral("Sync_16.ico")));
     QAction *schemaSync =

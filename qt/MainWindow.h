@@ -61,6 +61,12 @@ public:
     QStringList selftestResults() const; /* --printresults selftest */
     /* Powertools ▸ Schema Synchronization Tool */
     void openSchemaSync();
+    /* Powertools ▸ Database Synchronization Wizard */
+    void openDataSync();
+    /* --datasync=SRC:TGT[:apply][:shot=F] selftest: compare the rows of two databases
+     * of the current connection; apply: run the whole script, deletes
+     * included, then compare again */
+    QStringList selftestDataSync(const QString &spec);
     void selftestUseDatabase(const QString &db);           /* --usedb= selftest */
     void selftestExpandDatabase(const QString &name);      /* --expandpgdb= selftest */
     void selftestSelectBrowserItem(const QString &path);   /* --selecttreepath= selftest */

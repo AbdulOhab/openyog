@@ -5,6 +5,8 @@
 #include "ConnectionDialog.h"
 #include "ConnectionTab.h"
 #include "ObjectBrowser.h"
+#include "DataSync.h"
+#include "DataSyncDialog.h"
 #include "QueryBuilder.h"
 #include "SchemaDesigner.h"
 #include "SchemaSyncDialog.h"
@@ -482,4 +484,75 @@ QStringList MainWindow::selftestResults() const
 {
     const ConnectionTab *tab = currentTab();
     return tab ? tab->resultsForTest() : QStringList();
+}
+
+QStringList MainWindow::selftestDataSync(const QString &spec)
+{
+    auto *tab = currentTab();
+    const QStringList parts = spec.split(QLatin1Char(':'));
+    QString error;
+    IDbConnection *conn = tab ? tab->connectionFor(QString(), &error) : nullptr;
+    if(!conn || parts.size() < 2)
+        return {QStringLiteral("datasync: need a connection and SOURCE:TARGET")};
+    const QString source = parts[0], target = parts[1];
+    const auto compareAll = [&](QStringList *out) {
+        qint64 differences = 0;
+        for(const QString &table : DataSync::commonTables(conn, source, conn, target)) {
+            const DataSync::TableResult r =
+                DataSync::compareTable(conn, source, conn, target, table);
+            differences += r.inserts + r.updates + r.deletes;
+            if(out)
+                *out << (r.skipped.isEmpty()
+                             ? QStringLiteral(
+                                   "datasync %1: %2 insert, %3 update, %4 delete, %5 same")
+                                   .arg(table)
+                                   .arg(r.inserts)
+                                   .arg(r.updates)
+                                   .arg(r.deletes)
+                                   .arg(r.same)
+                             : QStringLiteral("datasync %1: skipped (%2)").arg(table, r.skipped));
+        }
+        return differences;
+    };
+    QStringList out;
+    out << QStringLiteral("datasync: %1 row differences").arg(compareAll(&out));
+    for(const QString &part : parts.mid(2))
+        if(part.startsWith(QStringLiteral("shot="))) {
+            /* the window itself: its worker, the drivers, what it lists */
+            DataSyncDialog dialog({{tab->title(),
+                                    tab->driverType(),
+                                    [tab] { return tab->databases(); },
+                                    [tab] { return tab->defaultDb(); },
+                                    [params = tab->params()](const QString &) { return params; },
+                                    {}}},
+                                  this);
+            dialog.show();
+            dialog.compareForTest(0, source, 0, target);
+            for(const QString &line : dialog.shownForTest())
+                out << QStringLiteral("datasync dialog: ") + line;
+            dialog.grab().save(part.mid(5));
+        }
+    if(parts.value(2) == QStringLiteral("apply")) {
+        QList<DataSync::Pick> picks;
+        for(const QString &table : DataSync::commonTables(conn, source, conn, target))
+            picks.append({table, true, true, true});
+        QByteArray script;
+        if(!DataSync::writeScript(
+               conn, source, conn, target, picks, [&](const QByteArray &part) { script += part; },
+               {}, &error))
+            return out << QStringLiteral("datasync script failed: ") + error;
+        int failed = 0;
+        for(const QString &statement :
+            splitStatements(QString::fromUtf8(script), tab->driverType())) {
+            if(tab->queryRowCountForTest(statement, &error) < 0) {
+                ++failed;
+                out << QStringLiteral("datasync apply failed: %1 -- %2")
+                           .arg(statement.simplified().left(200), error);
+            }
+        }
+        out << QStringLiteral("datasync after apply: %1 differences, %2 failed statements")
+                   .arg(compareAll(nullptr))
+                   .arg(failed);
+    }
+    return out;
 }
