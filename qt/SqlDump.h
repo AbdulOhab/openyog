@@ -8,6 +8,7 @@
 
 #include <QString>
 #include <QStringList>
+#include <QVector>
 
 #include <functional>
 
@@ -51,5 +52,13 @@ bool write(IDbConnection *conn, const QString &db, const QStringList &tables, co
 bool forEachStatement(IDbConnection *conn, const QString &db, const QStringList &tables,
                       const Options &opt, const std::function<bool(const QString &stmt)> &exec,
                       QString *error);
+
+/* one value as an SQL literal for `c`'s dialect: NULL, a quoted escaped
+ * string, or with `hex` (a binary column) a hex literal */
+QByteArray literal(IDbConnection *c, const QByteArray &value, bool isNull, bool hex);
+
+/* which of `table`'s columns hold binary data (blob, binary, bytea), in
+ * listColumns() order */
+QVector<bool> binaryColumns(IDbConnection *c, const QString &db, const QString &table);
 
 } // namespace SqlDump

@@ -24,11 +24,7 @@ QStringList baseTables(IDbConnection *c, const QString &db, QString *error)
     return out;
 }
 
-/* one INSERT tuple: NULL stays NULL, everything else single-quoted + escaped;
- * columns `hexCols` marks emit a driver hex literal instead (x'…' /
- * decode('…','hex')) — the same shape TableDataView's hexLiteral builds for
- * staged grid edits. Bytes, not a QString: a binary value is not UTF-8, and
- * a round trip through QString turns every invalid byte into U+FFFD. */
+/* one INSERT tuple, each value a SqlDump::literal() */
 QByteArray tuple(IDbConnection *c, const QVector<QByteArray> &fields, const QVector<bool> &isNull,
                  const QVector<bool> &hexCols = {})
 {
@@ -36,43 +32,10 @@ QByteArray tuple(IDbConnection *c, const QVector<QByteArray> &fields, const QVec
     for(int i = 0; i < fields.size(); ++i) {
         if(i)
             s += ',';
-        if(isNull[i]) {
-            s += "NULL";
-            continue;
-        }
-        if(hexCols.value(i)) {
-            if(c->driverType() != SqlDriverType::Postgres) {
-                s += "x'" + fields[i].toHex() + "'";
-                continue;
-            }
-            /* PostgreSQL hands bytea over as text already: "\x89504e…" in the
-             * default hex output format, whose digits are the literal; the old
-             * escape format falls through to a plain quoted literal, which
-             * PostgreSQL reads back the same way */
-            if(fields[i].startsWith("\\x")) {
-                s += "decode('" + fields[i].mid(2) + "','hex')";
-                continue;
-            }
-        }
-        s += '\'';
-        s += c->escape(fields[i]);
-        s += '\'';
+        s += SqlDump::literal(c, fields[i], isNull[i], hexCols.value(i));
     }
     s += ')';
     return s;
-}
-
-/* binary-ness of every column in SHOW COLUMNS' Type (1) field — blob/
- * binary/varbinary (MySQL), bytea (PG), BLOB (SQLite) */
-QVector<bool> binaryColumns(IDbConnection *c, const QString &db, const QString &table)
-{
-    QVector<bool> out;
-    for(const QStringList &row : c->listColumns(db, table).rows) {
-        const QString t = row.value(1).toLower();
-        out << (t.contains(QLatin1String("blob")) || t.contains(QLatin1String("binary")) ||
-                t.contains(QLatin1String("bytea")));
-    }
-    return out;
 }
 
 /* dump-time consistency: one transaction holding a stable read view —
@@ -92,6 +55,41 @@ QString consistentBegin(IDbConnection *c)
 }
 
 } // namespace
+
+/* NULL stays NULL, everything else single-quoted + escaped; a `hex` value
+ * becomes a driver hex literal instead (x'…' / decode('…','hex')) — the same
+ * shape TableDataView's hexLiteral builds for staged grid edits. Bytes, not a
+ * QString: a binary value is not UTF-8, and a round trip through QString
+ * turns every invalid byte into U+FFFD. */
+QByteArray SqlDump::literal(IDbConnection *c, const QByteArray &value, bool isNull, bool hex)
+{
+    if(isNull)
+        return "NULL";
+    if(hex) {
+        if(c->driverType() != SqlDriverType::Postgres)
+            return "x'" + value.toHex() + "'";
+        /* PostgreSQL hands bytea over as text already: "\x89504e…" in the
+         * default hex output format, whose digits are the literal; the old
+         * escape format falls through to a plain quoted literal, which
+         * PostgreSQL reads back the same way */
+        if(value.startsWith("\\x"))
+            return "decode('" + value.mid(2) + "','hex')";
+    }
+    return '\'' + c->escape(value) + '\'';
+}
+
+/* binary-ness of every column in SHOW COLUMNS' Type (1) field — blob/
+ * binary/varbinary (MySQL), bytea (PG), BLOB (SQLite) */
+QVector<bool> SqlDump::binaryColumns(IDbConnection *c, const QString &db, const QString &table)
+{
+    QVector<bool> out;
+    for(const QStringList &row : c->listColumns(db, table).rows) {
+        const QString t = row.value(1).toLower();
+        out << (t.contains(QLatin1String("blob")) || t.contains(QLatin1String("binary")) ||
+                t.contains(QLatin1String("bytea")));
+    }
+    return out;
+}
 
 bool SqlDump::write(IDbConnection *conn, const QString &db, const QStringList &tables,
                     const Options &opt, QIODevice *out, QString *error)
