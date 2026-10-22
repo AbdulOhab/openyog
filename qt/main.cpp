@@ -91,13 +91,13 @@ int main(int argc, char *argv[])
                                   * Designer, print its tables/links (and export the image) */
     QString schemaDesignerExport;
     bool drawForeignKey = false; /* --drawfk selftest: a relationship drawn in the designer */
-    bool printResults = false;  /* --printresults selftest: Messages and result tabs, at the end */
-    QString dataSyncSpec;       /* --datasync=SOURCE:TARGET[:apply] selftest */
-    QString schemaSyncSpec;     /* --schemasync=SOURCE:TARGET[:apply][:shot=F] selftest */
-    QString queryBuilderSpec;   /* --querybuilder=table:col,col+table:col selftest: add
-                                 * them to a Query Builder, print and run its SQL;
-                                 * --querybuilder=@FILE.oyqb: open that instead, and
-                                 * check it saves and reopens as the same query */
+    bool printResults = false;   /* --printresults selftest: Messages and result tabs, at the end */
+    QString dataSyncSpec;        /* --datasync=SOURCE:TARGET[:apply] selftest */
+    QString schemaSyncSpec;      /* --schemasync=SOURCE:TARGET[:apply][:shot=F] selftest */
+    QString queryBuilderSpec;    /* --querybuilder=table:col,col+table:col selftest: add
+                                  * them to a Query Builder, print and run its SQL;
+                                  * --querybuilder=@FILE.oyqb: open that instead, and
+                                  * check it saves and reopens as the same query */
     QString infoSearch;         /* --infosearch=TEXT selftest: type it into the Info tab's search */
     bool showInfoTab = false;   /* --showinfotab selftest: switch to the Info result tab */
     QString useDbArg;           /* --usedb=NAME selftest */

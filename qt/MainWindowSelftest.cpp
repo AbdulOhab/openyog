@@ -428,8 +428,8 @@ QStringList MainWindow::selftestDrawForeignKey()
     const bool added =
         tab->addForeignKey(db, QStringLiteral("oy_fk_child"), QStringLiteral("parent_id"),
                            QStringLiteral("oy_fk_parent"), QStringLiteral("id"), false);
-    out << QStringLiteral("drawfk: %1").arg(added ? QStringLiteral("added")
-                                                   : QStringLiteral("refused"));
+    out << QStringLiteral("drawfk: %1")
+               .arg(added ? QStringLiteral("added") : QStringLiteral("refused"));
     designer->reload();
     for(const QString &line : designer->dumpForTest())
         if(line.contains(QStringLiteral("oy_fk_child")))
