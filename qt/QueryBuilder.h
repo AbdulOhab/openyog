@@ -8,7 +8,8 @@
  * Ticking a column's box puts it in the grid underneath, where it gets an
  * alias, an aggregate, a sort and a condition. The SQL underneath follows
  * every change, and goes to a query editor or straight to the server from
- * the toolbar. QueryBuild writes the SQL; this is the pointing. */
+ * the toolbar. What has been built is saved to and opened from a .oyqb file
+ * (JSON). QueryBuild writes the SQL; this is the pointing. */
 #pragma once
 
 #include "DiagramItems.h"
@@ -53,6 +54,13 @@ public:
      * what a double-click on the list and the --querybuilder selftest do */
     void addTable(const QString &table, const QStringList &columns = {});
 
+    /* the query and where its tables are on the canvas, as a .oyqb file */
+    bool saveFile(const QString &file, QString *error = nullptr);
+    /* replaces what is built with a saved query, read against this
+     * database's tables as they are now: a table, join or column that
+     * isn't there any more is left out and named in *leftOut */
+    bool openFile(const QString &file, QString *error = nullptr, QStringList *leftOut = nullptr);
+
 signals:
     void copyToEditorRequested(const QString &sql);
     void runRequested(const QString &sql);
@@ -83,10 +91,13 @@ private:
     void showGridMenu(const QPoint &pos);
     void filterTables(const QString &text);
     void reloadTables();
+    void promptSave();
+    void promptOpen();
     QueryBuild::Query query() const;
     QString sourceTitle(int index) const;
 
     QString m_database;
+    QString m_file; /* last saved to or opened from */
     Backend m_backend;
     QList<SchemaDiagram::Link> m_foreignKeys;
     QList<Instance> m_sources; /* index = QueryBuild source index */

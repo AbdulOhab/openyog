@@ -53,8 +53,10 @@ Early but usable for day-to-day work against a local server. Working now:
   join along their foreign keys on their own, or drag a column onto another
   table's to join by hand; right-click a join for LEFT / RIGHT), tick
   columns, then give them aliases, aggregates, sorting and conditions in the
-  grid. The SQL follows every change and goes to a query editor or runs
-  straight away.
+  grid; a second set of conditions in the Or column is ORed with the first.
+  The SQL follows every change and goes to a query editor or runs straight
+  away. Save what you built to a .oyqb file (JSON) and open it again later,
+  against the database's tables as they are then.
 - **Schema Sync** (Powertools ▸ Schema Synchronization Tool, Ctrl+Q): compare
   two databases of the same kind, on the same connection or two different
   ones, and get the script that makes the target's tables, columns, keys and

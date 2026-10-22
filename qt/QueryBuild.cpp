@@ -1,7 +1,10 @@
 /* OpenYog — the Query Builder's SQL; see QueryBuild.h. */
 #include "QueryBuild.h"
 
+#include <QJsonArray>
 #include <QRegularExpression>
+
+#include <algorithm>
 
 namespace QueryBuild {
 
@@ -122,18 +125,42 @@ QString toSql(const Query &q, const Quote &quote)
         placed[next] = true;
     }
 
-    QStringList where, having;
-    for(const Column &c : q.columns) {
-        const QString cond = condition(expression(c), c.criteria);
-        if(!cond.isEmpty())
-            (c.aggregate.isEmpty() ? where : having) << cond;
+    /* per set (Criteria, Or): its plain conditions and its aggregate ones */
+    QStringList plain[2], aggregate[2];
+    for(const Column &c : q.columns)
+        for(int set = 0; set < 2; ++set) {
+            const QString cond = condition(expression(c), set ? c.orCriteria : c.criteria);
+            if(!cond.isEmpty())
+                (c.aggregate.isEmpty() ? plain : aggregate)[set] << cond;
+        }
+    const bool used[2] = {!plain[0].isEmpty() || !aggregate[0].isEmpty(),
+                          !plain[1].isEmpty() || !aggregate[1].isEmpty()};
+    const auto either = [](const QStringList &a, const QStringList &b) {
+        const auto set = [](const QStringList &s) {
+            return s.size() > 1
+                       ? QLatin1Char('(') + s.join(QStringLiteral(" AND ")) + QLatin1Char(')')
+                       : s.value(0);
+        };
+        return set(a) + QStringLiteral("\n    OR ") + set(b);
+    };
+    QString where, having;
+    if(!used[0] || !used[1]) {
+        const int set = used[0] ? 0 : 1;
+        where = plain[set].join(QStringLiteral("\n    AND "));
+        having = aggregate[set].join(QStringLiteral("\n    AND "));
+    } else if(aggregate[0].isEmpty() && aggregate[1].isEmpty()) {
+        where = either(plain[0], plain[1]);
+    } else if(plain[0].isEmpty() && plain[1].isEmpty()) {
+        having = either(aggregate[0], aggregate[1]);
+    } else {
+        having = either(plain[0] + aggregate[0], plain[1] + aggregate[1]);
     }
     if(!where.isEmpty())
-        sql += QStringLiteral("\nWHERE ") + where.join(QStringLiteral("\n    AND "));
+        sql += QStringLiteral("\nWHERE ") + where;
     if(!groupBy.isEmpty())
         sql += QStringLiteral("\nGROUP BY ") + groupBy.join(QStringLiteral(", "));
     if(!having.isEmpty())
-        sql += QStringLiteral("\nHAVING ") + having.join(QStringLiteral("\n    AND "));
+        sql += QStringLiteral("\nHAVING ") + having;
 
     QStringList order;
     for(const Column &c : q.columns) {
@@ -147,6 +174,99 @@ QString toSql(const Query &q, const Quote &quote)
     if(q.limit > 0)
         sql += QStringLiteral("\nLIMIT ") + QString::number(q.limit);
     return sql;
+}
+
+namespace {
+
+const char *const kJoinTypes[] = {"inner", "left", "right"};
+const char *const kSorts[] = {"", "asc", "desc"};
+const char *const kFormat = "OpenYog Query Builder";
+
+template<size_t N> int indexOf(const char *const (&names)[N], const QString &name)
+{
+    for(size_t i = 0; i < N; ++i)
+        if(name == QLatin1String(names[i]))
+            return int(i);
+    return 0;
+}
+
+} // namespace
+
+QJsonObject toJson(const Query &q)
+{
+    QJsonArray sources, joins, columns;
+    for(const Source &s : q.sources)
+        sources.append(
+            QJsonObject{{QStringLiteral("table"), s.table}, {QStringLiteral("alias"), s.alias}});
+    for(const Join &j : q.joins) {
+        QJsonArray on;
+        for(const auto &pair : j.on)
+            on.append(QJsonArray{pair.first, pair.second});
+        joins.append(QJsonObject{{QStringLiteral("left"), j.left},
+                                 {QStringLiteral("right"), j.right},
+                                 {QStringLiteral("type"), kJoinTypes[int(j.type)]},
+                                 {QStringLiteral("on"), on}});
+    }
+    for(const Column &c : q.columns)
+        columns.append(QJsonObject{{QStringLiteral("source"), c.source},
+                                   {QStringLiteral("column"), c.column},
+                                   {QStringLiteral("alias"), c.alias},
+                                   {QStringLiteral("aggregate"), c.aggregate},
+                                   {QStringLiteral("sort"), kSorts[int(c.sort)]},
+                                   {QStringLiteral("criteria"), c.criteria},
+                                   {QStringLiteral("or"), c.orCriteria},
+                                   {QStringLiteral("output"), c.output}});
+    return QJsonObject{
+        {QStringLiteral("format"), kFormat},      {QStringLiteral("version"), 1},
+        {QStringLiteral("database"), q.database}, {QStringLiteral("sources"), sources},
+        {QStringLiteral("joins"), joins},         {QStringLiteral("columns"), columns},
+        {QStringLiteral("distinct"), q.distinct}, {QStringLiteral("limit"), q.limit}};
+}
+
+bool fromJson(const QJsonObject &json, Query *q, QString *error)
+{
+    if(json.value(QStringLiteral("format")).toString() != QLatin1String(kFormat)) {
+        if(error)
+            *error = QStringLiteral("not a saved Query Builder query");
+        return false;
+    }
+    *q = Query();
+    q->database = json.value(QStringLiteral("database")).toString();
+    for(const QJsonValue &v : json.value(QStringLiteral("sources")).toArray()) {
+        const QJsonObject s = v.toObject();
+        q->sources.append({s.value(QStringLiteral("table")).toString(),
+                           s.value(QStringLiteral("alias")).toString()});
+    }
+    const int n = int(q->sources.size());
+    const auto valid = [n](int s) { return s >= 0 && s < n; };
+    for(const QJsonValue &v : json.value(QStringLiteral("joins")).toArray()) {
+        const QJsonObject o = v.toObject();
+        Join j;
+        j.left = o.value(QStringLiteral("left")).toInt(-1);
+        j.right = o.value(QStringLiteral("right")).toInt(-1);
+        j.type = JoinType(indexOf(kJoinTypes, o.value(QStringLiteral("type")).toString()));
+        for(const QJsonValue &pair : o.value(QStringLiteral("on")).toArray())
+            j.on.append({pair.toArray().at(0).toString(), pair.toArray().at(1).toString()});
+        if(valid(j.left) && valid(j.right) && j.left != j.right && !j.on.isEmpty())
+            q->joins.append(j);
+    }
+    for(const QJsonValue &v : json.value(QStringLiteral("columns")).toArray()) {
+        const QJsonObject o = v.toObject();
+        Column c;
+        c.source = o.value(QStringLiteral("source")).toInt(-1);
+        c.column = o.value(QStringLiteral("column")).toString();
+        c.alias = o.value(QStringLiteral("alias")).toString();
+        c.aggregate = o.value(QStringLiteral("aggregate")).toString();
+        c.sort = Sort(indexOf(kSorts, o.value(QStringLiteral("sort")).toString()));
+        c.criteria = o.value(QStringLiteral("criteria")).toString();
+        c.orCriteria = o.value(QStringLiteral("or")).toString();
+        c.output = o.value(QStringLiteral("output")).toBool(true);
+        if(valid(c.source) && !c.column.isEmpty())
+            q->columns.append(c);
+    }
+    q->distinct = json.value(QStringLiteral("distinct")).toBool();
+    q->limit = std::max(0, json.value(QStringLiteral("limit")).toInt());
+    return true;
 }
 
 } // namespace QueryBuild

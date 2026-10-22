@@ -167,6 +167,16 @@ if(SQLITE3_CLI)
         FIXTURES_REQUIRED schemadesigner_db
         ENVIRONMENT "${SELFTEST_ENV}"
         PASS_REGULAR_EXPRESSION "FROM \"main\"\\.\"employees\"\n    INNER JOIN \"main\"\\.\"emp_dept\" ON \"emp_dept\"\\.\"id\" = \"employees\"\\.\"dept_id\"\nquerybuilder rows: 3")
+    # a saved query (.oyqb) opened against the fixture: Criteria OR'd with Or,
+    # a column the table doesn't have left out, and saved again unchanged
+    add_test(NAME selftest_querybuilder_file
+             COMMAND openyog "--autoconnectfile=${db}"
+                     "--querybuilder=@${CMAKE_CURRENT_SOURCE_DIR}/fixtures/querybuilder_or.oyqb"
+                     "--screenshot=${CMAKE_CURRENT_BINARY_DIR}/querybuilder-file.png")
+    set_tests_properties(selftest_querybuilder_file PROPERTIES
+        FIXTURES_REQUIRED schemadesigner_db
+        ENVIRONMENT "${SELFTEST_ENV}"
+        PASS_REGULAR_EXPRESSION "querybuilder left out: column employees\\.retired\n.*LEFT JOIN \"main\"\\.\"emp_dept\" ON \"emp_dept\"\\.\"id\" = \"employees\"\\.\"dept_id\"\nWHERE \"employees\"\\.\"name\" LIKE 'A%'\n    OR \"employees\"\\.\"salary\" IS NULL\nORDER BY \"employees\"\\.\"name\"\nquerybuilder rows: 3\nquerybuilder saved and reopened: same sql")
 else()
     message(STATUS "sqlite3 CLI not found: skipping the SQLite selftests")
 endif()
@@ -230,6 +240,12 @@ if(OPENYOG_TEST_MYSQL)
     set_tests_properties(selftest_mysql_drawfk PROPERTIES
         PASS_REGULAR_EXPRESSION "drawfk: added\nschemadesigner link fk_oy_fk_child_parent_id: oy_fk_child \\(parent_id\\) -> oy_fk_parent \\(id\\)"
         FAIL_REGULAR_EXPRESSION "drawfk error")
+    add_test(NAME selftest_mysql_querybuilder_file
+             COMMAND openyog "--autoconnect=${OPENYOG_TEST_MYSQL}"
+                     "--querybuilder=@${CMAKE_CURRENT_SOURCE_DIR}/fixtures/querybuilder_or.oyqb"
+                     "--screenshot=${CMAKE_CURRENT_BINARY_DIR}/mysql-querybuilder-file.png")
+    set_tests_properties(selftest_mysql_querybuilder_file PROPERTIES PASS_REGULAR_EXPRESSION
+        "querybuilder left out: column employees\\.retired\n.*WHERE `employees`\\.`name` LIKE 'A%'\n    OR `employees`\\.`salary` IS NULL\nORDER BY `employees`\\.`name`\nquerybuilder rows: 2\nquerybuilder saved and reopened: same sql")
     add_test(NAME selftest_mysql_querybuilder
              COMMAND openyog "--autoconnect=${OPENYOG_TEST_MYSQL}"
                      "--querybuilder=employees:name+emp_dept:name"
@@ -270,7 +286,7 @@ if(OPENYOG_TEST_MYSQL)
     set_tests_properties(smoketest_mysql selftest_mysql_schema selftest_mysql_dump_roundtrip
                          selftest_mysql_complete selftest_mysql_complete_join
                          selftest_mysql_schemadesigner selftest_mysql_drawfk
-                         selftest_mysql_querybuilder
+                         selftest_mysql_querybuilder selftest_mysql_querybuilder_file
                          selftest_mysql_schemasync selftest_mysql_datasync PROPERTIES
                          FIXTURES_REQUIRED mysql_db RESOURCE_LOCK mysql_db
                          ENVIRONMENT "${SELFTEST_ENV}")
@@ -323,6 +339,12 @@ if(OPENYOG_TEST_PG)
     set_tests_properties(selftest_pg_drawfk PROPERTIES
         PASS_REGULAR_EXPRESSION "drawfk: added\nschemadesigner link fk_oy_fk_child_parent_id: oy_fk_child \\(parent_id\\) -> oy_fk_parent \\(id\\)"
         FAIL_REGULAR_EXPRESSION "drawfk error")
+    add_test(NAME selftest_pg_querybuilder_file
+             COMMAND openyog "--autoconnectpg=${OPENYOG_TEST_PG}"
+                     "--querybuilder=@${CMAKE_CURRENT_SOURCE_DIR}/fixtures/querybuilder_or.oyqb"
+                     "--screenshot=${CMAKE_CURRENT_BINARY_DIR}/pg-querybuilder-file.png")
+    set_tests_properties(selftest_pg_querybuilder_file PROPERTIES PASS_REGULAR_EXPRESSION
+        "querybuilder left out: column employees\\.retired\n.*WHERE \"employees\"\\.\"name\" LIKE 'A%'\n    OR \"employees\"\\.\"salary\" IS NULL\nORDER BY \"employees\"\\.\"name\"\nquerybuilder rows: 2\nquerybuilder saved and reopened: same sql")
     add_test(NAME selftest_pg_querybuilder
              COMMAND openyog "--autoconnectpg=${OPENYOG_TEST_PG}"
                      "--querybuilder=employees:name+emp_dept:name"
@@ -359,6 +381,7 @@ if(OPENYOG_TEST_PG)
     set_tests_properties(selftest_pg_metadata selftest_pg_schema selftest_pg_multidb
                          selftest_pg_dump_roundtrip selftest_pg_complete selftest_pg_complete_join
                          selftest_pg_schemadesigner selftest_pg_drawfk selftest_pg_querybuilder
+                         selftest_pg_querybuilder_file
                          selftest_pg_schemasync selftest_pg_datasync
                          PROPERTIES
                          FIXTURES_REQUIRED pg_db RESOURCE_LOCK pg_db

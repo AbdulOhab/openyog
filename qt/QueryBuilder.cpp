@@ -7,18 +7,27 @@
 #include <QApplication>
 #include <QCheckBox>
 #include <QComboBox>
+#include <QDir>
+#include <QFile>
+#include <QFileDialog>
+#include <QFileInfo>
 #include <QGraphicsScene>
 #include <QGraphicsTextItem>
 #include <QHeaderView>
 #include <QInputDialog>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
 #include <QMenu>
 #include <QMessageBox>
 #include <QMimeData>
+#include <QSaveFile>
 #include <QSpinBox>
 #include <QSplitter>
+#include <QStandardPaths>
 #include <QTableWidget>
 #include <QTimer>
 #include <QToolBar>
@@ -51,7 +60,7 @@ protected:
     }
 };
 
-enum GridColumn { GColumn, GAlias, GOutput, GAggregate, GSort, GCriteria, GCount };
+enum GridColumn { GColumn, GAlias, GOutput, GAggregate, GSort, GCriteria, GOr, GCount };
 
 const QStringList kAggregates = {QString(),
                                  QStringLiteral("COUNT"),
@@ -98,7 +107,8 @@ QueryBuilder::QueryBuilder(const QString &database, Backend backend, QWidget *pa
     m_grid = new QTableWidget(0, GCount, this);
     m_grid->setHorizontalHeaderLabels({QStringLiteral("Column"), QStringLiteral("Alias"),
                                        QStringLiteral("Output"), QStringLiteral("Aggregate"),
-                                       QStringLiteral("Sort"), QStringLiteral("Criteria")});
+                                       QStringLiteral("Sort"), QStringLiteral("Criteria"),
+                                       QStringLiteral("Or")});
     m_grid->verticalHeader()->hide();
     m_grid->horizontalHeader()->setStretchLastSection(true);
     m_grid->setSelectionBehavior(QAbstractItemView::SelectRows);
@@ -107,9 +117,12 @@ QueryBuilder::QueryBuilder(const QString &database, Backend backend, QWidget *pa
     m_grid->setColumnWidth(GOutput, 56);
     m_grid->setColumnWidth(GAggregate, 96);
     m_grid->setColumnWidth(GSort, 108);
+    m_grid->setColumnWidth(GCriteria, 150);
     m_grid->setContextMenuPolicy(Qt::CustomContextMenu);
     m_grid->setToolTip(QStringLiteral("Criteria: SQL as typed, e.g.  > 100   LIKE 'A%'   IS NULL"
-                                      "   — a plain value compares with ="));
+                                      "   — a plain value compares with =\n"
+                                      "Or: a second set of conditions; a row is kept when it "
+                                      "meets all of Criteria or all of Or"));
     connect(m_grid, &QWidget::customContextMenuRequested, this, &QueryBuilder::showGridMenu);
     connect(m_grid, &QTableWidget::itemChanged, this, [this](QTableWidgetItem *item) {
         if(m_fillingGrid || item->row() >= m_columns.size())
@@ -121,6 +134,8 @@ QueryBuilder::QueryBuilder(const QString &database, Backend backend, QWidget *pa
             c.output = item->checkState() == Qt::Checked;
         else if(item->column() == GCriteria)
             c.criteria = item->text();
+        else if(item->column() == GOr)
+            c.orCriteria = item->text();
         updateSql();
     });
 
@@ -131,6 +146,13 @@ QueryBuilder::QueryBuilder(const QString &database, Backend backend, QWidget *pa
     auto *bar = new QToolBar(this);
     bar->setIconSize(QSize(16, 16));
     bar->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    bar->addAction(Icons::get(QStringLiteral("open.ico")), QStringLiteral("Open…"), this,
+                   &QueryBuilder::promptOpen)
+        ->setToolTip(QStringLiteral("Open a saved query (.oyqb)"));
+    bar->addAction(Icons::get(QStringLiteral("save.ico")), QStringLiteral("Save…"), this,
+                   &QueryBuilder::promptSave)
+        ->setToolTip(QStringLiteral("Save the query and its tables' places (.oyqb)"));
+    bar->addSeparator();
     bar->addAction(Icons::get(QStringLiteral("refresh_16.ico")), QStringLiteral("Refresh"), this,
                    &QueryBuilder::reloadTables)
         ->setToolTip(QStringLiteral("Read the list of tables again"));
@@ -161,7 +183,7 @@ QueryBuilder::QueryBuilder(const QString &database, Backend backend, QWidget *pa
     auto *bottom = new QSplitter(Qt::Horizontal, this);
     bottom->addWidget(m_grid);
     bottom->addWidget(m_sql);
-    bottom->setSizes({560, 420});
+    bottom->setSizes({640, 360});
     auto *split = new QSplitter(Qt::Vertical, this);
     split->addWidget(top);
     split->addWidget(bottom);
@@ -215,6 +237,164 @@ void QueryBuilder::reloadTables()
     for(const QString &t : tables)
         m_tableList->addItem(new QListWidgetItem(Icons::get(QStringLiteral("table.ico")), t));
     filterTables(m_filter->text());
+}
+
+bool QueryBuilder::saveFile(const QString &file, QString *error)
+{
+    savePositions();
+    QJsonObject json = QueryBuild::toJson(query());
+    QJsonArray positions;
+    for(const Instance &in : std::as_const(m_sources))
+        positions.append(QJsonArray{in.pos.x(), in.pos.y()});
+    json.insert(QStringLiteral("positions"), positions);
+    QSaveFile f(file);
+    if(!f.open(QIODevice::WriteOnly) || f.write(QJsonDocument(json).toJson()) < 0 || !f.commit()) {
+        if(error)
+            *error = f.errorString();
+        return false;
+    }
+    m_file = file;
+    return true;
+}
+
+bool QueryBuilder::openFile(const QString &file, QString *error, QStringList *leftOut)
+{
+    QFile f(file);
+    if(!f.open(QIODevice::ReadOnly)) {
+        if(error)
+            *error = f.errorString();
+        return false;
+    }
+    const QJsonObject json = QJsonDocument::fromJson(f.readAll()).object();
+    QueryBuild::Query saved;
+    if(!QueryBuild::fromJson(json, &saved, error))
+        return false;
+
+    /* the saved tables as they are now; the ones gone are left out, and what
+     * refers to them */
+    QList<Instance> sources;
+    QList<int> index; /* saved source → new one, -1: left out */
+    const QJsonArray positions = json.value(QStringLiteral("positions")).toArray();
+    QStringList gone;
+    for(int i = 0; i < saved.sources.size(); ++i) {
+        Instance in;
+        in.def = m_backend.table(saved.sources[i].table);
+        if(in.def.columns.isEmpty()) {
+            gone << QStringLiteral("table %1").arg(saved.sources[i].table);
+            index << -1;
+            continue;
+        }
+        in.alias = saved.sources[i].alias;
+        const QJsonArray xy = positions.at(i).toArray();
+        in.pos = QPointF(xy.at(0).toDouble(20), xy.at(1).toDouble(20));
+        index << int(sources.size());
+        sources << in;
+    }
+    const auto has = [&](int s, const QString &column) {
+        for(const SchemaDiagram::Column &c : std::as_const(sources[s].def.columns))
+            if(c.name == column)
+                return true;
+        return false;
+    };
+    const auto ref = [&](int s) {
+        return sources[s].alias.isEmpty() ? sources[s].def.name : sources[s].alias;
+    };
+    QList<QueryBuild::Join> joins;
+    for(QueryBuild::Join j : std::as_const(saved.joins)) {
+        j.left = index.value(j.left, -1);
+        j.right = index.value(j.right, -1);
+        if(j.left < 0 || j.right < 0)
+            continue;
+        QList<QPair<QString, QString>> on;
+        for(const auto &pair : std::as_const(j.on)) {
+            if(has(j.left, pair.first) && has(j.right, pair.second))
+                on << pair;
+            else
+                gone << QStringLiteral("join %1.%2 = %3.%4")
+                            .arg(ref(j.left), pair.first, ref(j.right), pair.second);
+        }
+        j.on = on;
+        if(!j.on.isEmpty())
+            joins << j;
+    }
+    QList<QueryBuild::Column> columns;
+    for(QueryBuild::Column c : std::as_const(saved.columns)) {
+        c.source = index.value(c.source, -1);
+        if(c.source < 0)
+            continue;
+        if(!has(c.source, c.column)) {
+            gone << QStringLiteral("column %1.%2").arg(ref(c.source), c.column);
+            continue;
+        }
+        columns << c;
+    }
+
+    m_sources = sources;
+    m_joins = joins;
+    m_columns = columns;
+    m_distinct->setChecked(saved.distinct);
+    m_limit->setValue(saved.limit);
+    m_file = file;
+    if(leftOut)
+        *leftOut = gone;
+    rebuildCanvas();
+    rebuildGrid();
+    updateSql();
+    return true;
+}
+
+static QString builderFilter()
+{
+    return QStringLiteral("Query Builder files (*.oyqb);;All files (*)");
+}
+
+void QueryBuilder::promptSave()
+{
+    if(m_sources.isEmpty()) {
+        QMessageBox::information(this, QStringLiteral("Save Query"),
+                                 QStringLiteral("Add a table first: there is nothing to save."));
+        return;
+    }
+    const QString suggested =
+        m_file.isEmpty() ? QDir(QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation))
+                               .filePath(m_database + QStringLiteral(".oyqb"))
+                         : m_file;
+    QString file = QFileDialog::getSaveFileName(this, QStringLiteral("Save Query"), suggested,
+                                                builderFilter());
+    if(file.isEmpty())
+        return;
+    if(QFileInfo(file).suffix().isEmpty())
+        file += QStringLiteral(".oyqb");
+    QString error;
+    if(!saveFile(file, &error))
+        QMessageBox::warning(this, QStringLiteral("Save Query"),
+                             QStringLiteral("Couldn't save %1:\n%2").arg(file, error));
+}
+
+void QueryBuilder::promptOpen()
+{
+    if(!m_sources.isEmpty() &&
+       QMessageBox::question(this, QStringLiteral("Open Query"),
+                             QStringLiteral("Replace the query being built?")) != QMessageBox::Yes)
+        return;
+    const QString file = QFileDialog::getOpenFileName(
+        this, QStringLiteral("Open Query"),
+        m_file.isEmpty() ? QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation)
+                         : QFileInfo(m_file).path(),
+        builderFilter());
+    if(file.isEmpty())
+        return;
+    QString error;
+    QStringList leftOut;
+    if(!openFile(file, &error, &leftOut))
+        QMessageBox::warning(this, QStringLiteral("Open Query"),
+                             QStringLiteral("Couldn't open %1:\n%2").arg(file, error));
+    else if(!leftOut.isEmpty())
+        QMessageBox::information(
+            this, QStringLiteral("Open Query"),
+            QStringLiteral("%1 isn't there any more in %2, so it was left out:\n\n%3")
+                .arg(leftOut.size() == 1 ? QStringLiteral("This") : QStringLiteral("These"),
+                     m_database, leftOut.join(QLatin1Char('\n'))));
 }
 
 void QueryBuilder::filterTables(const QString &text)
@@ -530,6 +710,7 @@ void QueryBuilder::rebuildGrid()
         output->setCheckState(c.output ? Qt::Checked : Qt::Unchecked);
         m_grid->setItem(r, GOutput, output);
         m_grid->setItem(r, GCriteria, new QTableWidgetItem(c.criteria));
+        m_grid->setItem(r, GOr, new QTableWidgetItem(c.orCriteria));
 
         auto *aggregate = new QComboBox(m_grid);
         for(const QString &a : kAggregates)

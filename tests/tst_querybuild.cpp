@@ -2,6 +2,7 @@
  * writes. */
 #include "QueryBuild.h"
 
+#include <QJsonArray>
 #include <QTest>
 
 using namespace QueryBuild;
@@ -181,6 +182,119 @@ private slots:
                                               "FROM `shop`.`orders`\n"
                                               "    INNER JOIN `shop`.`orders` AS `o2` ON "
                                               "`o2`.`id` = `orders`.`parent_id`"));
+    }
+
+    void orConditions()
+    {
+        Query q;
+        q.sources = {{"employees", {}}};
+        Column name = col(0, "name"), city = col(0, "city"), salary = col(0, "salary");
+        name.criteria = "LIKE 'A%'";
+        city.criteria = "'Dhaka'";
+        salary.orCriteria = "IS NULL";
+        q.columns = {name, city, salary};
+        /* (name AND city) OR salary */
+        QCOMPARE(toSql(q, bt),
+                 QStringLiteral("SELECT\n"
+                                "    `employees`.`name`,\n"
+                                "    `employees`.`city`,\n"
+                                "    `employees`.`salary`\n"
+                                "FROM `employees`\n"
+                                "WHERE (`employees`.`name` LIKE 'A%' AND `employees`.`city` = "
+                                "'Dhaka')\n"
+                                "    OR `employees`.`salary` IS NULL"));
+
+        /* only the Or set used: as if it were the Criteria */
+        q.columns[0].criteria.clear();
+        q.columns[1].criteria.clear();
+        QVERIFY(toSql(q, bt).endsWith("\nWHERE `employees`.`salary` IS NULL"));
+        /* a column in both sets: a value either way */
+        q.columns[1].criteria = "'Dhaka'";
+        q.columns[1].orCriteria = "'Sylhet'";
+        q.columns[2].orCriteria.clear();
+        QVERIFY(toSql(q, bt).endsWith("\nWHERE `employees`.`city` = 'Dhaka'\n"
+                                      "    OR `employees`.`city` = 'Sylhet'"));
+    }
+
+    void orConditionsOnAggregates()
+    {
+        Query q;
+        q.sources = {{"employees", {}}};
+        Column city = col(0, "city"), count = col(0, "id"), pay = col(0, "salary");
+        count.aggregate = "COUNT";
+        pay.aggregate = "SUM";
+        count.criteria = "> 5";
+        pay.orCriteria = "> 10000";
+        q.columns = {city, count, pay};
+        /* aggregate conditions only: both sets in HAVING, nothing in WHERE */
+        QString sql = toSql(q, bt);
+        QVERIFY(!sql.contains("WHERE"));
+        QVERIFY2(sql.endsWith("GROUP BY `employees`.`city`\n"
+                              "HAVING COUNT(`employees`.`id`) > 5\n"
+                              "    OR SUM(`employees`.`salary`) > 10000"),
+                 qPrintable(sql));
+
+        /* a plain condition in one set, an aggregate one in the other: no
+         * split into WHERE and HAVING keeps the OR, so all of it in HAVING */
+        q.columns[0].criteria = "'Dhaka'";
+        sql = toSql(q, bt);
+        QVERIFY(!sql.contains("WHERE"));
+        QVERIFY2(sql.endsWith("HAVING (`employees`.`city` = 'Dhaka' AND COUNT(`employees`.`id`) "
+                              "> 5)\n"
+                              "    OR SUM(`employees`.`salary`) > 10000"),
+                 qPrintable(sql));
+
+        /* without an Or set: WHERE and HAVING as before */
+        q.columns[2].orCriteria.clear();
+        sql = toSql(q, bt);
+        QVERIFY2(sql.contains("\nWHERE `employees`.`city` = 'Dhaka'\nGROUP BY") &&
+                     sql.endsWith("\nHAVING COUNT(`employees`.`id`) > 5"),
+                 qPrintable(sql));
+    }
+
+    void savedAndOpened()
+    {
+        Query q;
+        q.database = "shop";
+        q.sources = {{"employees", {}}, {"emp_dept", "d"}};
+        q.joins = {{0, 1, {{"dept_id", "id"}}, JoinType::Left}};
+        Column name = col(0, "name"), dept = col(1, "name"), pay = col(0, "salary");
+        name.alias = "who";
+        name.sort = Sort::Desc;
+        name.criteria = "LIKE 'A%'";
+        dept.orCriteria = "'Sales'";
+        pay.aggregate = "MAX";
+        pay.output = false;
+        q.columns = {name, dept, pay};
+        q.distinct = true;
+        q.limit = 25;
+
+        Query back;
+        QString error;
+        QVERIFY2(fromJson(toJson(q), &back, &error), qPrintable(error));
+        QCOMPARE(toSql(back, bt), toSql(q, bt));
+        QCOMPARE(back.database, QStringLiteral("shop"));
+        QCOMPARE(back.columns.size(), 3);
+        QCOMPARE(back.columns[2].output, false);
+        QCOMPARE(back.columns[1].orCriteria, QStringLiteral("'Sales'"));
+
+        /* what refers to a source that isn't there is left out */
+        QJsonObject json = toJson(q);
+        QJsonArray columns = json.value("columns").toArray();
+        QJsonObject stray = columns.at(0).toObject();
+        stray.insert("source", 7);
+        columns.append(stray);
+        json.insert("columns", columns);
+        QJsonArray joins = json.value("joins").toArray();
+        joins.append(
+            QJsonObject{{"left", 0}, {"right", 5}, {"on", QJsonArray{QJsonArray{"a", "b"}}}});
+        json.insert("joins", joins);
+        QVERIFY(fromJson(json, &back));
+        QCOMPARE(back.columns.size(), 3);
+        QCOMPARE(back.joins.size(), 1);
+
+        QVERIFY(!fromJson(QJsonObject{{"positions", QJsonObject()}}, &back, &error));
+        QVERIFY(error.contains("not a saved"));
     }
 
     void dialectQuoting()

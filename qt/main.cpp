@@ -95,7 +95,9 @@ int main(int argc, char *argv[])
     QString dataSyncSpec;       /* --datasync=SOURCE:TARGET[:apply] selftest */
     QString schemaSyncSpec;     /* --schemasync=SOURCE:TARGET[:apply][:shot=F] selftest */
     QString queryBuilderSpec;   /* --querybuilder=table:col,col+table:col selftest: add
-                                 * them to a Query Builder, print and run its SQL */
+                                 * them to a Query Builder, print and run its SQL;
+                                 * --querybuilder=@FILE.oyqb: open that instead, and
+                                 * check it saves and reopens as the same query */
     QString infoSearch;         /* --infosearch=TEXT selftest: type it into the Info tab's search */
     bool showInfoTab = false;   /* --showinfotab selftest: switch to the Info result tab */
     QString useDbArg;           /* --usedb=NAME selftest */

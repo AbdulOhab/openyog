@@ -16,6 +16,7 @@
 
 #include <QApplication>
 #include <QFile>
+#include <QTemporaryDir>
 #include <QTextStream>
 
 void MainWindow::editTableCell(int row, int col, const QString &value, bool stageOnly)
@@ -444,17 +445,37 @@ QStringList MainWindow::selftestQueryBuilder(const QString &spec)
     QueryBuilder *builder = tab ? tab->openQueryBuilder() : nullptr;
     if(!builder)
         return {QStringLiteral("querybuilder: not opened")};
-    for(const QString &part : spec.split(QLatin1Char('+'), Qt::SkipEmptyParts))
-        builder->addTable(
-            part.section(QLatin1Char(':'), 0, 0),
-            part.section(QLatin1Char(':'), 1).split(QLatin1Char(','), Qt::SkipEmptyParts));
-    const QString sql = builder->sql();
-    QStringList out{QStringLiteral("querybuilder sql:")};
-    out << sql.split(QLatin1Char('\n'));
+    QStringList out;
     QString error;
+    const bool saved = spec.startsWith(QLatin1Char('@'));
+    if(saved) {
+        QStringList leftOut;
+        if(!builder->openFile(spec.mid(1), &error, &leftOut))
+            return {QStringLiteral("querybuilder open failed: ") + error};
+        for(const QString &what : std::as_const(leftOut))
+            out << QStringLiteral("querybuilder left out: ") + what;
+    } else {
+        for(const QString &part : spec.split(QLatin1Char('+'), Qt::SkipEmptyParts))
+            builder->addTable(
+                part.section(QLatin1Char(':'), 0, 0),
+                part.section(QLatin1Char(':'), 1).split(QLatin1Char(','), Qt::SkipEmptyParts));
+    }
+    const QString sql = builder->sql();
+    out << QStringLiteral("querybuilder sql:");
+    out << sql.split(QLatin1Char('\n'));
     const int rows = tab->queryRowCountForTest(sql, &error);
     out << (rows < 0 ? QStringLiteral("querybuilder run failed: ") + error
                      : QStringLiteral("querybuilder rows: %1").arg(rows));
+    if(saved) {
+        /* saved again and opened in a builder of its own: the same query */
+        QTemporaryDir dir;
+        const QString file = dir.filePath(QStringLiteral("again.oyqb"));
+        QueryBuilder *again = tab->openQueryBuilder();
+        const bool same = builder->saveFile(file, &error) && again &&
+                          again->openFile(file, &error) && again->sql() == sql;
+        out << QStringLiteral("querybuilder saved and reopened: %1")
+                   .arg(same ? QStringLiteral("same sql") : QStringLiteral("DIFFERS ") + error);
+    }
     return out;
 }
 
