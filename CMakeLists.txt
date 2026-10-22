@@ -20,8 +20,10 @@ endif()
 
 # The bundled include/mysql (Connector/C 2.3.3) predates the system client lib;
 # resolve <mysql/mysql.h> to the SYSTEM headers first. We do this by linking
-# port/shim/mysql -> the dir containing mysql/mysql.h (same mechanism build.sh
-# uses), so both build paths share one precedence story. The system
+# <build>/shim/mysql -> the dir containing mysql/mysql.h (port/build.sh makes
+# the same link in its own tree), so both build paths share one precedence
+# story. The links live in the build tree, not the source tree: a native and
+# a mingw-w64 cross build each point at their own headers. The system
 # include/mysql dir is ALSO added as an include path directly: upstream's
 # Windows spellings (Datatype.h's flat <mysql.h> under _WIN32, live again in
 # the mingw cross build) need mysql.h and its flat siblings (mariadb_com.h
@@ -30,12 +32,15 @@ find_path(MDB_MYSQL_DIR mysql/mysql.h
           PATHS /usr/include /usr/local/include
           DOC "Directory containing mysql/mysql.h"
           REQUIRED)
-# always refresh: a build tree configured for the other target (native Linux
-# vs mingw-w64 cross) leaves a stale shim pointing at the wrong headers
+set(SHIM_DIR "${CMAKE_CURRENT_BINARY_DIR}/shim")
+file(REMOVE_RECURSE "${SHIM_DIR}")
+file(MAKE_DIRECTORY "${SHIM_DIR}/mysql")
+file(CREATE_LINK "${MDB_MYSQL_DIR}/mysql" "${SHIM_DIR}/mysql/mysql" SYMBOLIC)
+# where older configures put these links: left there, they'd shadow the
+# build tree's (port/shim is still on the include path for its own headers)
 file(REMOVE_RECURSE "${CMAKE_CURRENT_SOURCE_DIR}/port/shim/mysql")
-file(REMOVE "${CMAKE_CURRENT_SOURCE_DIR}/port/shim/mysql.h")
-file(MAKE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/port/shim/mysql")
-file(CREATE_LINK "${MDB_MYSQL_DIR}/mysql" "${CMAKE_CURRENT_SOURCE_DIR}/port/shim/mysql/mysql" SYMBOLIC)
+file(REMOVE "${CMAKE_CURRENT_SOURCE_DIR}/port/shim/mysql.h"
+            "${CMAKE_CURRENT_SOURCE_DIR}/port/shim/sqlite3.h")
 
 # Same story for sqlite3.h: include/sqlite3.h is a bundled amalgamation
 # header that predates the system libsqlite3 we link against below — shim
@@ -46,9 +51,7 @@ find_path(SYS_SQLITE3_DIR sqlite3.h
           PATHS /usr/include /usr/local/include
           DOC "Directory containing sqlite3.h"
           REQUIRED)
-file(REMOVE "${CMAKE_CURRENT_SOURCE_DIR}/port/shim/sqlite3.h")
-file(CREATE_LINK "${SYS_SQLITE3_DIR}/sqlite3.h"
-     "${CMAKE_CURRENT_SOURCE_DIR}/port/shim/sqlite3.h" SYMBOLIC)
+file(CREATE_LINK "${SYS_SQLITE3_DIR}/sqlite3.h" "${SHIM_DIR}/sqlite3.h" SYMBOLIC)
 
 add_library(wycore STATIC
     src/wyString.cpp     # portable string class everything depends on
@@ -58,7 +61,7 @@ add_library(wycore STATIC
     port/stubs.cpp       # upstream-declared CRT externs + copied base64 helpers
 )
 target_compile_definitions(wycore PUBLIC COMMUNITY)   # upstream vcxproj default
-target_include_directories(wycore PUBLIC port/shim include "${MDB_MYSQL_DIR}/mysql")
+target_include_directories(wycore PUBLIC "${SHIM_DIR}" port/shim include "${MDB_MYSQL_DIR}/mysql")
 target_compile_options(wycore PRIVATE -Wall -Wno-unknown-pragmas)
 
 find_package(Threads REQUIRED)
@@ -154,7 +157,7 @@ add_executable(openyog
 # client libraries above — on Arch, `sudo pacman -S qscintilla-qt6`
 # (headers land in /usr/include/qt6/Qsci, lib is libqscintilla2_qt6).
 find_path(QSCINTILLA_INCLUDE_DIR Qsci/qsciscintilla.h
-          HINTS /usr/include/qt6 /usr/local/include/qt6 REQUIRED)
+          HINTS /usr/include/qt6 /usr/local/include/qt6 PATH_SUFFIXES qt6 REQUIRED)
 find_library(QSCINTILLA_LIBRARY NAMES qscintilla2_qt6 REQUIRED)
 target_include_directories(openyog PRIVATE ${QSCINTILLA_INCLUDE_DIR})
 target_link_libraries(openyog PRIVATE wycore Qt6::Widgets ${MARIADB_LIBRARY} ${SQLITE3_LIBRARY} ${PQ_LIBRARY} ${QSCINTILLA_LIBRARY})

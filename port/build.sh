@@ -6,9 +6,13 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-CXXFLAGS="-std=c++17 -Wall -Wno-unknown-pragmas -DCOMMUNITY -Iport/shim -Iinclude"
+# the system mysql/sqlite3 headers ahead of the bundled ones in include/,
+# the same links CMakeLists.txt makes in its build tree
+mkdir -p build-core/shim/mysql
+ln -sfn /usr/include/mysql build-core/shim/mysql/mysql
+ln -sf /usr/include/sqlite3.h build-core/shim/sqlite3.h
+CXXFLAGS="-std=c++17 -Wall -Wno-unknown-pragmas -DCOMMUNITY -Ibuild-core/shim -Iport/shim -Iinclude"
 
-mkdir -p build-core
 for src in wyString wyFile wySqlite wyIni; do
     g++ $CXXFLAGS -c src/$src.cpp -o build-core/$src.o
 done

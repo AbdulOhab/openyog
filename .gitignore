@@ -39,9 +39,5 @@ CMakeLists.txt.user*
 *~
 .DS_Store
 
-# generated symlinks (CMakeLists.txt/build.sh recreate them)
-port/shim/mysql
-port/shim/sqlite3.h
-
 # stray CSV export test artifact
 employees.csv
