@@ -99,6 +99,58 @@ jobs:
           fi
           echo "no sanitizer reports"
 
+  windows:
+    name: Windows cross build + wine selftests
+    runs-on: ubuntu-latest
+    # Arch's mingw-w64-gcc is UCRT, like the MSYS2 packages the build links
+    container: archlinux:latest
+    steps:
+      - name: Install dependencies
+        run: |
+          pacman -Syu --noconfirm --needed \
+            base-devel git cmake ninja python zip mingw-w64-gcc wine
+
+      - uses: actions/checkout@v4
+
+      # moc/rcc/uic have to be the Windows Qt's version, which the lock pins;
+      # Arch's own Qt moves on, so the host tools come from aqtinstall
+      - name: Pinned Qt version
+        id: qt
+        run: |
+          v=$(sed -n 's/.*mingw-w64-ucrt-x86_64-qt6-base-\([0-9.]*\)-[0-9]*-any.*/\1/p' tools/msys2-ucrt64.lock)
+          test -n "$v"
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache@v4
+        with:
+          path: /opt/qt
+          key: host-qtbase-${{ steps.qt.outputs.version }}
+
+      - name: Host Qt tools
+        run: |
+          if [ ! -d "/opt/qt/${{ steps.qt.outputs.version }}/gcc_64" ]; then
+            python -m venv /opt/aqt
+            /opt/aqt/bin/pip install --quiet aqtinstall
+            /opt/aqt/bin/aqt install-qt -O /opt/qt linux desktop "${{ steps.qt.outputs.version }}" linux_gcc_64 --archives qtbase
+          fi
+
+      - uses: actions/cache@v4
+        with:
+          path: build-mingw/sysroot/cache
+          key: msys2-${{ hashFiles('tools/msys2-ucrt64.lock') }}
+
+      # builds, deploys, then runs --version, --stmtattest, --icontest and
+      # --keychaintest under wine
+      - name: Build, deploy, wine selftests
+        env:
+          QT_HOST_PATH: /opt/qt/${{ steps.qt.outputs.version }}/gcc_64
+        run: tools/windows-cross-build.sh --zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: openyog-windows
+          path: build-mingw/openyog-win-deploy.zip
+
   arch-package:
     name: Arch package (makepkg)
     runs-on: ubuntu-latest
