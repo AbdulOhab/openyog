@@ -477,3 +477,9 @@ QStringList MainWindow::selftestSchemaSync(const QString &spec)
     }
     return out;
 }
+
+QStringList MainWindow::selftestResults() const
+{
+    const ConnectionTab *tab = currentTab();
+    return tab ? tab->resultsForTest() : QStringList();
+}

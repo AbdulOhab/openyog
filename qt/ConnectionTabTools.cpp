@@ -404,6 +404,14 @@ SchemaSync::Schema ConnectionTab::syncSchema(const QString &database)
     return SchemaSync::load(m_conn, database);
 }
 
+QStringList ConnectionTab::resultsForTest() const
+{
+    QStringList out = m_messages->toPlainText().split(QLatin1Char('\n'));
+    for(QWidget *grid : m_dynamicResultTabs)
+        out << QStringLiteral("result tab: ") + m_resultTabs->tabText(m_resultTabs->indexOf(grid));
+    return out;
+}
+
 int ConnectionTab::queryRowCountForTest(const QString &sql, QString *error)
 {
     DbResultSet rs;

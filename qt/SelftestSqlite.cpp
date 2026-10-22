@@ -172,6 +172,8 @@ int sqliteTest(int &argc, char **argv, const QString &file)
         QFile::remove(tmp);
     }
 
+    for(const auto &[what, ok] : queryLimitedChecks(c))
+        check(ok, what);
     delete c;
     return fails == 0 ? 0 : 1;
 }

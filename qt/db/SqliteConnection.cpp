@@ -21,7 +21,8 @@ void SqliteConnection::cancel()
         sqlite3_interrupt(m_db);
 }
 
-bool SqliteConnection::runBuffered(const QString &sql, DbResultSet *out, QString *error)
+bool SqliteConnection::runBuffered(const QString &sql, DbResultSet *out, QString *error,
+                                   int maxRows)
 {
     sqlite3_stmt *stmt = nullptr;
     const QByteArray utf8 = sql.toUtf8();
@@ -36,9 +37,10 @@ bool SqliteConnection::runBuffered(const QString &sql, DbResultSet *out, QString
             out->headers << QString::fromUtf8(sqlite3_column_name(stmt, i));
 
     int rc;
+    qint64 count = 0;
     while((rc = sqlite3_step(stmt)) == SQLITE_ROW) {
-        if(!out)
-            continue;
+        if(!out || (maxRows > 0 && count++ >= maxRows))
+            continue; /* past maxRows: counted, not kept */
         QStringList row;
         for(int i = 0; i < n; ++i) {
             if(sqlite3_column_type(stmt, i) == SQLITE_NULL) {
@@ -51,6 +53,8 @@ bool SqliteConnection::runBuffered(const QString &sql, DbResultSet *out, QString
         out->rows << row;
     }
     const bool ok = (rc == SQLITE_DONE);
+    if(ok && out && maxRows > 0 && count > out->rows.size())
+        out->totalRows = count;
     if(!ok && error)
         *error = QString::fromUtf8(sqlite3_errmsg(m_db));
     sqlite3_finalize(stmt);
@@ -67,6 +71,23 @@ bool SqliteConnection::query(const QString &sql, DbResultSet *result, QString *m
         *message = target->headers.isEmpty()
                        ? QStringLiteral("OK, %1 row(s) affected").arg(affectedRows())
                        : QStringLiteral("%1 row(s) in result set").arg(target->rows.size());
+    }
+    return true;
+}
+
+bool SqliteConnection::queryLimited(const QString &sql, int maxRows, DbResultSet *result,
+                                    QString *message)
+{
+    DbResultSet local;
+    DbResultSet *target = result ? result : &local;
+    if(!runBuffered(sql, target, message, maxRows))
+        return false;
+    if(message) {
+        *message = target->headers.isEmpty()
+                       ? QStringLiteral("OK, %1 row(s) affected").arg(affectedRows())
+                       : QStringLiteral("%1 row(s) in result set")
+                             .arg(target->totalRows >= 0 ? target->totalRows
+                                                         : qint64(target->rows.size()));
     }
     return true;
 }

@@ -31,7 +31,9 @@ Early but usable for day-to-day work against a local server. Working now:
   server, not just the one you connected to.
 - **Query editor**: line-number gutter, SQL highlighting, multiple *Query N*
   tabs, threaded execution (the UI never blocks), multi-statement runs that
-  open multiple result grids, and a History tab.
+  open multiple result grids, and a History tab. A result keeps its first
+  10,000 rows (Preferences ▸ Rows kept from a result) and counts the rest
+  without holding them, so a SELECT over a huge table can't fill the memory.
 - **Data grid**: fully staged editing. Edited cells turn amber, new rows
   green, rows marked for deletion red; one **Apply** commits them in a single
   transaction, **Revert** drops them.

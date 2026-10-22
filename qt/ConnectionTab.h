@@ -49,6 +49,7 @@ struct QueryResult
     QString message;
     QStringList headers;
     QVector<QStringList> rows;
+    qint64 totalRows = -1; /* rows the result had, when only some were kept */
 };
 
 class ConnectionTab : public QWidget
@@ -171,6 +172,10 @@ public:
      * default). Global, not per-tab — mirrors Theme::load()/save(). */
     static int queryTimeoutSecs();
     static void setQueryTimeoutSecs(int secs);
+    /* rows kept from a query's result for the grid, 0: all (OpenYog.ini
+     * [Query] result_rows, 10000 by default) */
+    static int resultRowLimit();
+    static void setResultRowLimit(int rows);
 
     /* File ▸ New Schema Designer: a diagram tab for `database` (default: the
      * current one) */
@@ -183,6 +188,8 @@ public:
     /* --querybuilder selftest: rows `sql` returns on this tab's connection, or
      * -1 and why not */
     int queryRowCountForTest(const QString &sql, QString *error);
+    /* --printresults selftest: the Messages text, then each result tab's title */
+    QStringList resultsForTest() const;
 
 public slots:
     void runQuery();                /* F9 — selection or current statement */

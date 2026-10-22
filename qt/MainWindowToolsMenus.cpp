@@ -258,6 +258,14 @@ void MainWindow::buildToolsMenu()
         timeoutSpin->setValue(ConnectionTab::queryTimeoutSecs());
         timeoutSpin->setSpecialValueText(QStringLiteral("never"));
         timeoutSpin->setLocale(QLocale::c());
+        auto *rowsSpin = new QSpinBox(&dlg);
+        rowsSpin->setRange(0, 100000000);
+        rowsSpin->setSingleStep(1000);
+        rowsSpin->setValue(ConnectionTab::resultRowLimit());
+        rowsSpin->setSpecialValueText(QStringLiteral("all"));
+        rowsSpin->setToolTip(QStringLiteral("A query's result shows its first rows only; the rest "
+                                            "are counted, not kept, so a huge result can't fill "
+                                            "the memory"));
         QColor browserColor = ObjectBrowserColor::load();
         /* upstream's Preferences checkbox (SQLyog.rc "Paste object name in
          * &editor on double-click", key GetTextOnDBClick) — checked keeps
@@ -284,6 +292,7 @@ void MainWindow::buildToolsMenu()
         auto *form = new QFormLayout;
         form->addRow(QStringLiteral("Theme"), themeCombo);
         form->addRow(QStringLiteral("Query timeout (seconds)"), timeoutSpin);
+        form->addRow(QStringLiteral("Rows kept from a result"), rowsSpin);
         form->addRow(QStringLiteral("Object browser selection color"), colorBtn);
         form->addRow(QString(), dblClickBox);
         form->addRow(QString(), restoreBox);
@@ -300,6 +309,7 @@ void MainWindow::buildToolsMenu()
         Theme::save(theme);
         Theme::apply(*qApp, theme);
         ConnectionTab::setQueryTimeoutSecs(timeoutSpin->value());
+        ConnectionTab::setResultRowLimit(rowsSpin->value());
         ObjectBrowserColor::save(browserColor);
         ObjectBrowserDoubleClick::setPasteNameInEditor(dblClickBox->isChecked());
         SessionStore::setRestoreOnStartup(restoreBox->isChecked());

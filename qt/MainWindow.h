@@ -58,6 +58,7 @@ public:
      * apply: run every change the script can make, then compare again; shot:
      * save the dialog as it shows them */
     QStringList selftestSchemaSync(const QString &spec);
+    QStringList selftestResults() const; /* --printresults selftest */
     /* Powertools ▸ Schema Synchronization Tool */
     void openSchemaSync();
     void selftestUseDatabase(const QString &db);           /* --usedb= selftest */

@@ -5,7 +5,11 @@
  * flags that drive a running MainWindow stay in main.cpp. */
 #pragma once
 
+#include <QList>
+#include <QPair>
 #include <QString>
+
+class IDbConnection;
 
 namespace Selftest {
 
@@ -33,5 +37,10 @@ int iconTest(int &argc, char **argv);
 int filterTest();
 int keychainTest(int &argc, char **argv);
 int compTest(int &argc, char **argv);
+
+/* the driver selftests' shared part (SelftestServer.cpp): queryLimited()
+ * keeps and counts what it should and leaves the connection usable; one
+ * (what, passed) per check */
+QList<QPair<QString, bool>> queryLimitedChecks(IDbConnection *c);
 
 } // namespace Selftest

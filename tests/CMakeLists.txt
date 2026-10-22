@@ -119,6 +119,17 @@ if(SQLITE3_CLI)
         FIXTURES_REQUIRED schemadesigner_db
         ENVIRONMENT "${SELFTEST_ENV}"
         PASS_REGULAR_EXPRESSION "schemadesigner: database=main tables=3 links=1 overlaps=0\nschemadesigner link [^:]*: employees \\(dept_id\\) -> emp_dept \\(id\\)\nschemadesigner export: ok")
+    # a query's result over the row limit (10,000 by default): the first rows
+    # kept, the rest counted, and the tab says so
+    add_test(NAME selftest_result_row_limit
+             COMMAND openyog "--autoconnectfile=${db}"
+                     "--sql=WITH RECURSIVE n(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM n WHERE x < 25000) SELECT x FROM n"
+                     --runagain --printresults
+                     "--screenshot=${CMAKE_CURRENT_BINARY_DIR}/result-row-limit.png")
+    set_tests_properties(selftest_result_row_limit PROPERTIES
+        FIXTURES_REQUIRED schemadesigner_db
+        ENVIRONMENT "${SELFTEST_ENV}"
+        PASS_REGULAR_EXPRESSION "10,?000 of 25,?000 rows kept.*result tab: [^\n]*\\(first 10,?000\\)")
     # Query Builder: two tables, joined along their foreign key on their own,
     # and the SQL it writes runs (reads the same fixture, changes nothing)
     add_test(NAME selftest_querybuilder

@@ -87,6 +87,7 @@ int main(int argc, char *argv[])
     bool schemaDesigner = false; /* --schemadesigner[=FILE.png] selftest: open File ▸ New Schema
                                   * Designer, print its tables/links (and export the image) */
     QString schemaDesignerExport;
+    bool printResults = false;  /* --printresults selftest: Messages and result tabs, at the end */
     QString schemaSyncSpec;     /* --schemasync=SOURCE:TARGET[:apply][:shot=F] selftest */
     QString queryBuilderSpec;   /* --querybuilder=table:col,col+table:col selftest: add
                                  * them to a Query Builder, print and run its SQL */
@@ -325,6 +326,8 @@ int main(int argc, char *argv[])
             infoSearch = a.mid(QStringLiteral("--infosearch=").size());
         if(a == QStringLiteral("--showdatatab"))
             showDataTab = true;
+        if(a == QStringLiteral("--printresults"))
+            printResults = true;
         if(a.startsWith(QStringLiteral("--schemasync=")))
             schemaSyncSpec = a.mid(QStringLiteral("--schemasync=").size());
         if(a.startsWith(QStringLiteral("--querybuilder=")))
@@ -877,7 +880,10 @@ int main(int argc, char *argv[])
                      * selftests' shorter delay (their effects are all
                      * synchronous). */
                     const bool threadedRun = runAgain || !explainMode.isEmpty();
-                    QTimer::singleShot(threadedRun ? 1500 : 600, [w, screenshot] {
+                    QTimer::singleShot(threadedRun ? 1500 : 600, [w, screenshot, printResults] {
+                        if(printResults)
+                            for(const QString &line : w->selftestResults())
+                                QTextStream(stdout) << line << '\n';
                         if(QWidget *modal = QApplication::activeModalWidget())
                             modal->grab().save(screenshot);
                         else

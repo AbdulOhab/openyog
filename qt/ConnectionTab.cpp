@@ -48,6 +48,7 @@
 #include <QFontDatabase>
 #include <QTextStream>
 #include <QHeaderView>
+#include <QLocale>
 #include <QMessageBox>
 #include <QMetaObject>
 #include <QPushButton>
@@ -112,6 +113,19 @@ int loadQueryTimeoutSecs()
 void saveQueryTimeoutSecs(int secs)
 {
     wyIni::IniWriteInt("Query", "timeout_secs", secs, settingsIniPath().toUtf8());
+}
+
+/* rows kept from a query's result set for the grid (0: all of them); the
+ * rest are read and counted but not kept, so a SELECT over a huge table
+ * can't fill the memory. Same [Query] section. */
+int loadResultRowLimit()
+{
+    return wyIni::IniGetInt("Query", "result_rows", 10000, settingsIniPath().toUtf8());
+}
+
+void saveResultRowLimit(int rows)
+{
+    wyIni::IniWriteInt("Query", "result_rows", rows, settingsIniPath().toUtf8());
 }
 
 /* persistent query history: <AppConfig>/history.log, tab-separated
@@ -208,7 +222,7 @@ void installGridCopy(QTableView *grid)
 /* runs in a worker thread: dedicated connection per batch, results
  * collected as plain data (no driver objects cross threads) */
 QVector<QueryResult> runOnConnection(const ConnectionParams &p, const QStringList &statements,
-                                     LiveConnection *liveConn = nullptr)
+                                     int maxRows, LiveConnection *liveConn = nullptr)
 {
     QVector<QueryResult> results;
     QString error;
@@ -232,13 +246,20 @@ QVector<QueryResult> runOnConnection(const ConnectionParams &p, const QStringLis
 
         DbResultSet rs;
         QString message;
-        r.ok = c->query(stmt, &rs, &message);
+        r.ok = c->queryLimited(stmt, maxRows, &rs, &message);
         if(r.ok) {
             r.headers = rs.headers;
             r.rows = rs.rows;
-            r.message = rs.headers.isEmpty()
-                            ? QStringLiteral("OK, %1 row(s) affected").arg(c->affectedRows())
-                            : QStringLiteral("%1 row(s)").arg(r.rows.size());
+            r.totalRows = rs.totalRows;
+            if(rs.headers.isEmpty())
+                r.message = QStringLiteral("OK, %1 row(s) affected").arg(c->affectedRows());
+            else if(rs.totalRows > r.rows.size())
+                r.message = QStringLiteral("%1 of %2 rows kept: the result has more than "
+                                           "Preferences ▸ Rows kept from a result")
+                                .arg(QLocale().toString(qint64(r.rows.size())),
+                                     QLocale().toString(rs.totalRows));
+            else
+                r.message = QStringLiteral("%1 row(s)").arg(r.rows.size());
         } else {
             r.message = message;
         }
@@ -1384,8 +1405,10 @@ void ConnectionTab::runStatements(const QStringList &statements, const QString &
     QPointer<ConnectionTab> guard(this);
     const ConnectionParams p = m_params;
     std::shared_ptr<LiveConnection> cancelState = m_cancelState;
-    QThreadPool::globalInstance()->start([guard, p, statements, tabPrefix, cancelState] {
-        const QVector<QueryResult> results = runOnConnection(p, statements, cancelState.get());
+    const int maxRows = loadResultRowLimit();
+    QThreadPool::globalInstance()->start([guard, p, statements, tabPrefix, cancelState, maxRows] {
+        const QVector<QueryResult> results =
+            runOnConnection(p, statements, maxRows, cancelState.get());
         QMetaObject::invokeMethod(
             guard,
             [guard, results, tabPrefix] {
@@ -1415,6 +1438,14 @@ int ConnectionTab::queryTimeoutSecs()
 void ConnectionTab::setQueryTimeoutSecs(int secs)
 {
     saveQueryTimeoutSecs(secs);
+}
+int ConnectionTab::resultRowLimit()
+{
+    return loadResultRowLimit();
+}
+void ConnectionTab::setResultRowLimit(int rows)
+{
+    saveResultRowLimit(rows);
 }
 
 void ConnectionTab::cancelQuery()
@@ -1507,7 +1538,19 @@ void ConnectionTab::addResultGrid(const QueryResult &r, const QString &title)
     installGridCopy(grid);
     wireResultGrid(grid);
 
-    m_resultTabs->addTab(grid, Icons::get(QStringLiteral("grid_view.ico")), title);
+    /* a result cut short says so on its tab, the grid being what shows */
+    const bool cut = r.totalRows > r.rows.size();
+    const int index = m_resultTabs->addTab(
+        grid, Icons::get(QStringLiteral("grid_view.ico")),
+        cut ? QStringLiteral("%1 (first %2)").arg(title, QLocale().toString(qint64(r.rows.size())))
+            : title);
+    if(cut)
+        m_resultTabs->setTabToolTip(
+            index,
+            QStringLiteral("The first %1 of the result's %2 rows: Preferences ▸ Rows kept "
+                           "from a result sets how many are kept. Add a WHERE or a LIMIT "
+                           "to see others.")
+                .arg(QLocale().toString(qint64(r.rows.size())), QLocale().toString(r.totalRows)));
     m_dynamicResultTabs.append(grid);
     m_lastGrid = grid;
 }

@@ -77,6 +77,59 @@ bool MySqlConnection::query(const QString &sql, DbResultSet *result, QString *me
     return true;
 }
 
+/* streamed with mysql_use_result: rows past maxRows are read and counted,
+ * never stored (mysql_store_result would hold the whole result first) */
+bool MySqlConnection::queryLimited(const QString &sql, int maxRows, DbResultSet *result,
+                                   QString *message)
+{
+    DbResultSet local;
+    DbResultSet *out = result ? result : &local;
+    const QByteArray utf8 = sql.toUtf8();
+    if(mysql_query(m_conn, utf8.constData()) != 0) {
+        if(message)
+            *message = QString::fromUtf8(mysql_error(m_conn));
+        return false;
+    }
+    MYSQL_RES *res = mysql_use_result(m_conn);
+    if(!res) {
+        if(mysql_field_count(m_conn) != 0) {
+            if(message)
+                *message = QString::fromUtf8(mysql_error(m_conn));
+            return false;
+        }
+        if(message) /* no result set (DDL/DML) */
+            *message = QStringLiteral("OK, %1 row(s) affected").arg(affectedRows());
+        return true;
+    }
+    const unsigned int n = mysql_num_fields(res);
+    MYSQL_FIELD *fields = mysql_fetch_fields(res);
+    for(unsigned int i = 0; i < n; ++i)
+        out->headers << QString::fromUtf8(fields[i].name);
+    qint64 count = 0;
+    while(MYSQL_ROW row = mysql_fetch_row(res)) {
+        if(maxRows <= 0 || count < maxRows) {
+            QStringList r;
+            for(unsigned int i = 0; i < n; ++i)
+                r << (row[i] ? QString::fromUtf8(row[i]) : QStringLiteral("NULL"));
+            out->rows << r;
+        }
+        ++count;
+    }
+    /* the fetch stopped on an error, not the end: a lost connection, or the
+     * query cancelled (KILL QUERY) while its rows were coming in */
+    const bool failed = mysql_errno(m_conn) != 0;
+    if(failed && message)
+        *message = QString::fromUtf8(mysql_error(m_conn));
+    mysql_free_result(res);
+    if(failed)
+        return false;
+    if(count > out->rows.size())
+        out->totalRows = count;
+    if(message)
+        *message = QStringLiteral("%1 row(s) in result set").arg(count);
+    return true;
+}
+
 bool MySqlConnection::streamQuery(const QString &sql, QString *error,
                                   const std::function<void(const QStringList &headers)> &onHeaders,
                                   const std::function<bool(const QVector<QByteArray> &fields,

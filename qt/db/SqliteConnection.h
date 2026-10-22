@@ -22,6 +22,8 @@ public:
 
     void cancel() override;
     bool query(const QString &sql, DbResultSet *result, QString *message) override;
+    bool queryLimited(const QString &sql, int maxRows, DbResultSet *result,
+                      QString *message) override;
 
     bool streamQuery(const QString &sql, QString *error,
                      const std::function<void(const QStringList &headers)> &onHeaders,
@@ -56,7 +58,8 @@ public:
 private:
     /* prepares `sql`, runs it to completion, buffering rows into `out` if
      * given. `out` may be null (DDL/DML — caller only wants success/error). */
-    bool runBuffered(const QString &sql, DbResultSet *out, QString *error);
+    /* maxRows > 0: rows past it are counted into out->totalRows, not kept */
+    bool runBuffered(const QString &sql, DbResultSet *out, QString *error, int maxRows = 0);
     /* schema-qualifies `sqlite_master` for non-default (ATTACHed) databases */
     static QString masterTable(const QString &db);
 

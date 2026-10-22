@@ -16,6 +16,32 @@
 
 namespace Selftest {
 
+QList<QPair<QString, bool>> queryLimitedChecks(IDbConnection *c)
+{
+    /* 1000 rows on every backend, no table needed */
+    QString digits = QStringLiteral("(SELECT 0 AS d");
+    for(int i = 1; i < 10; ++i)
+        digits += QStringLiteral(" UNION ALL SELECT %1").arg(i);
+    digits += QLatin1Char(')');
+    const QString sql = QStringLiteral("SELECT a.d, b.d, c.d FROM %1 a, %1 b, %1 c").arg(digits);
+    QList<QPair<QString, bool>> out;
+    DbResultSet cut, all, none, after;
+    QString message;
+    out.append({QStringLiteral("queryLimited keeps 250 of 1000 rows, counts the rest"),
+                c->queryLimited(sql, 250, &cut, &message) && cut.rows.size() == 250 &&
+                    cut.totalRows == 1000 && cut.headers.size() == 3});
+    out.append({QStringLiteral("queryLimited with no limit keeps all 1000"),
+                c->queryLimited(sql, 0, &all, &message) && all.rows.size() == 1000 &&
+                    all.totalRows == -1});
+    out.append({QStringLiteral("queryLimited runs a statement without a result set"),
+                c->queryLimited(QStringLiteral("UPDATE emp_dept SET name = name WHERE 1 = 0"), 250,
+                                &none, &message) &&
+                    none.headers.isEmpty()});
+    out.append({QStringLiteral("the connection works after a result cut short"),
+                c->query(QStringLiteral("SELECT 1"), &after, nullptr) && after.rows.size() == 1});
+    return out;
+}
+
 /* --pgtest=host:port:user:pw:db — exercise the PostgreSQL driver's
  * canonical metadata shapes against a live server prepared with the
  * same layout as the --sqlitetest fixture (employees/emp_dept/
@@ -180,6 +206,8 @@ int pgTest(int &argc, char **argv, const QString &server)
         }
     }
 
+    for(const auto &[what, ok] : queryLimitedChecks(c))
+        check(ok, what);
     delete c;
     return fails == 0 ? 0 : 1;
 }
@@ -399,6 +427,11 @@ int schemaTest(int &argc, char **argv, const QString &server)
                             << " present=" << present << " alter=" << aOk << " kept=" << stillThere
                             << " drop=" << dOk << " gone=" << gone
                             << (caseOk ? "  PASS\n" : "  FAIL\n");
+    }
+    for(const auto &[what, ok] : queryLimitedChecks(c)) {
+        allOk = allOk && ok;
+        QTextStream(stdout) << "schematest QUERYLIMITED: " << what
+                            << (ok ? "  PASS\n" : "  FAIL\n");
     }
     delete c;
     return allOk ? 0 : 1;

@@ -18,11 +18,13 @@
 
 class SshTunnel;
 
-/* Buffered result set: one query, fully materialized. */
+/* Buffered result set: one query, fully materialized — or, from
+ * queryLimited(), its first rows and how many it had in all. */
 struct DbResultSet
 {
     QStringList headers;
     QVector<QStringList> rows;
+    qint64 totalRows = -1; /* queryLimited(): rows in all; -1 when `rows` is all of them */
 };
 
 class IDbConnection
@@ -48,6 +50,23 @@ public:
      * ("N row(s) in result set" / "OK, N row(s) affected"). Returns false
      * and fills `message` with the error on failure. */
     virtual bool query(const QString &sql, DbResultSet *result, QString *message) = 0;
+
+    /* query() as the query editor runs it: of a result set at most `maxRows`
+     * rows are kept (0: all), the rest only counted into result->totalRows.
+     * This default runs query() and drops what's over; the MySQL, PostgreSQL
+     * and SQLite connections stream instead, so a huge result never sits in
+     * memory whole. */
+    virtual bool queryLimited(const QString &sql, int maxRows, DbResultSet *result,
+                              QString *message)
+    {
+        if(!query(sql, result, message))
+            return false;
+        if(result && maxRows > 0 && result->rows.size() > maxRows) {
+            result->totalRows = result->rows.size();
+            result->rows.resize(maxRows);
+        }
+        return true;
+    }
 
     /* Streaming execute for full-table reads (e.g. SQL dump): fields arrive
      * as raw bytes, not QString, so binary/BLOB columns survive escape()

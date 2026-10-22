@@ -79,6 +79,65 @@ bool PostgresConnection::query(const QString &sql, DbResultSet *result, QString 
     return true;
 }
 
+/* one row at a time (single-row mode): rows past maxRows are read and
+ * counted, never stored (PQexec would hold the whole result first) */
+bool PostgresConnection::queryLimited(const QString &sql, int maxRows, DbResultSet *result,
+                                      QString *message)
+{
+    DbResultSet local;
+    DbResultSet *out = result ? result : &local;
+    const QByteArray utf8 = sql.toUtf8();
+    if(!PQsendQuery(m_conn, utf8.constData())) {
+        if(message)
+            *message = QString::fromUtf8(PQerrorMessage(m_conn));
+        return false;
+    }
+    PQsetSingleRowMode(m_conn);
+    qint64 count = 0;
+    bool headers = false, rowsResult = false;
+    QString error;
+    while(PGresult *res = PQgetResult(m_conn)) {
+        const ExecStatusType st = PQresultStatus(res);
+        if(st == PGRES_SINGLE_TUPLE || st == PGRES_TUPLES_OK) {
+            rowsResult = true;
+            const int nf = PQnfields(res);
+            if(!headers) {
+                for(int i = 0; i < nf; ++i)
+                    out->headers << QString::fromUtf8(PQfname(res, i));
+                headers = true;
+            }
+            if(st == PGRES_SINGLE_TUPLE) {
+                if(maxRows <= 0 || count < maxRows) {
+                    QStringList row;
+                    for(int i = 0; i < nf; ++i)
+                        row << (PQgetisnull(res, 0, i) ? QStringLiteral("NULL")
+                                                       : QString::fromUtf8(PQgetvalue(res, 0, i)));
+                    out->rows << row;
+                }
+                ++count;
+            }
+        } else if(st == PGRES_COMMAND_OK) {
+            m_lastAffected = QByteArray(PQcmdTuples(res)).toLongLong();
+        } else if(st != PGRES_EMPTY_QUERY && error.isEmpty()) {
+            error = QString::fromUtf8(PQresultErrorMessage(res));
+        }
+        PQclear(res);
+    }
+    if(!error.isEmpty()) {
+        if(message)
+            *message = error;
+        return false;
+    }
+    if(rowsResult)
+        m_lastAffected = 0;
+    if(count > out->rows.size())
+        out->totalRows = count;
+    if(message)
+        *message = rowsResult ? QStringLiteral("%1 row(s) in result set").arg(count)
+                              : QStringLiteral("OK, %1 row(s) affected").arg(affectedRows());
+    return true;
+}
+
 bool PostgresConnection::streamQuery(
     const QString &sql, QString *error,
     const std::function<void(const QStringList &headers)> &onHeaders,
