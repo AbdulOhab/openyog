@@ -152,6 +152,7 @@ add_executable(openyog
     qt/InfoPanel.h         qt/InfoPanel.cpp
     qt/CustomFilterDialog.h qt/CustomFilterDialog.cpp
     qt/Theme.h             qt/Theme.cpp
+    qt/DiagramItems.h      qt/DiagramItems.cpp
     qt/SchemaDiagram.h     qt/SchemaDiagram.cpp
     qt/SchemaDesigner.h    qt/SchemaDesigner.cpp
 )

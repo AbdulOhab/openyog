@@ -9,9 +9,9 @@
  * drawing and the interaction. */
 #pragma once
 
+#include "DiagramItems.h"
 #include "SchemaDiagram.h"
 
-#include <QColor>
 #include <QSet>
 #include <QWidget>
 
@@ -20,8 +20,6 @@
 class QGraphicsScene;
 class QLabel;
 class QLineEdit;
-class DiagramView;
-class DiagramTable;
 
 class SchemaDesigner : public QWidget
 {
@@ -45,12 +43,6 @@ public:
 
     /* --schemadesigner selftest: one summary line, then one per link */
     QStringList dumpForTest() const;
-
-    /* colours from the palette, so every theme draws in its own */
-    struct Colors
-    {
-        QColor canvas, box, border, text, typeText, header, headerText, line, highlight;
-    };
 
 signals:
     void openTableRequested(const QString &database, const QString &table);
@@ -76,11 +68,11 @@ private:
     QHash<QString, QPointF> m_positions; /* where each table was last, shown or not */
     int m_linkCount = 0;
     bool m_autoFit = true; /* refit on resize, until zoomed by hand */
-    QHash<QString, DiagramTable *> m_items;
-    Colors m_colors;
+    QHash<QString, Diagram::Table *> m_items;
+    Diagram::Colors m_colors;
 
     QGraphicsScene *m_scene = nullptr;
-    DiagramView *m_view = nullptr;
+    Diagram::View *m_view = nullptr;
     QLabel *m_info = nullptr;
     QLabel *m_zoom = nullptr;
     QLineEdit *m_find = nullptr;
