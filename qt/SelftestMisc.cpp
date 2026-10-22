@@ -1,11 +1,13 @@
 /* OpenYog — standalone selftests: result export formats, menu shortcuts, statementAt(), keyword
- * case, the embedded icons, the Custom Filter's WHERE, and autocomplete. Declared in Selftest.h;
- * qt/main.cpp runs one per flag. */
+ * case, the embedded icons, the Custom Filter's WHERE, the OS keychain, and autocomplete.
+ * Declared in Selftest.h; qt/main.cpp runs one per flag. */
 #include "Selftest.h"
 #include "MainWindow.h"
 #include "ConnectionParams.h"
+#include "ConnectionStore.h"
 #include "ResultExport.h"
 #include "SqlSplit.h"
+#include "SecretStore.h"
 #include "SqlEditor.h"
 #include <Qsci/qscilexersql.h>
 #include "CustomFilterDialog.h"
@@ -21,6 +23,7 @@
 #include <QIcon>
 #include <QImage>
 #include <QPainter>
+#include <QStandardPaths>
 #include <QTextStream>
 
 namespace Selftest {
@@ -294,6 +297,63 @@ int filterTest()
         QTextStream(stdout) << "filtertest [" << c.want
                             << "]: " << (pass ? "PASS" : "FAIL got=[" + got + "]") << "\n";
     }
+    return ok ? 0 : 1;
+}
+
+/* --keychaintest — saved passwords reach the OS keychain and come back: a
+ * secret written, read and deleted through SecretStore, then a saved
+ * connection whose password must be in the keychain, not in
+ * connections.ini. It uses the keychain and config of whoever runs it (a
+ * "selftest/" key and an "openyog-selftest" connection, both removed again
+ * at the end), so run it somewhere disposable: a wine prefix of its own, a
+ * CI runner. */
+int keychainTest(int &argc, char **argv)
+{
+    qputenv("QT_QPA_PLATFORM", "offscreen");
+    QApplication app(argc, argv);
+    QApplication::setApplicationName(QStringLiteral("OpenYog")); /* as main() names it */
+    QApplication::setOrganizationName(QStringLiteral("OpenYog"));
+#ifndef OPENYOG_HAVE_KEYCHAIN
+    QTextStream(stdout) << "keychaintest: built without QtKeychain\n";
+    return 1;
+#endif
+    bool ok = true;
+    const auto check = [&](bool pass, const char *what) {
+        ok = ok && pass;
+        QTextStream(stdout) << "keychaintest " << what << (pass ? "  PASS\n" : "  FAIL\n");
+    };
+    const QString secret = QStringLiteral("p@ss wörd ✓");
+    QString got;
+
+    const QString key = QStringLiteral("selftest/keychain");
+    check(SecretStore::write(key, secret), "write");
+    check(SecretStore::read(key, &got) && got == secret, "read back");
+    check(SecretStore::remove(key), "remove");
+    check(!SecretStore::read(key, &got), "gone after remove");
+
+    ConnectionParams cp;
+    cp.name = QStringLiteral("openyog-selftest");
+    cp.user = QStringLiteral("selftest");
+    cp.password = secret;
+    ConnectionStore::save(cp);
+    QByteArray iniText;
+    { /* closed again before the remove below: wyIni rewrites the file under an
+       * exclusive lock, which an open handle makes fail on Windows */
+        QFile ini(QDir(QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation))
+                      .filePath(QStringLiteral("connections.ini")));
+        if(ini.open(QIODevice::ReadOnly))
+            iniText = ini.readAll();
+    }
+    check(iniText.contains("password_in_keychain=1") &&
+              !iniText.contains(secret.toUtf8().toBase64()),
+          "connections.ini only flags the password");
+    ConnectionParams back;
+    check(ConnectionStore::load(cp.name, &back) && back.password == secret,
+          "the saved connection's password comes back");
+    ConnectionStore::remove(cp.name);
+    check(!ConnectionStore::storedNames().contains(cp.name), "the connection is removed");
+    check(!SecretStore::read(QStringLiteral("connection/") + cp.name, &got),
+          "removing the connection removes its password");
     return ok ? 0 : 1;
 }
 

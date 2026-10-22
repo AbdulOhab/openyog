@@ -87,17 +87,27 @@ cd packaging/arch && makepkg -si
 
 ## Build (Windows, cross-compiled from Linux)
 
-Cross-compiled with mingw-w64 + an official Qt 6.11.2 `win64_mingw`
-prebuilt (not built from source); verified end-to-end with a wine smoke
-test, real-hardware testing still pending.
+Cross-compiled with mingw-w64 against MSYS2's UCRT64 packages (Qt,
+QScintilla, QtKeychain and the database clients, at the versions
+`tools/msys2-ucrt64.lock` pins). Needs `mingw-w64-gcc`, cmake, ninja,
+python3 and a host Qt of the same version as the pinned one (it supplies
+moc/rcc/uic):
 
 ```bash
+sudo pacman -S --needed mingw-w64-gcc wine   # wine: optional, runs the selftests
 tools/windows-cross-build.sh --zip
 ```
 
-Produces `build-mingw/deploy/` (the exe + its full DLL closure + Qt
-plugins) and `build-mingw/openyog-win-deploy.zip` — copy the zip's whole
-contents to a Windows machine, not just `openyog.exe`.
+Produces `build-mingw/deploy/` (the exe + every DLL it loads + Qt
+plugins) and `build-mingw/openyog-win-deploy.zip`: copy the zip's whole
+contents to a Windows machine, not just `openyog.exe`. With wine installed
+the script then runs selftests on the result in a wine prefix of its own,
+among them `--keychaintest` (saved passwords go to Windows Credential
+Manager). Tested under wine only so far, not on real Windows hardware.
+SSH tunnels aren't in the Windows build yet.
+
+When the host Qt moves to a new version, pin the same one for Windows:
+`tools/fetch-msys2-sysroot.py --update --pin qt6-base=<version>-<pkgrel>`.
 
 ## Licensing
 

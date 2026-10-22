@@ -165,9 +165,9 @@ target_compile_options(openyog PRIVATE -Wall)
 target_compile_definitions(openyog PRIVATE OPENYOG_VERSION="${PROJECT_VERSION}")
 
 # Saved-connection passwords go to the OS keychain through QtKeychain (Arch:
-# `sudo pacman -S qtkeychain-qt6`). Optional: without it (e.g. the mingw cross
-# build) SecretStore compiles to stubs and ConnectionStore keeps upstream's
-# base64 field in connections.ini.
+# `sudo pacman -S qtkeychain-qt6`; the Windows build's comes with the MSYS2
+# sysroot). Optional: without it SecretStore compiles to stubs and
+# ConnectionStore keeps upstream's base64 field in connections.ini.
 find_package(Qt6Keychain CONFIG QUIET)
 if(Qt6Keychain_FOUND)
     target_compile_definitions(openyog PRIVATE OPENYOG_HAVE_KEYCHAIN)

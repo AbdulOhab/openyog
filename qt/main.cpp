@@ -276,6 +276,8 @@ int main(int argc, char *argv[])
             return Selftest::iconTest(argc, argv);
         if(a == QStringLiteral("--filtertest"))
             return Selftest::filterTest();
+        if(a == QStringLiteral("--keychaintest"))
+            return Selftest::keychainTest(argc, argv);
         if(a.startsWith(QStringLiteral("--previewtheme=")))
             previewTheme = a.mid(QStringLiteral("--previewtheme=").size());
         if(a == QStringLiteral("--comptest"))

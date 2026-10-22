@@ -24,13 +24,14 @@ int pgSchemaTest(int &argc, char **argv, const QString &server);
 int schemaTest(int &argc, char **argv, const QString &server);
 
 /* SelftestMisc.cpp: --exporttest=DIR, --shortcuttest, --stmtattest,
- * --casetest, --icontest, --filtertest, --comptest */
+ * --casetest, --icontest, --filtertest, --keychaintest, --comptest */
 int exportTest(const QString &dir);
 int shortcutTest(int &argc, char **argv);
 int stmtAtTest();
 int caseTest(int &argc, char **argv);
 int iconTest(int &argc, char **argv);
 int filterTest();
+int keychainTest(int &argc, char **argv);
 int compTest(int &argc, char **argv);
 
 } // namespace Selftest

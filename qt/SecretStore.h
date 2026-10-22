@@ -7,9 +7,8 @@
  * keeping ConnectionStore's API as plain as the INI store underneath it.
  * GUI thread only.
  *
- * Built without QtKeychain (OPENYOG_HAVE_KEYCHAIN undefined, e.g. the mingw
- * cross build) every call just fails, and ConnectionStore falls back to its
- * INI field. */
+ * Built without QtKeychain (OPENYOG_HAVE_KEYCHAIN undefined) every call just
+ * fails, and ConnectionStore falls back to its INI field. */
 #pragma once
 
 #include <QString>
