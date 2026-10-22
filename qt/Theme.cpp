@@ -208,6 +208,10 @@ QString checkBoxSheet(const char *border, const char *bg, const char *accent,
                            "%6::indicator:hover { border-color: %3; }"
                            "%6::indicator:checked { background: %3; border-color: %3;"
                            " image: url(:/resources/check-white.png); }"
+                           /* partly checked (a tristate parent, e.g. Schema Sync's tables):
+                            * without this it drew as unchecked */
+                           "%6::indicator:indeterminate { background: %3; border-color: %3;"
+                           " image: url(:/resources/dash-white.png); }"
                            "%6::indicator:disabled { border-color: %4; background: %5; }"
                            "%6::indicator:checked:disabled { background: %4; border-color: %4; }")
                 .arg(QLatin1String(border), QLatin1String(bg), QLatin1String(accent),
