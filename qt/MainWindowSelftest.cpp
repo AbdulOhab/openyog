@@ -399,6 +399,45 @@ QStringList MainWindow::selftestSchemaDesigner(const QString &exportFile)
     return out;
 }
 
+QStringList MainWindow::selftestDrawForeignKey()
+{
+    auto *tab = currentTab();
+    SchemaDesigner *designer = tab ? tab->openSchemaDesigner() : nullptr;
+    if(!designer)
+        return {QStringLiteral("drawfk: not opened")};
+    const QString db = designer->database();
+    IDbConnection *c = tab->connectionFor({}, nullptr);
+    const QString parent = c->qualify(db, QStringLiteral("oy_fk_parent")),
+                  child = c->qualify(db, QStringLiteral("oy_fk_child"));
+    QStringList out;
+    const auto run = [&](const QString &sql) {
+        QString error;
+        if(!c->query(sql, nullptr, &error))
+            out << QStringLiteral("drawfk error: %1").arg(error);
+    };
+    const auto dropBoth = [&] {
+        run(QStringLiteral("DROP TABLE IF EXISTS %1").arg(child));
+        run(QStringLiteral("DROP TABLE IF EXISTS %1").arg(parent));
+    };
+    dropBoth();
+    run(QStringLiteral("CREATE TABLE %1 (id INT PRIMARY KEY)").arg(parent));
+    run(QStringLiteral("CREATE TABLE %1 (id INT PRIMARY KEY, parent_id INT)").arg(child));
+    designer->reload();
+    /* what the designer's relationshipDrawn does, the confirmation answered */
+    const bool added =
+        tab->addForeignKey(db, QStringLiteral("oy_fk_child"), QStringLiteral("parent_id"),
+                           QStringLiteral("oy_fk_parent"), QStringLiteral("id"), false);
+    out << QStringLiteral("drawfk: %1").arg(added ? QStringLiteral("added")
+                                                   : QStringLiteral("refused"));
+    designer->reload();
+    for(const QString &line : designer->dumpForTest())
+        if(line.contains(QStringLiteral("oy_fk_child")))
+            out << line;
+    dropBoth();
+    designer->reload();
+    return out;
+}
+
 QStringList MainWindow::selftestQueryBuilder(const QString &spec)
 {
     auto *tab = currentTab();

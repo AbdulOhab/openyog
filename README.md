@@ -42,9 +42,12 @@ Early but usable for day-to-day work against a local server. Working now:
   Drop / Copy Database, all dialect-aware across the three backends.
 - **Schema Designer** (File ▸ New Schema Designer, Ctrl+Alt+D, or a
   database's right-click menu): the database's tables and foreign keys as a
-  diagram, laid out automatically. Drag tables around, zoom, find or hide a
-  table, and export the diagram as an image; double-click a table to alter
-  it. It only reads the schema: changes go through the usual dialogs.
+  diagram, laid out automatically. Drag tables around (the arrangement is
+  kept per connection and database), zoom, find or hide a table, and export
+  the diagram as an image. Double-click a table to alter it, right-click the
+  canvas for a new one, or drag a column onto another table's to add a
+  foreign key between them (asked first; MySQL and PostgreSQL). Changes go
+  through the usual dialogs, and the diagram follows.
 - **Query Builder** (File ▸ New Query Builder, Ctrl+K, or a database's
   right-click menu): build a SELECT by pointing. Add tables from a list (they
   join along their foreign keys on their own, or drag a column onto another

@@ -4,16 +4,24 @@
 
 #include <QAction>
 #include <QApplication>
+#include <QDir>
+#include <QFile>
 #include <QFileDialog>
+#include <QFileInfo>
 #include <QGraphicsItem>
 #include <QGraphicsScene>
 #include <QGraphicsView>
 #include <QImage>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QLabel>
 #include <QLineEdit>
 #include <QMenu>
 #include <QMessageBox>
 #include <QPainter>
+#include <QSaveFile>
+#include <QTimer>
 #include <QToolBar>
 #include <QVBoxLayout>
 
@@ -38,8 +46,15 @@ SchemaDesigner::SchemaDesigner(const QString &database, Loader loader, QWidget *
     };
     m_view->userZoomed = [this] { m_autoFit = false; };
     m_view->tableDoubleClicked = [this](Diagram::Table *t) {
-        emit alterTableRequested(m_database, t->name());
+        const QString name = t->name();
+        thenReload([this, name] { emit alterTableRequested(m_database, name); });
     };
+    /* the arrangement is written a moment after the last move, not on every
+     * pixel of a drag */
+    m_saveTimer = new QTimer(this);
+    m_saveTimer->setSingleShot(true);
+    m_saveTimer->setInterval(400);
+    connect(m_saveTimer, &QTimer::timeout, this, &SchemaDesigner::saveLayout);
 
     auto *bar = new QToolBar(this);
     bar->setIconSize(QSize(16, 16));
@@ -107,6 +122,12 @@ SchemaDesigner::SchemaDesigner(const QString &database, Loader loader, QWidget *
     m_view->zoomChanged();
 }
 
+SchemaDesigner::~SchemaDesigner()
+{
+    if(m_saveTimer->isActive())
+        saveLayout();
+}
+
 void SchemaDesigner::readColors()
 {
     m_colors = Diagram::colorsFrom(palette());
@@ -129,6 +150,10 @@ void SchemaDesigner::reload()
     QApplication::setOverrideCursor(Qt::WaitCursor);
     m_model = m_loader();
     QApplication::restoreOverrideCursor();
+    if(!m_layoutLoaded) {
+        loadLayout();
+        m_layoutLoaded = true;
+    }
     QSet<QString> names;
     for(const SchemaDiagram::Table &t : std::as_const(m_model.tables))
         names.insert(t.name);
@@ -142,6 +167,7 @@ void SchemaDesigner::autoArrange()
 {
     m_positions.clear();
     rebuild(false);
+    saveLayout();
     m_autoFit = true;
     fitToWindow();
 }
@@ -158,23 +184,61 @@ void SchemaDesigner::rebuild(bool keepPositions)
         if(!m_hidden.contains(t.name))
             shown.tables.append(t);
     QHash<QString, QSizeF> sizes;
-    bool allPlaced = true;
     for(const SchemaDiagram::Table &t : std::as_const(shown.tables)) {
         auto *item = new Diagram::Table(t, &m_colors, font());
         m_items.insert(t.name, item);
         sizes.insert(t.name, item->size());
-        allPlaced = allPlaced && m_positions.contains(t.name);
     }
     for(const SchemaDiagram::Link &l : std::as_const(m_model.links))
         if(m_items.contains(l.table) && m_items.contains(l.refTable))
             shown.links.append(l);
 
-    /* a table that wasn't on the canvas before re-arranges the lot */
-    const QHash<QString, QPointF> pos =
-        keepPositions && allPlaced ? m_positions : SchemaDiagram::layout(shown, sizes);
+    /* tables keep where they were; the ones new to the canvas are laid out
+     * among themselves and set beside the others */
+    QHash<QString, QPointF> pos;
+    SchemaDiagram::Model fresh;
+    QRectF placed;
+    for(const SchemaDiagram::Table &t : std::as_const(shown.tables)) {
+        if(keepPositions && m_positions.contains(t.name)) {
+            pos.insert(t.name, m_positions.value(t.name));
+            placed = placed.united(QRectF(pos.value(t.name), sizes.value(t.name)));
+        } else {
+            fresh.tables.append(t);
+        }
+    }
+    if(!fresh.tables.isEmpty()) {
+        QSet<QString> freshNames;
+        for(const SchemaDiagram::Table &t : std::as_const(fresh.tables))
+            freshNames.insert(t.name);
+        for(const SchemaDiagram::Link &l : std::as_const(shown.links))
+            if(freshNames.contains(l.table) && freshNames.contains(l.refTable))
+                fresh.links.append(l);
+        const QPointF offset =
+            placed.isNull() ? QPointF() : QPointF(placed.right() + 120, placed.top());
+        const QHash<QString, QPointF> laid = SchemaDiagram::layout(fresh, sizes);
+        for(auto it = laid.cbegin(); it != laid.cend(); ++it)
+            pos.insert(it.key(), it.value() + offset);
+    }
     for(auto it = m_items.cbegin(); it != m_items.cend(); ++it) {
-        it.value()->setPos(pos.value(it.key()));
-        m_scene->addItem(it.value());
+        Diagram::Table *item = it.value();
+        item->setPos(pos.value(it.key()));
+        item->moved = [this] { m_saveTimer->start(); };
+        /* a column dropped on another table's: a foreign key to add — once
+         * the drop is over, the canvas being rebuilt after it */
+        item->setColumnDrag(true);
+        item->joinDropped = [this, item](const QString &column, Diagram::Table *target,
+                                         const QString &targetColumn) {
+            const QString table = item->name(), refTable = target->name();
+            QMetaObject::invokeMethod(
+                this,
+                [this, table, column, refTable, targetColumn] {
+                    thenReload([this, table, column, refTable, targetColumn] {
+                        emit relationshipDrawn(m_database, table, column, refTable, targetColumn);
+                    });
+                },
+                Qt::QueuedConnection);
+        };
+        m_scene->addItem(item);
     }
     for(const SchemaDiagram::Link &l : std::as_const(shown.links)) {
         Diagram::Table *from = m_items.value(l.table), *to = m_items.value(l.refTable);
@@ -204,6 +268,7 @@ void SchemaDesigner::hideTable(const QString &table)
 {
     m_hidden.insert(table);
     rebuild(true);
+    saveLayout();
 }
 
 void SchemaDesigner::fitToWindow()
@@ -260,10 +325,14 @@ void SchemaDesigner::showContextMenu(const QPoint &viewPos)
         menu.addAction(Icons::get(QStringLiteral("table.ico")), QStringLiteral("Open Table Data"),
                        this, [this, name] { emit openTableRequested(m_database, name); });
         menu.addAction(Icons::get(QStringLiteral("altertable.ico")), QStringLiteral("Alter Table…"),
-                       this, [this, name] { emit alterTableRequested(m_database, name); });
+                       this, [this, name] {
+                           thenReload([this, name] { emit alterTableRequested(m_database, name); });
+                       });
         menu.addAction(Icons::get(QStringLiteral("manrel_16.ico")),
-                       QStringLiteral("Relationships/Foreign Keys…"), this,
-                       [this, name] { emit foreignKeysRequested(m_database, name); });
+                       QStringLiteral("Relationships/Foreign Keys…"), this, [this, name] {
+                           thenReload(
+                               [this, name] { emit foreignKeysRequested(m_database, name); });
+                       });
         menu.addSeparator();
         menu.addAction(QStringLiteral("Hide From Diagram"), this,
                        [this, name] { hideTable(name); });
@@ -272,8 +341,13 @@ void SchemaDesigner::showContextMenu(const QPoint &viewPos)
                        [this] {
                            m_hidden.clear();
                            rebuild(true);
+                           saveLayout();
                        })
             ->setEnabled(!m_hidden.isEmpty());
+        menu.addAction(Icons::get(QStringLiteral("createtableindata.ico")),
+                       QStringLiteral("New Table…"), this,
+                       [this] { thenReload([this] { emit createTableRequested(m_database); }); });
+        menu.addSeparator();
         menu.addAction(QStringLiteral("Auto Arrange"), this, &SchemaDesigner::autoArrange);
         menu.addAction(QStringLiteral("Fit To Window"), this, [this] {
             m_autoFit = true;
@@ -347,4 +421,50 @@ QStringList SchemaDesigner::dumpForTest() const
                     .arg(links)
                     .arg(overlaps));
     return out;
+}
+
+void SchemaDesigner::thenReload(const std::function<void()> &request)
+{
+    request(); /* the dialogs it opens are modal: done by the time it returns */
+    reload();
+}
+
+void SchemaDesigner::loadLayout()
+{
+    if(m_layoutFile.isEmpty())
+        return;
+    QFile f(m_layoutFile);
+    if(!f.open(QIODevice::ReadOnly))
+        return;
+    const QJsonObject root = QJsonDocument::fromJson(f.readAll()).object();
+    const QJsonObject positions = root.value(QStringLiteral("positions")).toObject();
+    for(auto it = positions.constBegin(); it != positions.constEnd(); ++it) {
+        const QJsonArray xy = it.value().toArray();
+        if(xy.size() == 2)
+            m_positions.insert(it.key(), QPointF(xy[0].toDouble(), xy[1].toDouble()));
+    }
+    for(const QJsonValue &v : root.value(QStringLiteral("hidden")).toArray())
+        m_hidden.insert(v.toString());
+}
+
+void SchemaDesigner::saveLayout()
+{
+    if(m_layoutFile.isEmpty())
+        return;
+    for(auto it = m_items.cbegin(); it != m_items.cend(); ++it)
+        m_positions.insert(it.key(), it.value()->pos());
+    QJsonObject positions;
+    for(auto it = m_positions.cbegin(); it != m_positions.cend(); ++it)
+        positions.insert(it.key(), QJsonArray{it.value().x(), it.value().y()});
+    QJsonArray hidden;
+    for(const QString &t : std::as_const(m_hidden))
+        hidden.append(t);
+    QDir().mkpath(QFileInfo(m_layoutFile).path());
+    QSaveFile f(m_layoutFile);
+    if(!f.open(QIODevice::WriteOnly))
+        return;
+    f.write(QJsonDocument(QJsonObject{{QStringLiteral("positions"), positions},
+                                      {QStringLiteral("hidden"), hidden}})
+                .toJson());
+    f.commit();
 }

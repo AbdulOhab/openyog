@@ -51,6 +51,9 @@ public:
     void openSchemaObjectTab(const QString &objType); /* selftest */
     /* --schemadesigner selftest: open it, describe it, export it when `exportFile` is set */
     QStringList selftestSchemaDesigner(const QString &exportFile);
+    /* --drawfk selftest: scratch tables oy_fk_parent / oy_fk_child, the
+     * relationship the designer draws between them added, seen, dropped */
+    QStringList selftestDrawForeignKey();
     /* --querybuilder=table:col,col+table:col selftest: build it, print the SQL, run it */
     QStringList selftestQueryBuilder(const QString &spec);
     /* --schemasync=SRC:TGT[:apply][:shot=FILE.png] selftest: compare two

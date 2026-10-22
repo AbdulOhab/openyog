@@ -168,6 +168,8 @@ QVariant Table::itemChange(GraphicsItemChange change, const QVariant &value)
     if(change == ItemPositionHasChanged) {
         for(Link *l : std::as_const(m_links))
             l->updatePath();
+        if(moved)
+            moved();
         /* room to keep dragging past the edge */
         if(QGraphicsScene *s = scene())
             s->setSceneRect(
@@ -179,18 +181,19 @@ QVariant Table::itemChange(GraphicsItemChange change, const QVariant &value)
     return QGraphicsItem::itemChange(change, value);
 }
 
-/* checkable boxes: a click on a checkbox toggles it, a drag from a column
- * row draws a dashed line to wherever it is dropped; the title bar (and
- * every row of a plain box) still moves the table */
+/* checkable boxes: a click on a checkbox toggles it; with column dragging
+ * (checkable ones too), a drag from a column row draws a dashed line to
+ * wherever it is dropped; the title bar (and every row of a plain box) still
+ * moves the table */
 void Table::mousePressEvent(QGraphicsSceneMouseEvent *e)
 {
-    const QString column = m_checkable ? columnAt(e->pos()) : QString();
+    const QString column = m_checkable || m_columnDrag ? columnAt(e->pos()) : QString();
     if(column.isEmpty() || e->button() != Qt::LeftButton) {
         QGraphicsItem::mousePressEvent(e);
         return;
     }
     e->accept();
-    if(e->pos().x() < kCheckEnd) {
+    if(m_checkable && e->pos().x() < kCheckEnd) {
         setChecked(column, !isChecked(column));
         if(toggled)
             toggled(column, isChecked(column));

@@ -180,6 +180,11 @@ public:
     /* File ▸ New Schema Designer: a diagram tab for `database` (default: the
      * current one) */
     SchemaDesigner *openSchemaDesigner(const QString &database = {});
+    /* the Schema Designer's drawn relationship: `table`.`column` to reference
+     * `refTable`.`refColumn`, after showing the ALTER TABLE (Reverse swaps the
+     * two ends); false when not added. SQLite can't add one in place. */
+    bool addForeignKey(const QString &database, const QString &table, const QString &column,
+                       const QString &refTable, const QString &refColumn, bool confirm = true);
     /* File ▸ New Query Builder: a query-building tab for `database` (default:
      * the current one) */
     QueryBuilder *openQueryBuilder(const QString &database = {});

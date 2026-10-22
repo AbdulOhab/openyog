@@ -19,6 +19,9 @@
  *           --screenshot=FILE.png       same data-grid selftests, SQLite driver
  *   openyog --autoconnect…=… --schemadesigner[=FILE.png] --screenshot=FILE.png
  *           open the Schema Designer, print its tables and links
+ *   openyog --autoconnect…=… --drawfk --screenshot=FILE.png
+ *           add the foreign key a relationship drawn in the designer asks for
+ *           (scratch tables oy_fk_parent / oy_fk_child, dropped after)
  *   openyog --autoconnectpg=h:p:u:pw:db --explain=json|plain --screenshot=FILE.png
  *           … same downstream machinery as --autoconnect=, PostgreSQL driver
  */
@@ -87,6 +90,7 @@ int main(int argc, char *argv[])
     bool schemaDesigner = false; /* --schemadesigner[=FILE.png] selftest: open File ▸ New Schema
                                   * Designer, print its tables/links (and export the image) */
     QString schemaDesignerExport;
+    bool drawForeignKey = false; /* --drawfk selftest: a relationship drawn in the designer */
     bool printResults = false;  /* --printresults selftest: Messages and result tabs, at the end */
     QString dataSyncSpec;       /* --datasync=SOURCE:TARGET[:apply] selftest */
     QString schemaSyncSpec;     /* --schemasync=SOURCE:TARGET[:apply][:shot=F] selftest */
@@ -340,6 +344,8 @@ int main(int argc, char *argv[])
             schemaDesigner = true;
             schemaDesignerExport = a.mid(QStringLiteral("--schemadesigner=").size());
         }
+        if(a == QStringLiteral("--drawfk"))
+            drawForeignKey = true;
         if(a.startsWith(QStringLiteral("--usedb=")))
             useDbArg = a.mid(QStringLiteral("--usedb=").size());
         if(a.startsWith(QStringLiteral("--expandpgdb=")))
@@ -863,6 +869,9 @@ int main(int argc, char *argv[])
                         QTextStream(stdout) << "datatab: " << w->selftestShowDataTab() << '\n';
                     if(schemaDesigner)
                         for(const QString &line : w->selftestSchemaDesigner(schemaDesignerExport))
+                            QTextStream(stdout) << line << '\n';
+                    if(drawForeignKey)
+                        for(const QString &line : w->selftestDrawForeignKey())
                             QTextStream(stdout) << line << '\n';
                     if(!dataSyncSpec.isEmpty())
                         for(const QString &line : w->selftestDataSync(dataSyncSpec))

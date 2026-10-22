@@ -66,8 +66,18 @@ public:
     }
     void setChecked(const QString &column, bool on); /* doesn't call toggled */
 
+    /* a column row dragged onto another table's starts joinDropped, the
+     * title bar still moving the table: on in checkable boxes, and the
+     * Schema Designer's (a dragged relationship) */
+    void setColumnDrag(bool on)
+    {
+        m_columnDrag = on;
+    }
+
     /* a checkbox clicked */
     std::function<void(const QString &column, bool checked)> toggled;
+    /* the box moved (dragged, or put somewhere) */
+    std::function<void()> moved;
     /* a column dragged onto another table's column */
     std::function<void(const QString &column, Table *target, const QString &targetColumn)>
         joinDropped;
@@ -83,6 +93,7 @@ private:
     const Colors *m_colors;
     QFont m_font, m_bold;
     bool m_checkable;
+    bool m_columnDrag = false;
     qreal m_textX; /* where column names start, after the checkbox and key icon */
     QString m_title;
     QStringList m_names, m_types; /* elided to fit */

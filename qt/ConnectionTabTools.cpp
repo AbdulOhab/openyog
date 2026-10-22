@@ -19,6 +19,8 @@
 
 #include <QPlainTextEdit>
 #include <QApplication>
+#include <QStandardPaths>
+#include <QRegularExpression>
 
 #include <QDir>
 #include <QFileDialog>
@@ -345,6 +347,13 @@ SchemaDesigner *ConnectionTab::openSchemaDesigner(const QString &database)
                 openTableData(db, table);
             });
     connect(designer, &SchemaDesigner::alterTableRequested, this, &ConnectionTab::promptAlterTable);
+    connect(designer, &SchemaDesigner::createTableRequested, this,
+            [this](const QString &db) { promptCreateTable(db); });
+    connect(designer, &SchemaDesigner::relationshipDrawn, this,
+            [this](const QString &db, const QString &table, const QString &column,
+                   const QString &refTable, const QString &refColumn) {
+                addForeignKey(db, table, column, refTable, refColumn);
+            });
     connect(designer, &SchemaDesigner::foreignKeysRequested, this,
             &ConnectionTab::promptManageForeignKeys);
     const int histIdx = m_editorTabs->indexOf(m_historyPage);
@@ -353,8 +362,59 @@ SchemaDesigner *ConnectionTab::openSchemaDesigner(const QString &database)
         Icons::get(QStringLiteral("schemadesigner_16.ico")), QStringLiteral("Schema: %1").arg(db));
     m_editorTabs->setTabToolTip(idx, QStringLiteral("Schema Designer: %1").arg(db));
     m_editorTabs->setCurrentIndex(idx);
+    /* the arrangement, kept per saved connection and database */
+    const auto safe = [](QString s) {
+        return s.replace(QRegularExpression(QStringLiteral("[^A-Za-z0-9._-]")),
+                         QStringLiteral("_"));
+    };
+    designer->setLayoutFile(
+        QDir(QStandardPaths::writableLocation(QStandardPaths::AppDataLocation))
+            .filePath(QStringLiteral("diagrams/%1/%2.json").arg(safe(m_params.name), safe(db))));
     designer->reload();
     return designer;
+}
+
+bool ConnectionTab::addForeignKey(const QString &database, const QString &table,
+                                  const QString &column, const QString &refTable,
+                                  const QString &refColumn, bool confirm)
+{
+    if(!m_conn)
+        return false;
+    if(m_params.driverType == SqlDriverType::Sqlite) {
+        if(confirm)
+            QMessageBox::information(this, QStringLiteral("Add Foreign Key"),
+                                     QStringLiteral("SQLite can't add a foreign key to an existing "
+                                                    "table: Alter Table rebuilds it with one."));
+        return false;
+    }
+    QString from = table, fromColumn = column, to = refTable, toColumn = refColumn;
+    QString sql;
+    const auto build = [&] {
+        const QString name = QStringLiteral("fk_%1_%2").arg(from, fromColumn).left(63);
+        sql = QStringLiteral("ALTER TABLE %1 ADD CONSTRAINT %2 FOREIGN KEY (%3) REFERENCES %4 (%5)")
+                  .arg(m_conn->qualify(database, from), m_conn->quoteIdent(name),
+                       m_conn->quoteIdent(fromColumn), m_conn->qualify(database, to),
+                       m_conn->quoteIdent(toColumn));
+    };
+    build();
+    while(confirm) {
+        QMessageBox box(QMessageBox::Question, QStringLiteral("Add Foreign Key"),
+                        QStringLiteral("%1.%2 will reference %3.%4:\n\n%5")
+                            .arg(from, fromColumn, to, toColumn, sql),
+                        QMessageBox::Cancel, this);
+        QPushButton *add = box.addButton(QStringLiteral("&Add"), QMessageBox::AcceptRole);
+        QPushButton *reverse = box.addButton(QStringLiteral("&Reverse"), QMessageBox::ActionRole);
+        box.setDefaultButton(add);
+        box.exec();
+        if(box.clickedButton() == add)
+            break;
+        if(box.clickedButton() != reverse)
+            return false;
+        std::swap(from, to);
+        std::swap(fromColumn, toColumn);
+        build();
+    }
+    return execDdl(sql);
 }
 
 QueryBuilder *ConnectionTab::openQueryBuilder(const QString &database)

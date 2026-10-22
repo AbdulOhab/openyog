@@ -24,6 +24,11 @@ openyog_unit_test(tst_sessionstore "${QT_SRC}/SessionStore.cpp" "${QT_SRC}/Priva
 openyog_unit_test(tst_schemadiagram "${QT_SRC}/SchemaDiagram.cpp")
 openyog_unit_test(tst_querybuild "${QT_SRC}/QueryBuild.cpp")
 openyog_unit_test(tst_schemasync "${QT_SRC}/SchemaSync.cpp")
+# the Schema Designer's canvas, through the mouse on an offscreen window
+openyog_unit_test(tst_schemadesigner "${QT_SRC}/SchemaDesigner.cpp" "${QT_SRC}/DiagramItems.cpp"
+                  "${QT_SRC}/SchemaDiagram.cpp")
+target_link_libraries(tst_schemadesigner PRIVATE Qt6::Widgets)
+set_tests_properties(tst_schemadesigner PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 # DataSync against real SQLite databases, through the app's own connection
 openyog_unit_test(tst_datasync "${QT_SRC}/DataSync.cpp" "${QT_SRC}/SqlDump.cpp"
                   "${QT_SRC}/db/SqliteConnection.cpp")
@@ -124,6 +129,23 @@ if(SQLITE3_CLI)
         FIXTURES_REQUIRED schemadesigner_db
         ENVIRONMENT "${SELFTEST_ENV}"
         PASS_REGULAR_EXPRESSION "schemadesigner: database=main tables=3 links=1 overlaps=0\nschemadesigner link [^:]*: employees \\(dept_id\\) -> emp_dept \\(id\\)\nschemadesigner export: ok")
+    # a relationship drawn in the designer: SQLite can't add a foreign key
+    # to a table it already has (its own copy of the fixture: the test
+    # creates and drops scratch tables)
+    set(fkdb "${CMAKE_CURRENT_BINARY_DIR}/fixture-drawfk.sqlite")
+    add_test(NAME drawfk_fixture
+             COMMAND "${CMAKE_COMMAND}" "-DSQLITE3=${SQLITE3_CLI}"
+                     "-DSQL=${CMAKE_CURRENT_SOURCE_DIR}/fixtures/sqlite_fixture.sql"
+                     "-DDB=${fkdb}" -P "${CMAKE_CURRENT_SOURCE_DIR}/make_fixture_db.cmake")
+    set_tests_properties(drawfk_fixture PROPERTIES FIXTURES_SETUP drawfk_db)
+    add_test(NAME selftest_drawfk
+             COMMAND openyog "--autoconnectfile=${fkdb}" --drawfk
+                     "--screenshot=${CMAKE_CURRENT_BINARY_DIR}/drawfk.png")
+    set_tests_properties(selftest_drawfk PROPERTIES
+        FIXTURES_REQUIRED drawfk_db
+        ENVIRONMENT "${SELFTEST_ENV}"
+        PASS_REGULAR_EXPRESSION "drawfk: refused\n"
+        FAIL_REGULAR_EXPRESSION "drawfk error")
     # a query's result over the row limit (10,000 by default): the first rows
     # kept, the rest counted, and the tab says so
     add_test(NAME selftest_result_row_limit
@@ -202,6 +224,12 @@ if(OPENYOG_TEST_MYSQL)
                      "--screenshot=${CMAKE_CURRENT_BINARY_DIR}/mysql-schemadesigner.png")
     set_tests_properties(selftest_mysql_schemadesigner PROPERTIES PASS_REGULAR_EXPRESSION
         "overlaps=0\n.*link fk_emp_dept: employees \\(dept_id\\) -> emp_dept \\(id\\)")
+    add_test(NAME selftest_mysql_drawfk
+             COMMAND openyog "--autoconnect=${OPENYOG_TEST_MYSQL}" --drawfk
+                     "--screenshot=${CMAKE_CURRENT_BINARY_DIR}/mysql-drawfk.png")
+    set_tests_properties(selftest_mysql_drawfk PROPERTIES
+        PASS_REGULAR_EXPRESSION "drawfk: added\nschemadesigner link fk_oy_fk_child_parent_id: oy_fk_child \\(parent_id\\) -> oy_fk_parent \\(id\\)"
+        FAIL_REGULAR_EXPRESSION "drawfk error")
     add_test(NAME selftest_mysql_querybuilder
              COMMAND openyog "--autoconnect=${OPENYOG_TEST_MYSQL}"
                      "--querybuilder=employees:name+emp_dept:name"
@@ -241,7 +269,8 @@ if(OPENYOG_TEST_MYSQL)
         "datasync emp_dept: 0 insert, 1 update, 1 delete, 1 same\n.*datasync employees: 2 insert, 1 update, 1 delete, 1 same\n.*datasync: 6 row differences\ndatasync dialog: 2 of 2 tables differ.*\\[ \\] 1 to delete.*datasync after apply: 0 differences, 0 failed statements")
     set_tests_properties(smoketest_mysql selftest_mysql_schema selftest_mysql_dump_roundtrip
                          selftest_mysql_complete selftest_mysql_complete_join
-                         selftest_mysql_schemadesigner selftest_mysql_querybuilder
+                         selftest_mysql_schemadesigner selftest_mysql_drawfk
+                         selftest_mysql_querybuilder
                          selftest_mysql_schemasync selftest_mysql_datasync PROPERTIES
                          FIXTURES_REQUIRED mysql_db RESOURCE_LOCK mysql_db
                          ENVIRONMENT "${SELFTEST_ENV}")
@@ -288,6 +317,12 @@ if(OPENYOG_TEST_PG)
                      "--screenshot=${CMAKE_CURRENT_BINARY_DIR}/pg-schemadesigner.png")
     set_tests_properties(selftest_pg_schemadesigner PROPERTIES PASS_REGULAR_EXPRESSION
         "database=public tables=[0-9]+ links=[0-9]+ overlaps=0\n.*: employees \\(dept_id\\) -> emp_dept \\(id\\)")
+    add_test(NAME selftest_pg_drawfk
+             COMMAND openyog "--autoconnectpg=${OPENYOG_TEST_PG}" --drawfk
+                     "--screenshot=${CMAKE_CURRENT_BINARY_DIR}/pg-drawfk.png")
+    set_tests_properties(selftest_pg_drawfk PROPERTIES
+        PASS_REGULAR_EXPRESSION "drawfk: added\nschemadesigner link fk_oy_fk_child_parent_id: oy_fk_child \\(parent_id\\) -> oy_fk_parent \\(id\\)"
+        FAIL_REGULAR_EXPRESSION "drawfk error")
     add_test(NAME selftest_pg_querybuilder
              COMMAND openyog "--autoconnectpg=${OPENYOG_TEST_PG}"
                      "--querybuilder=employees:name+emp_dept:name"
@@ -323,7 +358,7 @@ if(OPENYOG_TEST_PG)
         "datasync emp_dept: 0 insert, 1 update, 1 delete, 1 same\n.*datasync employees: 2 insert, 1 update, 1 delete, 1 same\n.*datasync: 6 row differences\n.*datasync after apply: 0 differences, 0 failed statements")
     set_tests_properties(selftest_pg_metadata selftest_pg_schema selftest_pg_multidb
                          selftest_pg_dump_roundtrip selftest_pg_complete selftest_pg_complete_join
-                         selftest_pg_schemadesigner selftest_pg_querybuilder
+                         selftest_pg_schemadesigner selftest_pg_drawfk selftest_pg_querybuilder
                          selftest_pg_schemasync selftest_pg_datasync
                          PROPERTIES
                          FIXTURES_REQUIRED pg_db RESOURCE_LOCK pg_db
