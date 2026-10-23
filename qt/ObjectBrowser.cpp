@@ -317,7 +317,7 @@ void ObjectBrowser::populateContextMenu(QMenu &menu, QTreeWidgetItem *item)
         menu.addAction(QStringLiteral("Connect to `%1` in New &Tab…").arg(database), this,
                        [this, database] { emit openDatabaseInNewTabRequested(database); });
         menu.addAction(QStringLiteral("Re&fresh Node"), this, [this, item] {
-            item->takeChildren();
+            qDeleteAll(item->takeChildren());
             onItemExpanded(item);
             item->setExpanded(true);
         });
@@ -342,7 +342,7 @@ void ObjectBrowser::populateContextMenu(QMenu &menu, QTreeWidgetItem *item)
             });
         if(kind == KDatabase || kind == KFolder || kind == KTable)
             menu.addAction(QStringLiteral("Re&fresh Node"), this, [this, item] {
-                item->takeChildren();
+                qDeleteAll(item->takeChildren());
                 onItemExpanded(item);
                 item->setExpanded(true);
             });
@@ -401,7 +401,7 @@ void ObjectBrowser::populateContextMenu(QMenu &menu, QTreeWidgetItem *item)
         menu.addAction(QStringLiteral("Copy Column &Names"), this,
                        [this, item] { copyColumnNames(item); });
         menu.addAction(QStringLiteral("Re&fresh Node"), this, [this, item] {
-            item->takeChildren();
+            qDeleteAll(item->takeChildren());
             onItemExpanded(item);
             item->setExpanded(true);
         });
@@ -506,7 +506,7 @@ void ObjectBrowser::loadDatabases(IDbConnection *conn, const QString &currentDb,
     const int scrollPos = m_tree->verticalScrollBar()->value();
     const QString rootText = root->text(0);
 
-    root->takeChildren();
+    qDeleteAll(root->takeChildren()); /* takeChildren() only detaches them */
 
     /* schema-level population, shared by both branches below: fills `dbItem`
      * (a KDatabase node) with the standard six folders, then — if it's the
