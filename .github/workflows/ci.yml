@@ -131,18 +131,20 @@ jobs:
           test -n "$v"
           echo "version=$v" >> "$GITHUB_OUTPUT"
 
+      # moc/rcc load the ICU the Qt archives bundle (icu), not the system's
       - uses: actions/cache@v4
         with:
           path: /opt/qt
-          key: host-qtbase-${{ steps.qt.outputs.version }}
+          key: host-qtbase-icu-${{ steps.qt.outputs.version }}
 
       - name: Host Qt tools
         run: |
           if [ ! -d "/opt/qt/${{ steps.qt.outputs.version }}/gcc_64" ]; then
             python -m venv /opt/aqt
             /opt/aqt/bin/pip install --quiet aqtinstall
-            /opt/aqt/bin/aqt install-qt -O /opt/qt linux desktop "${{ steps.qt.outputs.version }}" linux_gcc_64 --archives qtbase
+            /opt/aqt/bin/aqt install-qt -O /opt/qt linux desktop "${{ steps.qt.outputs.version }}" linux_gcc_64 --archives qtbase icu
           fi
+          /opt/qt/${{ steps.qt.outputs.version }}/gcc_64/libexec/rcc --version
 
       - uses: actions/cache@v4
         with:
