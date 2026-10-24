@@ -85,6 +85,19 @@ Windows machines. The HTTP tunnel, scheduled backups and scheduled jobs are
 not there yet. Bug reports and ideas are welcome in
 [issues](https://github.com/AbdulOhab/openyog/issues).
 
+## Code signing policy
+
+Free code signing provided by [SignPath.io](https://about.signpath.io/),
+certificate by [SignPath Foundation](https://signpath.org/).
+
+- Committers and reviewers: [@AbdulOhab](https://github.com/AbdulOhab)
+- Approvers: [@AbdulOhab](https://github.com/AbdulOhab)
+
+**Privacy:** OpenYog will not transfer any information to other networked
+systems unless specifically requested by the user or the person installing or
+operating it. It connects only to the database servers and SSH hosts you set
+up, and has no telemetry or update check.
+
 ## License
 
 OpenYog is licensed under the [GPL-3.0-or-later](LICENSE.md). It builds on
