@@ -28,12 +28,29 @@ ctest --test-dir build --output-on-failure   # unit tests and selftests
 cmake --install build --prefix /usr/local   # binary, desktop entry, icons
 ```
 
-`packaging/arch/PKGBUILD` builds the latest commit as an Arch package
-(`openyog-git`) and runs the test suite in `check()`:
+`packaging/arch/PKGBUILD` builds the released version as an Arch package
+(`openyog`), `packaging/arch-git/PKGBUILD` the latest commit (`openyog-git`);
+both run the test suite in `check()`:
 
 ```bash
 cd packaging/arch && makepkg -si
 ```
+
+## Linux packages for every distribution
+
+`tools/linux-bundle.sh` builds the packages that carry their own Qt and
+libraries: an AppImage, and a .deb and an .rpm with the same files under
+`/opt/openyog`. It builds on Ubuntu 22.04 (so they need glibc 2.35 or
+newer), taking Qt from aqtinstall and building QScintilla, QtKeychain and
+libmongoc 2 from source, every download checked against a pinned SHA-256:
+
+```bash
+tools/linux-bundle.sh --container   # in a throwaway Ubuntu 22.04 container
+```
+
+The packages land in `build-linux/`. CI builds them on every push and
+installs and starts each one on Debian 12, Ubuntu 24.04, Fedora, openSUSE
+Tumbleweed and Arch.
 
 ## Tests
 
@@ -94,6 +111,7 @@ tools/fetch-msys2-sysroot.py --update --pin qt6-base=<version>-<pkgrel>
 
 ## Releases
 
-Pushing a `v*` tag runs CI on it and then publishes a GitHub Release with the
-Windows installer and zip and the Arch package; the release text comes from
+Pushing a `v*` tag runs CI on it and then publishes a GitHub Release with
+every package: the Windows installer and zip, the AppImage, the .deb, the
+.rpm and the Arch package. The release text comes from
 `docs/release-notes/<tag>.md`.

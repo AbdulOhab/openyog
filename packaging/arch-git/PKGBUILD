@@ -1,7 +1,7 @@
 # Maintainer: Abdul Ohab (https://github.com/AbdulOhab)
 #
 # Builds the latest commit on the default branch. Locally:
-#   cd packaging/arch && makepkg -si
+#   cd packaging/arch-git && makepkg -si
 pkgname=openyog-git
 pkgver=0.1.0.r0.g0000000
 pkgrel=1

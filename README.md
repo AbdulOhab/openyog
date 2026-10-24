@@ -5,7 +5,7 @@
 <h1 align="center">OpenYog</h1>
 
 <p align="center">
-  A free, open-source desktop client for <b>MySQL, MariaDB, PostgreSQL, SQLite and MongoDB</b>,<br>
+  A free, open-source desktop database client for <b>MySQL, MariaDB, PostgreSQL, SQLite and MongoDB</b>,<br>
   on Linux and Windows.
 </p>
 
@@ -58,8 +58,13 @@ Get the latest version from the [releases page](https://github.com/AbdulOhab/ope
 |---|---|---|
 | Windows 10/11 (64-bit) | `openyog-<version>-windows-x64-setup.exe` | Run the installer |
 | Windows, portable | `openyog-<version>-windows-x64.zip` | Unzip and run `openyog.exe` |
-| Arch Linux / Manjaro | `openyog-git-<version>-x86_64.pkg.tar.zst` | `sudo pacman -U openyog-git-*.pkg.tar.zst` |
-| Other Linux | — | [Build from source](docs/BUILDING.md) |
+| Any Linux (x86_64) | `openyog-<version>-x86_64.AppImage` | `chmod +x` it and run it |
+| Ubuntu / Debian / Mint | `openyog_<version>-1_amd64.deb` | `sudo apt install ./openyog_*.deb` |
+| Fedora / openSUSE | `openyog-<version>-1.x86_64.rpm` | `sudo dnf install ./openyog-*.rpm` |
+| Arch Linux / Manjaro | `openyog-<version>-1-x86_64.pkg.tar` | `sudo pacman -U openyog-*.pkg.tar` |
+
+The AppImage, .deb and .rpm bring their own Qt and libraries and need glibc
+2.35 or newer (Ubuntu 22.04, Debian 12, Fedora 36 and later).
 
 ## Build from source
 

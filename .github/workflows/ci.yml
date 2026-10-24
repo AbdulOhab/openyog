@@ -206,34 +206,103 @@ jobs:
         run: pacman -Syu --noconfirm --needed base-devel git sudo
 
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0 # pkgver() counts commits
 
-      # makepkg refuses to run as root, and installs the dependencies via sudo
+      # packaging/arch/PKGBUILD as it is, but on the commit under test: its
+      # source as the tag's tarball would have it. makepkg refuses to run as
+      # root, and installs the dependencies via sudo.
       - name: makepkg
         run: |
           useradd -m builder
           echo 'builder ALL=(ALL) NOPASSWD: ALL' > /etc/sudoers.d/builder
           install -d -o builder /home/builder/pkg
-          # the commit under test, not the default branch the PKGBUILD names
-          sed "s|^source=.*|source=('openyog::git+file://$GITHUB_WORKSPACE#commit=$GITHUB_SHA')|" \
-            packaging/arch/PKGBUILD > /home/builder/pkg/PKGBUILD
-          # makepkg writes the computed pkgver back into it
-          chown builder /home/builder/pkg/PKGBUILD
-          sudo -u builder git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          sudo -u builder git config --global --add safe.directory "$GITHUB_WORKSPACE/.git"
-          cd /home/builder/pkg && sudo -u builder makepkg -s --noconfirm
+          ver=$(sed -n 's/^project(openyog VERSION \([0-9.]*\).*/\1/p' CMakeLists.txt)
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git archive --prefix="openyog-$ver/" -o "/home/builder/pkg/openyog-$ver.tar.gz" HEAD
+          sed -e "s|^pkgver=.*|pkgver=$ver|" \
+              -e "s|^source=.*|source=(\"openyog-$ver.tar.gz\")|" \
+              -e "s|^sha256sums=.*|sha256sums=('SKIP')|" \
+              packaging/arch/PKGBUILD > /home/builder/pkg/PKGBUILD
+          chown -R builder /home/builder/pkg
+          # a plain .pkg.tar, not .pkg.tar.zst: pacman -U installs either
+          cd /home/builder/pkg && sudo -u builder env PKGEXT=.pkg.tar makepkg -s --noconfirm
 
       # the package, not makepkg's -debug one beside it
       - uses: actions/upload-artifact@v4
         with:
           name: openyog-arch-package
-          path: /home/builder/pkg/openyog-git-[0-9]*.pkg.tar.zst
+          path: /home/builder/pkg/openyog-[0-9]*.pkg.tar
+
+  linux-packages:
+    name: Linux packages (AppImage, deb, rpm)
+    runs-on: ubuntu-latest
+    # glibc 2.35: the oldest the packages are for
+    container: ubuntu:22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      # Qt and the libraries built from source, while their versions stay
+      - uses: actions/cache@v4
+        with:
+          path: |
+            /tmp/openyog-bundle/qt
+            /tmp/openyog-bundle/deps
+          key: linux-bundle-${{ hashFiles('tools/linux-bundle.sh', 'tools/msys2-ucrt64.lock') }}
+
+      - name: Build, test, bundle
+        run: tools/linux-bundle.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: openyog-linux
+          path: |
+            build-linux/*.AppImage
+            build-linux/*.deb
+            build-linux/*.rpm
+
+  # each package installed and started where people would use it
+  linux-packages-test:
+    name: Linux package on ${{ matrix.image }}
+    needs: linux-packages
+    runs-on: ubuntu-latest
+    container: ${{ matrix.image }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: debian:12
+            install: apt-get update -qq && apt-get install -y -qq ./openyog_*.deb
+          - image: ubuntu:24.04
+            install: apt-get update -qq && apt-get install -y -qq ./openyog_*.deb
+          - image: fedora:latest
+            install: dnf install -y -q ./openyog-*.rpm
+          - image: opensuse/tumbleweed
+            install: zypper --non-interactive install --allow-unsigned-rpm ./openyog-*.rpm
+          - image: archlinux:latest
+            install: >-
+              pacman -Sy --noconfirm --needed mesa fontconfig libxcb libx11 dbus >/dev/null &&
+              chmod +x openyog-*.AppImage &&
+              ln -s "$PWD"/openyog-*.AppImage /usr/local/bin/openyog
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: openyog-linux
+
+      - name: Install and start
+        env:
+          QT_QPA_PLATFORM: offscreen
+          APPIMAGE_EXTRACT_AND_RUN: 1
+        run: |
+          ${{ matrix.install }}
+          openyog --version | tee version.txt
+          grep -q '^OpenYog ' version.txt
+          # the GUI starts too: Qt, its plugins, the icons
+          openyog --icontest | tee icons.txt
+          grep -q 'icontest: PASS' icons.txt
 
   release:
     name: GitHub Release
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [linux, windows, arch-package]
+    needs: [linux, windows, arch-package, linux-packages, linux-packages-test]
     runs-on: ubuntu-latest
     permissions:
       contents: write

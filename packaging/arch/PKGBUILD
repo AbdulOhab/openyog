@@ -1,0 +1,37 @@
+# Maintainer: Abdul Ohab (https://github.com/AbdulOhab)
+#
+# A released version, from its tag's source. Locally:
+#   cd packaging/arch && makepkg -si
+# (packaging/arch-git builds the latest commit instead.)
+pkgname=openyog
+pkgver=0.1.0
+pkgrel=1
+pkgdesc='Database client for MySQL, MariaDB, PostgreSQL, SQLite and MongoDB (Qt 6 fork of SQLyog Community)'
+arch=('x86_64' 'aarch64')
+url='https://github.com/AbdulOhab/openyog'
+license=('GPL-3.0-or-later')
+depends=('qt6-base' 'qscintilla-qt6' 'qtkeychain-qt6' 'mariadb-libs' 'postgresql-libs' 'sqlite' 'libssh'
+         'mongo-c-driver' 'zlib')
+makedepends=('cmake' 'ninja')
+conflicts=('openyog-git')
+source=("$pkgname-$pkgver.tar.gz::https://github.com/AbdulOhab/openyog/archive/refs/tags/v$pkgver.tar.gz")
+sha256sums=('83abbc34931c1d11eb33dc3801efeb1c88ff3cbe781adb4904526185217c3f76')
+
+build() {
+  cmake -S "$pkgname-$pkgver" -B build -G Ninja \
+    -DCMAKE_BUILD_TYPE=None \
+    -DCMAKE_INSTALL_PREFIX=/usr \
+    -Wno-dev
+  cmake --build build
+}
+
+check() {
+  # the unit tests and the server-less selftests; the live ones need test
+  # servers (docs/BUILDING.md) and stay off here
+  ctest --test-dir build --output-on-failure
+}
+
+package() {
+  DESTDIR="$pkgdir" cmake --install build
+  install -Dm644 "$pkgname-$pkgver/LICENSE.md" "$pkgdir/usr/share/licenses/$pkgname/LICENSE.md"
+}
