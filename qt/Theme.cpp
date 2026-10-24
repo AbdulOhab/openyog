@@ -39,23 +39,6 @@ QMenuBar { border-bottom: 1px solid #D9D9D9; }
 QMenuBar::item { padding: 3px 8px; background: transparent; color: #424242; }
 QMenuBar::item:selected { background: #E8F2FA; }
 QMenu { background: #FFFFFF; border: 1px solid #B9B9B9; }
-/* Icon-column geometry, measured against a real render: QStyleSheetStyle
- * draws a menu item's icon column at the very start of the item's content
- * box — ::item's own padding-left is applied AFTER the column, so it moves
- * only the text. With no ::icon rule the 16px glyphs sat flush against the
- * menu's 1px border (zero margin on the left) while a big fixed gap sat
- * between column and text — every icon read "stuck to the wall" with a
- * double margin on its right. ::icon{left} is the one knob that moves the
- * column itself: 3px left + 2px item padding + Qt's fixed ~5px column-text
- * spacing gives ~3px breathing room on each side of a full-bleed glyph.
- * (This is also why the old getInset icon-shrinking in Icons.h was retired:
- * shrinking the glyph couldn't fix the asymmetry, moving the column can.)
- * Checkable items (Theme's radio rows) draw their indicator in this same
- * column, so they inherit the margin too. */
-QMenu::icon { left: 3px; }
-QMenu::item { padding: 3px 24px 3px 2px; color: #424242; }
-QMenu::item:disabled { color: #A2A2A2; }
-QMenu::item:selected { background: #89BCED; color: #1E1E1E; }
 QMenu::separator { height: 1px; background: #E0E0E0; margin: 3px 0; }
 
 QToolBar { border: 0; border-bottom: 1px solid #D9D9D9; padding: 3px 2px 3px 8px; spacing: 3px; }
@@ -154,6 +137,8 @@ QStatusBar::item { border: 0; }
 const char *kDarkTabSheet = R"QSS(
 QTabWidget::pane { border: none; }
 QTabBar { background: #3C3F41; }
+/* the panel color the base style gave menus before menuSheet's ::item rules */
+QMenu { background: #3C3F41; border: 1px solid #3C3F41; }
 QTabBar::tab { background: #3C3F41; color: #C8C8C8; padding: 3px 12px;
     margin-right: 1px; font-size: 9pt; }
 QTabBar::tab:selected { background: #2A5D9F; color: white; }
@@ -176,6 +161,7 @@ QTreeView::item { height: 18px; }
 const char *kTwilightTabSheet = R"QSS(
 QTabWidget::pane { border: none; }
 QTabBar { background: #293955; }
+QMenu { background: #3A5278; border: 1px solid #3A5278; }
 QTabBar::tab { background: #293955; color: #A5B1C9; padding: 3px 12px;
     margin-right: 1px; font-size: 9pt; }
 QTabBar::tab:selected { background: #FCE198; color: #293955; }
@@ -185,6 +171,33 @@ QSplitter::handle:horizontal { width: 4px; }
 QSplitter::handle:vertical { height: 4px; }
 QTreeView::item { height: 18px; }
 )QSS";
+
+/* Menu rows, the same geometry in every theme. Icon column, measured against
+ * a real render: QStyleSheetStyle draws a menu item's icon column at the
+ * very start of the item's content box — ::item's own padding-left is
+ * applied AFTER the column, so it moves only the text. With no ::icon rule
+ * the 16px glyphs sat flush against the menu's 1px border (zero margin on the
+ * left) while a big fixed gap sat between column and text — every icon read
+ * "stuck to the wall" with a double margin on its right. ::icon{left} is the
+ * one knob that moves the column itself: 3px left + 2px item padding + Qt's
+ * fixed ~5px column-text spacing gives ~3px breathing room on each side of a
+ * full-bleed glyph. (This is also why the old getInset icon-shrinking in
+ * Icons.h was retired: shrinking the glyph couldn't fix the asymmetry, moving
+ * the column can.) Checkable rows draw their indicator in this same column
+ * (checkBoxSheet's QMenu::indicator).
+ * The dark themes had no ::item rule, so their menus took QStyleSheetStyle's
+ * other path, which squeezes the 16px indicator into a 12px column with a
+ * dotted frame wherever a menu has no icons (Theme, Isolation Level). */
+QString menuSheet(const char *text, const char *disabled, const char *selectedBg,
+                  const char *selectedText)
+{
+    return QStringLiteral("QMenu::icon { left: 3px; }"
+                          "QMenu::item { padding: 3px 24px 3px 2px; color: %1; }"
+                          "QMenu::item:disabled { color: %2; }"
+                          "QMenu::item:selected { background: %3; color: %4; }")
+        .arg(QLatin1String(text), QLatin1String(disabled), QLatin1String(selectedBg),
+             QLatin1String(selectedText));
+}
 
 /* Checkbox indicators drawn explicitly. With a stylesheet active (every theme
  * has one) the platform style — notably the GTK platform theme on XFCE —
@@ -218,11 +231,16 @@ QString checkBoxSheet(const char *border, const char *bg, const char *accent,
                      QLatin1String(disabledBorder), QLatin1String(disabledBg), QLatin1String(sel));
     /* checkable MENU rows: same box/tick styling, but 16px overall (14px +
      * border) and shifted by the same left:3px the icon column uses
-     * (kLightSheet's QMenu::icon rule) — the default indicator sat ~3px
+     * (menuSheet's QMenu::icon rule) — the default indicator sat ~3px
      * further left and 1px narrower, visibly breaking the column of icons
      * above/below a checkable row (owner report: "edit এর icon alignment
-     * এর সাথে মিলে নাই") */
+     * এর সাথে মিলে নাই"). In a menu with no icons Qt starts the text right
+     * where the indicator's box ends, so the box (3..19px) touched the first
+     * letter (owner report: "check box tile এক সাথে লেগে গেছে"); margin-right
+     * widens that box to the icon column's 20px without drawing anything, and
+     * the text starts at 22px in every menu. */
     out += QStringLiteral("QMenu::indicator { width: 14px; height: 14px; left: 3px;"
+                          " margin-right: 4px;"
                           " border: 1px solid %1; border-radius: 2px; background: %2; }"
                           "QMenu::indicator:hover { border-color: %3; }"
                           "QMenu::indicator:checked { background: %3; border-color: %3;"
@@ -291,6 +309,7 @@ void Theme::apply(QApplication &app, const QString &theme)
         p.setColor(QPalette::Disabled, QPalette::WindowText, disabled);
         app.setPalette(p);
         app.setStyleSheet(QString::fromUtf8(kTwilightTabSheet) +
+                          menuSheet("#E9ECEE", "#7A869C", "#E5C365", "#293955") +
                           checkBoxSheet("#7A869C", "#212E44", "#3A5278", "#4A5A78", "#293955"));
     } else if(theme == QStringLiteral("dark")) {
         QPalette p;
@@ -313,6 +332,7 @@ void Theme::apply(QApplication &app, const QString &theme)
         p.setColor(QPalette::Disabled, QPalette::WindowText, disabled);
         app.setPalette(p);
         app.setStyleSheet(QString::fromUtf8(kDarkTabSheet) +
+                          menuSheet("#D4D4D4", "#808080", "#2A5D9F", "#FFFFFF") +
                           checkBoxSheet("#8A8A8A", "#1E1E1E", "#2A5D9F", "#505050", "#2B2B2B"));
     } else {
         /* explicit light palette — never derive from the system style, which
@@ -337,6 +357,7 @@ void Theme::apply(QApplication &app, const QString &theme)
         p.setColor(QPalette::Disabled, QPalette::WindowText, disabled);
         app.setPalette(p);
         app.setStyleSheet(QString::fromUtf8(kLightSheet) +
+                          menuSheet("#424242", "#A2A2A2", "#89BCED", "#1E1E1E") +
                           checkBoxSheet("#7F7F7F", "#FFFFFF", "#3B7DBB", "#BDBDBD", "#F0F0F0"));
     }
 }
