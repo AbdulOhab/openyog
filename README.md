@@ -77,7 +77,7 @@ tests, packaging and the Windows build.
 
 ## Status
 
-OpenYog is young: version 0.1 is usable day to day, but expect rough edges.
+OpenYog is young: version 0.1.1 is usable day to day, but expect rough edges.
 The Windows build has so far been tested under wine rather than on real
 Windows machines. The HTTP tunnel, scheduled backups and scheduled jobs are
 not there yet. Bug reports and ideas are welcome in
