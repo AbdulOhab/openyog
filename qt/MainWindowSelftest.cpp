@@ -408,6 +408,13 @@ QStringList MainWindow::selftestSchemaDesigner(const QString &exportFile)
     return out;
 }
 
+QStringList MainWindow::selftestTabStripDoubleClick()
+{
+    auto *tab = currentTab();
+    return tab ? tab->selftestTabStripDoubleClick()
+               : QStringList{QStringLiteral("tabdblclick: no connection")};
+}
+
 QStringList MainWindow::selftestDrawForeignKey()
 {
     auto *tab = currentTab();

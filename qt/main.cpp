@@ -24,6 +24,8 @@
  *           --screenshot=FILE.png       same data-grid selftests, SQLite driver
  *   openyog --autoconnect…=… --schemadesigner[=FILE.png] --screenshot=FILE.png
  *           open the Schema Designer, print its tables and links
+ *   openyog --autoconnect…=… --tabdblclick --screenshot=FILE.png
+ *           double-click the query tab strip: past the tabs, at its end, on a tab
  *   openyog --autoconnect…=… --drawfk --screenshot=FILE.png
  *           add the foreign key a relationship drawn in the designer asks for
  *           (scratch tables oy_fk_parent / oy_fk_child, dropped after)
@@ -126,6 +128,7 @@ int main(int argc, char *argv[])
                                   * Designer, print its tables/links (and export the image) */
     QString schemaDesignerExport;
     bool drawForeignKey = false; /* --drawfk selftest: a relationship drawn in the designer */
+    bool tabDoubleClick = false; /* --tabdblclick selftest: the query tab strip */
     bool mongoTab = false;       /* --mongotab selftest, after --autoconnectmongo= */
     QStringList importExternal;  /* --importexternal=SPEC selftest, repeatable */
     QString mongoOpen;           /* --mongoopen=DB.COLLECTION, after --autoconnectmongo= */
@@ -389,6 +392,8 @@ int main(int argc, char *argv[])
         }
         if(a == QStringLiteral("--drawfk"))
             drawForeignKey = true;
+        if(a == QStringLiteral("--tabdblclick"))
+            tabDoubleClick = true;
         if(a.startsWith(QStringLiteral("--usedb=")))
             useDbArg = a.mid(QStringLiteral("--usedb=").size());
         if(a.startsWith(QStringLiteral("--expandpgdb=")))
@@ -955,6 +960,9 @@ int main(int argc, char *argv[])
                             QTextStream(stdout) << line << '\n';
                     if(drawForeignKey)
                         for(const QString &line : w->selftestDrawForeignKey())
+                            QTextStream(stdout) << line << '\n';
+                    if(tabDoubleClick)
+                        for(const QString &line : w->selftestTabStripDoubleClick())
                             QTextStream(stdout) << line << '\n';
                     if(!dataSyncSpec.isEmpty())
                         for(const QString &line : w->selftestDataSync(dataSyncSpec))

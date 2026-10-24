@@ -137,6 +137,15 @@ if(SQLITE3_CLI)
         FIXTURES_REQUIRED schemadesigner_db
         ENVIRONMENT "${SELFTEST_ENV}"
         PASS_REGULAR_EXPRESSION "schemadesigner: database=main tables=3 links=1 overlaps=0\nschemadesigner link [^:]*: employees \\(dept_id\\) -> emp_dept \\(id\\)\nschemadesigner export: ok")
+    # a double-click on the query tab strip opens one query tab, as upstream's
+    # does; on a tab it opens none
+    add_test(NAME selftest_tabdblclick
+             COMMAND openyog "--autoconnectfile=${db}" --tabdblclick
+                     "--screenshot=${CMAKE_CURRENT_BINARY_DIR}/tabdblclick.png")
+    set_tests_properties(selftest_tabdblclick PROPERTIES
+        FIXTURES_REQUIRED schemadesigner_db
+        ENVIRONMENT "${SELFTEST_ENV}"
+        PASS_REGULAR_EXPRESSION "tabdblclick past the tabs \\([A-Za-z]+\\): \\+1\ntabdblclick strip end \\([A-Za-z]+\\): \\+1\ntabdblclick on a tab \\(QTabBar\\): \\+0\n")
     # a relationship drawn in the designer: SQLite can't add a foreign key
     # to a table it already has (its own copy of the fixture: the test
     # creates and drops scratch tables)

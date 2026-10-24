@@ -51,6 +51,7 @@
 #include <QLocale>
 #include <QMessageBox>
 #include <QMetaObject>
+#include <QMouseEvent>
 #include <QPushButton>
 #include <QSpinBox>
 #include <QStandardPaths>
@@ -76,6 +77,7 @@
 #include <QTimer>
 
 #include <algorithm>
+#include <functional>
 
 /* guards {live, mutex} below: the worker thread sets/clears `live` while
  * holding `mutex`, and ConnectionTab::cancelQuery() (GUI thread) reads it
@@ -275,6 +277,45 @@ QVector<QueryResult> runOnConnection(const ConnectionParams &p, const QStringLis
     return results;
 }
 
+/* upstream CCustTab::OnLButtonDblClick -> MDIWindow's CTCN_LBUTTONDBLCLK: a
+ * double-click on the query tab strip, off every tab, opens a new query tab.
+ * Inside the QTabBar that's wherever tabAt() finds no tab; the rest of the
+ * strip, beside the tab bar, is the QTabWidget's own. The double-click is
+ * consumed either way: the tab bar ignores one off its tabs, and passed up to
+ * the QTabWidget it would open a second tab. */
+class TabStripDoubleClick : public QObject
+{
+public:
+    TabStripDoubleClick(QTabWidget *tabs, std::function<void()> open)
+        : QObject(tabs), m_tabs(tabs), m_open(std::move(open))
+    {
+        tabs->installEventFilter(this);
+        tabs->tabBar()->installEventFilter(this);
+    }
+
+    bool eventFilter(QObject *watched, QEvent *event) override
+    {
+        if(event->type() != QEvent::MouseButtonDblClick)
+            return false;
+        const auto *me = static_cast<QMouseEvent *>(event);
+        if(me->button() != Qt::LeftButton)
+            return false;
+        const QPoint pos = me->position().toPoint();
+        const QTabBar *bar = m_tabs->tabBar();
+        const bool onStrip = watched == bar ? bar->tabAt(pos) < 0
+                                            : pos.y() >= bar->geometry().top() &&
+                                                  pos.y() <= bar->geometry().bottom();
+        if(!onStrip)
+            return false;
+        m_open();
+        return true;
+    }
+
+private:
+    QTabWidget *m_tabs;
+    std::function<void()> m_open;
+};
+
 } // namespace
 
 ConnectionTab::ConnectionTab(const ConnectionParams &params, QWidget *parent)
@@ -356,6 +397,7 @@ ConnectionTab::ConnectionTab(const ConnectionParams &params, QWidget *parent)
     m_editorTabs->setMovable(true);
     m_editorTabs->tabBar()->setExpanding(false); /* SQLyog left-aligns tabs */
     connect(m_editorTabs, &QTabWidget::tabCloseRequested, this, &ConnectionTab::closeEditorTab);
+    new TabStripDoubleClick(m_editorTabs, [this] { addEditorTab(); });
     /* a Schema Designer or Query Builder gets the whole height: the result
      * pane steps aside while one is in front and comes back for the other tabs
      * (unless it had been hidden by hand) */
@@ -990,6 +1032,43 @@ void ConnectionTab::collapseBrowser()
 {
     if(m_browser)
         m_browser->collapseTree();
+}
+
+QStringList ConnectionTab::selftestTabStripDoubleClick()
+{
+    /* double-clicks where a user makes them: just past the last tab, at the
+     * strip's right end next to the "+", and on a tab, which opens none */
+    const auto doubleClick = [this](QPoint inTabs, const QString &where) {
+        QWidget *target = m_editorTabs->childAt(inTabs);
+        if(!target)
+            target = m_editorTabs;
+        const QPointF local(target->mapFrom(m_editorTabs, inTabs));
+        const QPointF global(m_editorTabs->mapToGlobal(inTabs));
+        const int before = m_editorTabs->count();
+        for(QEvent::Type type : {QEvent::MouseButtonPress, QEvent::MouseButtonRelease,
+                                 QEvent::MouseButtonDblClick, QEvent::MouseButtonRelease}) {
+            QMouseEvent e(type, local, global, Qt::LeftButton,
+                          type == QEvent::MouseButtonRelease ? Qt::NoButton : Qt::LeftButton,
+                          Qt::NoModifier);
+            QApplication::sendEvent(target, &e);
+        }
+        return QStringLiteral("tabdblclick %1 (%2): %3%4")
+            .arg(where, QLatin1String(target->metaObject()->className()),
+                 m_editorTabs->count() >= before ? QStringLiteral("+") : QString())
+            .arg(m_editorTabs->count() - before);
+    };
+    const QTabBar *bar = m_editorTabs->tabBar();
+    const QRect strip = bar->geometry();
+    const int y = strip.center().y();
+    QStringList out;
+    out << doubleClick(QPoint(strip.left() + bar->tabRect(bar->count() - 1).right() + 15, y),
+                       QStringLiteral("past the tabs"));
+    const QWidget *plus = m_editorTabs->cornerWidget(Qt::TopRightCorner);
+    out << doubleClick(QPoint((plus ? plus->geometry().left() : m_editorTabs->width()) - 6, y),
+                       QStringLiteral("strip end"));
+    out << doubleClick(QPoint(strip.left() + bar->tabRect(0).center().x(), y),
+                       QStringLiteral("on a tab"));
+    return out;
 }
 
 void ConnectionTab::renameCurrentEditorTab()
