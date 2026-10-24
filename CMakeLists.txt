@@ -237,10 +237,13 @@ endif()
 # Windows only: compile qt/openyog.rc so the .exe carries its own icon. windres
 # resolves the script's "resources/openyog.ico" against its include path, not
 # against the script's own directory, so qt/ has to be on it explicitly.
+# WIN32_EXECUTABLE: a GUI program, so Windows opens no console window next to
+# it; started from a terminal, main() writes to that one.
 if(WIN32)
     enable_language(RC)
     set(CMAKE_RC_FLAGS "${CMAKE_RC_FLAGS} -I${CMAKE_CURRENT_SOURCE_DIR}/qt")
     target_sources(openyog PRIVATE qt/openyog.rc)
+    set_target_properties(openyog PROPERTIES WIN32_EXECUTABLE TRUE)
 endif()
 
 # ---- Tests: unit tests for qt/'s pure-logic modules plus smoketest and the

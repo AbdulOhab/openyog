@@ -62,8 +62,38 @@
 
 #include <memory>
 
+#ifdef Q_OS_WIN
+#include <cstdio>
+#include <windows.h>
+
+/* openyog.exe is a GUI program, so Windows gives it no console. Started from a
+ * terminal, it writes to that one (--version, the selftests); output already
+ * sent to a file or a pipe stays there. */
+static void useParentConsole()
+{
+    const auto redirected = [](DWORD which) {
+        const DWORD type = GetFileType(GetStdHandle(which));
+        return type == FILE_TYPE_DISK || type == FILE_TYPE_PIPE;
+    };
+    const bool out = redirected(STD_OUTPUT_HANDLE);
+    const bool err = redirected(STD_ERROR_HANDLE);
+    if(AttachConsole(ATTACH_PARENT_PROCESS)) {
+        if(!out)
+            std::freopen("CONOUT$", "w", stdout);
+        if(!err)
+            std::freopen("CONOUT$", "w", stderr);
+    }
+    /* without a console, Qt logs to the debugger rather than stderr */
+    if(err || GetConsoleWindow())
+        qputenv("QT_FORCE_STDERR_LOGGING", "1");
+}
+#endif
+
 int main(int argc, char *argv[])
 {
+#ifdef Q_OS_WIN
+    useParentConsole();
+#endif
     /* --version: for packagers and bug reports, before any Qt setup */
     for(int i = 1; i < argc; ++i)
         if(qstrcmp(argv[i], "--version") == 0) {
