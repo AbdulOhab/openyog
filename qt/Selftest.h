@@ -27,6 +27,9 @@ int pgTest(int &argc, char **argv, const QString &server);
 int pgSchemaTest(int &argc, char **argv, const QString &server);
 int schemaTest(int &argc, char **argv, const QString &server);
 
+/* SelftestMongo.cpp: --mongotest=host:port:user:password */
+int mongoTest(const QString &server);
+
 /* SelftestMisc.cpp: --exporttest=DIR, --shortcuttest, --stmtattest,
  * --casetest, --icontest, --filtertest, --keychaintest, --comptest */
 int exportTest(const QString &dir);

@@ -24,6 +24,7 @@ openyog_unit_test(tst_sessionstore "${QT_SRC}/SessionStore.cpp" "${QT_SRC}/Priva
 openyog_unit_test(tst_schemadiagram "${QT_SRC}/SchemaDiagram.cpp")
 openyog_unit_test(tst_querybuild "${QT_SRC}/QueryBuild.cpp")
 openyog_unit_test(tst_schemasync "${QT_SRC}/SchemaSync.cpp")
+openyog_unit_test(tst_mongojson "${QT_SRC}/MongoJson.cpp")
 # the Schema Designer's canvas, through the mouse on an offscreen window
 openyog_unit_test(tst_schemadesigner "${QT_SRC}/SchemaDesigner.cpp" "${QT_SRC}/DiagramItems.cpp"
                   "${QT_SRC}/SchemaDiagram.cpp")
@@ -388,6 +389,30 @@ if(OPENYOG_TEST_PG)
                          ENVIRONMENT "${SELFTEST_ENV}")
     set_tests_properties(selftest_pg_schemasync PROPERTIES FIXTURES_REQUIRED "pg_db;pg_sync_db")
     set_tests_properties(selftest_pg_datasync PROPERTIES FIXTURES_REQUIRED "pg_db;pg_data_db")
+endif()
+
+# ---- MongoDB (optional) ------------------------------------------------------
+# -DOPENYOG_TEST_MONGO=host:port:user:password of a MongoDB server (the user
+# defined in admin). The tests make and drop openyog_test_mongo* databases.
+set(OPENYOG_TEST_MONGO "" CACHE STRING
+    "host:port:user:password of a MongoDB server for the live tests")
+if(OPENYOG_TEST_MONGO)
+    # MongoClient and the shell notation: every type in and back, find,
+    # count, aggregate, replace, delete, indexes
+    add_test(NAME selftest_mongo COMMAND openyog "--mongotest=${OPENYOG_TEST_MONGO}")
+    set_tests_properties(selftest_mongo PROPERTIES
+        PASS_REGULAR_EXPRESSION "mongotest: [0-9]+ passed, 0 failed"
+        FAIL_REGULAR_EXPRESSION "FAIL"
+        RESOURCE_LOCK mongo_db ENVIRONMENT "${SELFTEST_ENV}")
+    # the Mongo tab, driven like a user would: the tree, a page, a filtered
+    # and sorted find and its next page, an edit that keeps the types and one
+    # that tries to change the _id, insert, delete, aggregate and a command
+    add_test(NAME selftest_mongo_tab
+             COMMAND openyog "--autoconnectmongo=${OPENYOG_TEST_MONGO}:admin" --mongotab
+                     "--screenshot=${CMAKE_CURRENT_BINARY_DIR}/mongotab.png")
+    set_tests_properties(selftest_mongo_tab PROPERTIES
+        PASS_REGULAR_EXPRESSION "mongotab tree: openyog_test_mongo_ui\nmongotab tree: people \\(collection\\)\nmongotab page: 1.+4 of 4\nmongotab grid: _id \\| name \\| age \\| city \\| tags \\| visits \\| at\n.*mongotab filtered: 2 \\| [^|]+ \\| 41 ; 4 \\| Eve \\| 35 / 1.+2 of 3\nmongotab next page: 1 \\| Alice \\| 30 / 3.+3 of 3\nmongotab edit: saved \\{ _id: 2, name: \"[^\"]+\", age: 42, visits: NumberLong\\(8\\) \\}\nmongotab changed _id: the _id can't change[^\n]*\nmongotab insert: inserted, 1.+5 of 5\nmongotab delete: deleted, 1.+4 of 4\nmongotab aggregate: _id \\| n ; Dhaka \\| 1 ; Sylhet \\| 1\nmongotab command: n \\| ok ; 4 \\| 1\\.0\nmongotab bad filter: Filter: 1:13: a value expected"
+        RESOURCE_LOCK mongo_db ENVIRONMENT "${SELFTEST_ENV}")
 endif()
 
 # ---- SSH tunnel (optional, on top of the live servers above) ----------------

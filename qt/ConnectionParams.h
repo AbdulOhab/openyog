@@ -3,8 +3,11 @@
 #pragma once
 
 #include <QString>
+#include <QUrl>
 
-enum class SqlDriverType { Mysql = 0, Sqlite = 1, Postgres = 2 };
+/* Mongo isn't SQL: it opens a MongoTab, never a ConnectionTab, and none of
+ * the SQL machinery (IDbConnection and what's built on it) sees it */
+enum class SqlDriverType { Mysql = 0, Sqlite = 1, Postgres = 2, Mongo = 3 };
 
 inline QString driverTypeToString(SqlDriverType t)
 {
@@ -13,6 +16,8 @@ inline QString driverTypeToString(SqlDriverType t)
             return QStringLiteral("sqlite");
         case SqlDriverType::Postgres:
             return QStringLiteral("postgres");
+        case SqlDriverType::Mongo:
+            return QStringLiteral("mongodb");
         case SqlDriverType::Mysql:
             break;
     }
@@ -30,6 +35,8 @@ inline QString driverDisplayName(SqlDriverType t)
             return QStringLiteral("SQLite");
         case SqlDriverType::Postgres:
             return QStringLiteral("PostgreSQL");
+        case SqlDriverType::Mongo:
+            return QStringLiteral("MongoDB");
     }
     return QStringLiteral("MySQL");
 }
@@ -46,7 +53,30 @@ inline SqlDriverType driverTypeFromString(const QString &s,
         return SqlDriverType::Postgres;
     if(s == QStringLiteral("mysql"))
         return SqlDriverType::Mysql;
+    if(s == QStringLiteral("mongodb"))
+        return SqlDriverType::Mongo;
     return fallback;
+}
+
+/* a MongoDB connection string's user:password@ taken out (percent-decoded
+ * into *user and *password, when there is one), so the password is kept
+ * like any other instead of in the saved string */
+inline QString mongoUriWithoutCredentials(const QString &uri, QString *user, QString *password)
+{
+    const QString u = uri.trimmed();
+    const qsizetype scheme = u.indexOf(QStringLiteral("://"));
+    if(scheme < 0)
+        return u;
+    const qsizetype hostsEnd = u.indexOf(QLatin1Char('/'), scheme + 3);
+    const qsizetype at = u.lastIndexOf(QLatin1Char('@'), hostsEnd < 0 ? qsizetype(-1) : hostsEnd);
+    if(at < scheme + 3)
+        return u;
+    const QString info = u.mid(scheme + 3, at - scheme - 3);
+    const qsizetype colon = info.indexOf(QLatin1Char(':'));
+    *user = QUrl::fromPercentEncoding(info.left(colon < 0 ? info.size() : colon).toUtf8());
+    if(colon >= 0)
+        *password = QUrl::fromPercentEncoding(info.mid(colon + 1).toUtf8());
+    return u.left(scheme + 3) + u.mid(at + 1);
 }
 
 struct ConnectionParams
@@ -59,6 +89,12 @@ struct ConnectionParams
     QString password;
     QString database; // optional
     QString filePath; // SQLite only: path to the .sqlite file
+
+    // MongoDB only: a connection string (mongodb:// or mongodb+srv://) used
+    // instead of host/port, without credentials (user/password above go
+    // with it); and the database the user is defined in (authSource)
+    QString mongoUri;
+    QString authDatabase;
 
     // MySQL/PostgreSQL: reach the server through an SSH tunnel (SshTunnel) —
     // host/port above are then the database as seen *from the SSH host*

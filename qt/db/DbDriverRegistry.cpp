@@ -15,6 +15,8 @@ IDbDriver *dbDriverFor(SqlDriverType type)
             return &sqlite;
         case SqlDriverType::Postgres:
             return &postgres;
+        case SqlDriverType::Mongo:
+            break; /* not SQL: MongoClient, not an IDbDriver */
     }
     return nullptr;
 }

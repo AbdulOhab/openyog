@@ -31,10 +31,12 @@ mingw-w64-ucrt-x86_64-libssh2-1.11.1-2-any.pkg.tar.zst 0e91316dfa4979dcabbfa9e71
 mingw-w64-ucrt-x86_64-libstdc++-16.2.0-6-any.pkg.tar.zst 33c5e58a85a538cf843a8672991cce591f0231d66da3b66a57629712d64be17f
 mingw-w64-ucrt-x86_64-libtasn1-4.21.0-1-any.pkg.tar.zst d098b27834c3b25142b6f5aa9a0ca5731a8e4334c232786406cb149dd8bde2ba
 mingw-w64-ucrt-x86_64-libunistring-1.4.2-1-any.pkg.tar.zst e784273da19bbdcc91cbb510b5e27c3ac021b026140734eefcce5ccbd878bd97
+mingw-w64-ucrt-x86_64-libutf8proc-2.12.0-1-any.pkg.tar.zst 5fc0bfb8e2798e300db26941b32d275d226574a3ba8190b2ca4998ab666cd646
 mingw-w64-ucrt-x86_64-libwinpthread-14.0.0.r495.g63ebe6cdb-2-any.pkg.tar.zst 0cee80308aec93607165be8c8655c1c3884389e0c2829b022643de7988d8b1f9
 mingw-w64-ucrt-x86_64-libxml2-2.15.4-2-any.pkg.tar.zst 1678213c8acddcee2a393477c26cafcb7a4e47c2d611638c028853b502c7d662
 mingw-w64-ucrt-x86_64-lz4-1.10.0-1-any.pkg.tar.zst 00a807df81a4b7e82445178b8625962ed592cf1f0a08a8e04c8b9338c4362638
 mingw-w64-ucrt-x86_64-md4c-0.6.0-1-any.pkg.tar.zst a8e5aa7b84ba26047dad56301e821fb4efbed4ced9fce83cd86377a175172476
+mingw-w64-ucrt-x86_64-mongo-c-driver-2.5.5-1-any.pkg.tar.zst 12b69036d777877b2ba0db8baab058dfcaf4c97c625702fb6b3d05ea35fd323d
 mingw-w64-ucrt-x86_64-nettle-4.0-1-any.pkg.tar.zst 47b49f1723ef2c75ff3042b6e463910c47cdffa3342e175b6409fb9d630e64ed
 mingw-w64-ucrt-x86_64-nghttp2-1.70.0-1-any.pkg.tar.zst 39baf792ff3855c1d656514eaef648fab20de80614517fc15f57a57fa103cc20
 mingw-w64-ucrt-x86_64-nghttp3-1.18.0-1-any.pkg.tar.zst 06e51ea288e5fdd511c753038979772ec22ec71504dac61f912c63a6e586ba80
@@ -47,6 +49,7 @@ mingw-w64-ucrt-x86_64-qscintilla-qt6-2.14.1-7-any.pkg.tar.zst bcc2e6e9705082467f
 mingw-w64-ucrt-x86_64-qt6-base-6.11.2-2-any.pkg.tar.zst ccc98698391f78419de72640175508a68b7ba9e25a43a54e01a05b51079ad6a2
 mingw-w64-ucrt-x86_64-qtkeychain-0.17.0-1-any.pkg.tar.zst 6aadfda138baa1d2d10f5c8163eb6abe51dfae3325787bedb27c73693f4ebd2d
 mingw-w64-ucrt-x86_64-readline-8.3.003-1-any.pkg.tar.zst de2423c2e10fcd88272a0ab2f833f6a082cfe613d4c17c2f548cc50a5d2190c4
+mingw-w64-ucrt-x86_64-snappy-1.3.1-1-any.pkg.tar.zst a4037212ff1e8a4c12af0b7b5443d3abb46ca7e30849a45160db90add74b54c8
 mingw-w64-ucrt-x86_64-sqlite3-3.54.0-1-any.pkg.tar.zst fc7100490316733bbb96d5633d305a5d6c579200c321969cfa21d5a128055e65
 mingw-w64-ucrt-x86_64-termcap-1.3.1-8-any.pkg.tar.zst c7891143e252568d8d46df72b3aefea932f4166771e17f22317218d7dd2af23c
 mingw-w64-ucrt-x86_64-tzdata-2026e-1-any.pkg.tar.zst f1809089f8ed5cec858ae8584289172896eb921be1e78ba583555f74e9015428

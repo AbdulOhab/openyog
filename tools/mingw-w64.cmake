@@ -15,6 +15,14 @@ endif()
 # try_compile() projects re-read this file without the cache; pass it along
 set(ENV{OPENYOG_SYSROOT} "${OPENYOG_SYSROOT}")
 
+# pkg-config reads the sysroot's .pc files, never the host's (MSYS2's
+# mongoc config finds utf8proc with it: the host's would add /usr/include);
+# their /ucrt64 prefix maps into the sysroot
+get_filename_component(_openyog_sysroot_parent "${OPENYOG_SYSROOT}" DIRECTORY)
+set(ENV{PKG_CONFIG_LIBDIR} "${OPENYOG_SYSROOT}/lib/pkgconfig:${OPENYOG_SYSROOT}/share/pkgconfig")
+set(ENV{PKG_CONFIG_PATH} "")
+set(ENV{PKG_CONFIG_SYSROOT_DIR} "${_openyog_sysroot_parent}")
+
 set(CMAKE_C_COMPILER x86_64-w64-mingw32-gcc)
 set(CMAKE_CXX_COMPILER x86_64-w64-mingw32-g++)
 set(CMAKE_RC_COMPILER x86_64-w64-mingw32-windres)

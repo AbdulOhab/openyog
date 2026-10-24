@@ -50,6 +50,8 @@ QString consistentBegin(IDbConnection *c)
             return QStringLiteral("BEGIN ISOLATION LEVEL REPEATABLE READ");
         case SqlDriverType::Sqlite:
             return QStringLiteral("BEGIN");
+        case SqlDriverType::Mongo:
+            break; /* not SQL: never gets here */
     }
     return QString();
 }

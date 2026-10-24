@@ -1,6 +1,7 @@
 #include "ConnectionDialog.h"
 #include "ConnectionStore.h"
 #include "Icons.h"
+#include "db/MongoClient.h"
 
 #include <QCheckBox>
 #include <QComboBox>
@@ -21,9 +22,11 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QMessageBox>
+#include <QPainter>
 #include <QPixmap>
 #include <QPushButton>
 #include <QRadioButton>
+#include <QRegularExpression>
 #include <QSpinBox>
 #include <QTabWidget>
 #include <QVBoxLayout>
@@ -49,7 +52,7 @@ QWidget *placeholderTab(const QString &what)
 ConnectionDialog::ConnectionDialog(QWidget *parent) : QDialog(parent)
 {
     setWindowTitle(QStringLiteral("Connect to MySQL Host"));
-    setMinimumWidth(660); /* fits all 7 driver tabs' now-visible borders without a scroll arrow */
+    setMinimumWidth(740); /* fits all 8 tabs' now-visible borders without a scroll arrow */
     /* keep port / seconds fields as plain ASCII digits, like SQLyog */
     setLocale(QLocale::c());
 
@@ -86,6 +89,8 @@ ConnectionDialog::ConnectionDialog(QWidget *parent) : QDialog(parent)
                            QVariant::fromValue(int(SqlDriverType::Sqlite)));
     m_driverCombo->addItem(QStringLiteral("PostgreSQL"),
                            QVariant::fromValue(int(SqlDriverType::Postgres)));
+    m_driverCombo->addItem(QStringLiteral("MongoDB"),
+                           QVariant::fromValue(int(SqlDriverType::Mongo)));
     connect(m_driverCombo, &QComboBox::currentIndexChanged, this, &ConnectionDialog::driverChanged);
     auto *driverLabel = new QLabel(QStringLiteral("Dri&ver"), this);
     driverLabel->setBuddy(m_driverCombo);
@@ -266,6 +271,64 @@ ConnectionDialog::ConnectionDialog(QWidget *parent) : QDialog(parent)
     pgLayout->addLayout(pgGroups);
     pgLayout->addStretch(1);
 
+    /* ---- MongoDB tab: host and port, or a connection string --------- */
+    m_mongoUri = new QLineEdit(this);
+    m_mongoUri->setPlaceholderText(QStringLiteral(
+        "optional: mongodb+srv://cluster0.example.net, mongodb://h1,h2/?replicaSet=rs0"));
+    m_mongoUri->setToolTip(QStringLiteral(
+        "Used instead of the host and port when given. A user:password@ in it moves to the "
+        "Username and Password fields, so the password is kept like any other."));
+    m_mongoHost = new QLineEdit(QStringLiteral("127.0.0.1"), this);
+    m_mongoUser = new QLineEdit(this);
+    m_mongoPassword = new QLineEdit(this);
+    m_mongoPassword->setEchoMode(QLineEdit::Password);
+    m_mongoSavePw = new QCheckBox(QStringLiteral("Save Pass&word"), this);
+    m_mongoSavePw->setChecked(true);
+    m_mongoPort = new QSpinBox(this);
+    m_mongoPort->setRange(1, 65535);
+    m_mongoPort->setValue(27017);
+    m_mongoPort->setGroupSeparatorShown(false);
+    m_mongoPort->setLocale(QLocale::c());
+    m_mongoAuthDb = new QLineEdit(this);
+    m_mongoAuthDb->setPlaceholderText(QStringLiteral("admin"));
+    m_mongoAuthDb->setToolTip(QStringLiteral("The database the user is defined in (authSource)"));
+    m_mongoDatabase = new QLineEdit(this);
+    m_mongoDatabase->setPlaceholderText(QStringLiteral("optional: opened first"));
+
+    auto *mongoPwRow = new QHBoxLayout;
+    mongoPwRow->addWidget(m_mongoPassword, 1);
+    mongoPwRow->addWidget(m_mongoSavePw);
+    auto *mongoPwLabel = new QLabel(QStringLiteral("Pass&word"), this);
+    mongoPwLabel->setBuddy(m_mongoPassword);
+    auto *mongoForm = new QFormLayout;
+    mongoForm->addRow(QStringLiteral("Connection &String"), m_mongoUri);
+    mongoForm->addRow(QStringLiteral("&Host Address"), m_mongoHost);
+    mongoForm->addRow(QStringLiteral("P&ort"), m_mongoPort);
+    mongoForm->addRow(QStringLiteral("&Username"), m_mongoUser);
+    mongoForm->addRow(mongoPwLabel, mongoPwRow);
+    mongoForm->addRow(QStringLiteral("&Auth Database"), m_mongoAuthDb);
+    mongoForm->addRow(QStringLiteral("Data&base"), m_mongoDatabase);
+    auto *mongoHint = new QLabel(
+        MongoClient::available()
+            ? QStringLiteral("TLS and an SSH tunnel come from the SSL and SSH tabs. Through a "
+                             "tunnel it connects to that one server, by host and port.")
+            : QStringLiteral("This build has no MongoDB support: it needs libmongoc 2 "
+                             "(Arch: mongo-c-driver)."),
+        this);
+    mongoHint->setWordWrap(true);
+    mongoHint->setEnabled(MongoClient::available());
+    m_mongoTab = new QWidget(this);
+    auto *mongoLayout = new QVBoxLayout(m_mongoTab);
+    mongoLayout->addLayout(mongoForm);
+    mongoLayout->addWidget(mongoHint);
+    mongoLayout->addStretch(1);
+    for(QWidget *w :
+        {static_cast<QWidget *>(m_mongoUri), static_cast<QWidget *>(m_mongoHost),
+         static_cast<QWidget *>(m_mongoPort), static_cast<QWidget *>(m_mongoUser),
+         static_cast<QWidget *>(m_mongoPassword), static_cast<QWidget *>(m_mongoSavePw),
+         static_cast<QWidget *>(m_mongoAuthDb), static_cast<QWidget *>(m_mongoDatabase)})
+        w->setEnabled(MongoClient::available());
+
     /* ---- SSL tab: client-cert TLS, wired to mysql_ssl_set()/libpq ---- */
     auto *sslTab = new QWidget(this);
     m_useSsl = new QCheckBox(QStringLiteral("Use SS&L"), sslTab);
@@ -371,6 +434,7 @@ ConnectionDialog::ConnectionDialog(QWidget *parent) : QDialog(parent)
     m_tabs->addTab(m_mysqlTab, QStringLiteral("MySQL/MariaDB"));
     m_tabs->addTab(m_sqliteTab, QStringLiteral("SQLite"));
     m_tabs->addTab(m_postgresTab, QStringLiteral("PostgreSQL"));
+    m_tabs->addTab(m_mongoTab, QStringLiteral("MongoDB"));
     m_tabs->addTab(placeholderTab(QStringLiteral("HTTP tunnel")), QStringLiteral("HTTP"));
     m_tabs->addTab(sshTab, QStringLiteral("SSH"));
     m_tabs->addTab(sslTab, QStringLiteral("SSL"));
@@ -384,6 +448,8 @@ ConnectionDialog::ConnectionDialog(QWidget *parent) : QDialog(parent)
             m_driverCombo->setCurrentIndex(1);
         else if(m_tabs->currentWidget() == m_postgresTab)
             m_driverCombo->setCurrentIndex(2);
+        else if(m_tabs->currentWidget() == m_mongoTab)
+            m_driverCombo->setCurrentIndex(3);
     });
 
     /* ---- Connect / Cancel / Test -------------------------------- */
@@ -548,6 +614,8 @@ bool ConnectionDialog::savePasswordChecked() const
 {
     if(m_tabs->currentWidget() == m_postgresTab)
         return m_pgSavePw->isChecked();
+    if(m_tabs->currentWidget() == m_mongoTab)
+        return m_mongoSavePw->isChecked();
     if(m_tabs->currentWidget() == m_sqliteTab)
         return true; /* SQLite has no password field to begin with */
     return m_savePw->isChecked();
@@ -637,6 +705,19 @@ void ConnectionDialog::testConnection()
     if(!confirmSshHostKey(this, p))
         return;
     QString error;
+    if(p.driverType == SqlDriverType::Mongo) {
+        QApplication::setOverrideCursor(Qt::WaitCursor);
+        const auto m = MongoClient::connect(p, &error);
+        QApplication::restoreOverrideCursor();
+        if(m)
+            QMessageBox::information(this, QStringLiteral("Test Connection"),
+                                     QStringLiteral("Connected to %1\nServer: MongoDB %2")
+                                         .arg(m->address(), m->serverVersion()));
+        else
+            QMessageBox::warning(this, QStringLiteral("Test Connection"),
+                                 QStringLiteral("Connection failed:\n%1").arg(error));
+        return;
+    }
     IDbConnection *c = dbDriverFor(p.driverType)->connect(p, &error);
     const bool ok = c != nullptr;
     const QString where = p.driverType == SqlDriverType::Sqlite
@@ -652,20 +733,59 @@ void ConnectionDialog::testConnection()
         QMessageBox::warning(this, QStringLiteral("Test Connection"), msg);
 }
 
+/* the left strip for a driver without artwork of its own: connection.png's
+ * blue band (the plug), then "WORKS WITH" and the name as text on the white
+ * band, laid out like the SQLite / PostgreSQL strips (150x358, the band
+ * from 276) */
+static QPixmap textBrandPixmap(const QString &name)
+{
+    const QPixmap source(Icons::path(QStringLiteral("connection.png")));
+    const QSize size = source.isNull() ? QSize(150, 358) : source.size();
+    constexpr int kBand = 276;
+    QPixmap out(size);
+    out.fill(Qt::white);
+    QPainter p(&out);
+    p.setRenderHint(QPainter::Antialiasing);
+    p.setRenderHint(QPainter::TextAntialiasing);
+    if(!source.isNull())
+        p.drawPixmap(0, 0, source, 0, 0, size.width(), kBand);
+    QFont caption = p.font();
+    caption.setPixelSize(11);
+    caption.setBold(true);
+    p.setFont(caption);
+    p.setPen(QColor(0, 82, 128));
+    p.drawText(QRect(12, kBand + 14, size.width() - 12, 16), Qt::AlignLeft | Qt::AlignVCenter,
+               QStringLiteral("WORKS WITH"));
+    QFont title = p.font();
+    title.setPixelSize(24);
+    title.setBold(true);
+    p.setFont(title);
+    p.setPen(QColor(45, 45, 45));
+    p.drawText(QRect(12, kBand + 32, size.width() - 12, 32), Qt::AlignLeft | Qt::AlignVCenter,
+               name);
+    p.end();
+    return out;
+}
+
 void ConnectionDialog::driverChanged(int index)
 {
     const auto dt = SqlDriverType(m_driverCombo->itemData(index).toInt());
     QWidget *tab = dt == SqlDriverType::Sqlite     ? m_sqliteTab
                    : dt == SqlDriverType::Postgres ? m_postgresTab
+                   : dt == SqlDriverType::Mongo    ? m_mongoTab
                                                    : m_mysqlTab;
     m_tabs->setCurrentWidget(tab);
     setWindowTitle(dt == SqlDriverType::Sqlite     ? QStringLiteral("Connect to SQLite Database")
                    : dt == SqlDriverType::Postgres ? QStringLiteral("Connect to PostgreSQL Server")
+                   : dt == SqlDriverType::Mongo    ? QStringLiteral("Connect to MongoDB Server")
                                                    : QStringLiteral("Connect to MySQL Host"));
-    m_brandImage->setPixmap(QPixmap(
-        Icons::path(dt == SqlDriverType::Sqlite     ? QStringLiteral("connection_sqlite.png")
-                    : dt == SqlDriverType::Postgres ? QStringLiteral("connection_postgres.png")
-                                                    : QStringLiteral("connection.png"))));
+    m_brandImage->setPixmap(
+        dt == SqlDriverType::Mongo
+            ? textBrandPixmap(QStringLiteral("MongoDB"))
+            : QPixmap(Icons::path(
+                  dt == SqlDriverType::Sqlite     ? QStringLiteral("connection_sqlite.png")
+                  : dt == SqlDriverType::Postgres ? QStringLiteral("connection_postgres.png")
+                                                  : QStringLiteral("connection.png"))));
 }
 
 void ConnectionDialog::browseSqliteFile()
@@ -713,8 +833,17 @@ void ConnectionDialog::setParams(const ConnectionParams &p)
     m_pgPassword->setText(p.password);
     m_pgSavePw->setChecked(!p.password.isEmpty());
     m_pgDatabase->setText(p.database);
+    m_mongoUri->setText(p.mongoUri);
+    m_mongoHost->setText(p.host);
+    m_mongoPort->setValue(p.driverType == SqlDriverType::Mongo ? p.port : 27017);
+    m_mongoUser->setText(p.user);
+    m_mongoPassword->setText(p.password);
+    m_mongoSavePw->setChecked(!p.password.isEmpty());
+    m_mongoAuthDb->setText(p.authDatabase);
+    m_mongoDatabase->setText(p.driverType == SqlDriverType::Mongo ? p.database : QString());
     m_driverCombo->setCurrentIndex(p.driverType == SqlDriverType::Sqlite     ? 1
                                    : p.driverType == SqlDriverType::Postgres ? 2
+                                   : p.driverType == SqlDriverType::Mongo    ? 3
                                                                              : 0);
     m_useSsl->setChecked(p.useSsl);
     m_sslCa->setText(p.sslCa);
@@ -745,6 +874,7 @@ ConnectionParams ConnectionDialog::params() const
     ConnectionParams p;
     p.driverType = m_tabs->currentWidget() == m_sqliteTab     ? SqlDriverType::Sqlite
                    : m_tabs->currentWidget() == m_postgresTab ? SqlDriverType::Postgres
+                   : m_tabs->currentWidget() == m_mongoTab    ? SqlDriverType::Mongo
                                                               : SqlDriverType::Mysql;
     const QString sel = m_saved->currentText().trimmed();
     const bool hasSavedName = !sel.isEmpty() && sel != QStringLiteral("New Connection");
@@ -754,6 +884,36 @@ ConnectionParams ConnectionDialog::params() const
         p.name = hasSavedName ? sel : QFileInfo(p.filePath).baseName();
         if(p.name.isEmpty())
             p.name = QStringLiteral("New SQLite connection");
+        return p;
+    }
+
+    if(p.driverType == SqlDriverType::Mongo) {
+        p.host = m_mongoHost->text().trimmed();
+        p.port = m_mongoPort->value();
+        p.user = m_mongoUser->text().trimmed();
+        p.password = m_mongoPassword->text();
+        p.database = m_mongoDatabase->text().trimmed();
+        p.authDatabase = m_mongoAuthDb->text().trimmed();
+        /* credentials in the connection string go to their own fields:
+         * the password is then kept in the keychain, not in the ini */
+        const QString uri = mongoUriWithoutCredentials(m_mongoUri->text(), &p.user, &p.password);
+        p.mongoUri = uri;
+        p.useSsl = m_useSsl->isChecked();
+        p.sslCa = m_sslCa->text().trimmed();
+        p.sslCert = m_sslCert->text().trimmed();
+        p.sslKey = m_sslKey->text().trimmed();
+        p.useSsh = m_useSsh->isChecked();
+        p.sshHost = m_sshHost->text().trimmed();
+        p.sshPort = m_sshPort->value();
+        p.sshUser = m_sshUser->text().trimmed();
+        p.sshPassword = m_sshPassword->text();
+        p.sshKeyFile = m_sshKeyFile->text().trimmed();
+        const QString where = uri.isEmpty() ? QStringLiteral("%1:%2").arg(p.host).arg(p.port)
+                                            : QString(uri).remove(QRegularExpression(
+                                                  QStringLiteral("^mongodb(\\+srv)?://|[/?].*$")));
+        p.name = hasSavedName       ? sel
+                 : p.user.isEmpty() ? QStringLiteral("MongoDB %1").arg(where)
+                                    : QStringLiteral("%1@%2").arg(p.user, where);
         return p;
     }
 

@@ -8,11 +8,14 @@
 #include "DataSync.h"
 #include "DataSyncDialog.h"
 #include "QueryBuilder.h"
+#include "MongoJson.h"
+#include "MongoTab.h"
 #include "SchemaDesigner.h"
 #include "SchemaSyncDialog.h"
 #include "SqlSplit.h"
 #include "SessionStore.h"
 #include "db/IDbConnection.h"
+#include "db/MongoClient.h"
 
 #include <QApplication>
 #include <QFile>
@@ -436,6 +439,112 @@ QStringList MainWindow::selftestDrawForeignKey()
             out << line;
     dropBoth();
     designer->reload();
+    return out;
+}
+
+QStringList MainWindow::selftestMongoTab()
+{
+    auto *tab = qobject_cast<MongoTab *>(m_tabs->currentWidget());
+    if(!tab)
+        return {QStringLiteral("mongotab: no MongoDB tab")};
+    const QString db = QStringLiteral("openyog_test_mongo_ui");
+    QStringList out;
+    const auto canonical = [](const QString &shell) {
+        MongoJson::Value v;
+        MongoJson::parse(shell, &v);
+        return MongoJson::toCanonical(v);
+    };
+    /* the data, straight through a client of its own */
+    QString error;
+    const auto seed = MongoClient::connect(tab->params(), &error);
+    if(!seed)
+        return {QStringLiteral("mongotab: seeding failed: ") + error};
+    seed->dropDatabase(db, nullptr);
+    seed->insert(db, QStringLiteral("people"),
+                 {canonical("{_id: 1, name: 'Alice', age: 30, city: 'Dhaka', tags: ['a', 'b']}"),
+                  canonical("{_id: 2, name: 'রহিম', age: 41, visits: NumberLong(7)}"),
+                  canonical("{_id: 3, name: 'Dana', age: 25, city: 'Sylhet'}"),
+                  canonical("{_id: 4, name: 'Eve', age: 35, at: ISODate('2024-01-15T10:30:00Z')}")},
+                 &error);
+    if(!error.isEmpty())
+        return {QStringLiteral("mongotab: seeding failed: ") + error};
+
+    tab->reloadDatabases();
+    tab->waitForIdle();
+    tab->openCollection(db, QStringLiteral("people"));
+    tab->waitForIdle();
+    tab->reloadDatabases(); /* the open database's collections listed too */
+    tab->waitForIdle();
+    for(const QString &line : tab->treeForTest())
+        if(line.contains(QStringLiteral("openyog_test_mongo_ui")) ||
+           line.contains(QStringLiteral("people")))
+            out << QStringLiteral("mongotab tree: ") + line.trimmed();
+    out << QStringLiteral("mongotab page: ") + tab->pageText();
+    for(const QString &line : tab->gridForTest())
+        out << QStringLiteral("mongotab grid: ") + line;
+
+    tab->setFind(QStringLiteral("{age: {$gte: 30}}"), QStringLiteral("{name: 1, age: 1}"),
+                 QStringLiteral("{age: -1}"), 2);
+    tab->run();
+    tab->waitForIdle();
+    out << QStringLiteral("mongotab filtered: %1 / %2")
+               .arg(tab->gridForTest().mid(1).join(QStringLiteral(" ; ")), tab->pageText());
+    tab->page(1);
+    tab->waitForIdle();
+    out << QStringLiteral("mongotab next page: %1 / %2")
+               .arg(tab->gridForTest().mid(1).join(QStringLiteral(" ; ")), tab->pageText());
+
+    tab->setFind(QStringLiteral("{_id: 2}"));
+    tab->run();
+    tab->waitForIdle();
+    const bool saved = tab->saveDocumentForTest(
+        0, QStringLiteral("{_id: 2, name: 'রহিম', age: 42, visits: NumberLong(8)}"), &error);
+    out << QStringLiteral("mongotab edit: %1 %2")
+               .arg(saved ? QStringLiteral("saved") : QStringLiteral("FAILED ") + error,
+                    tab->jsonForTest().simplified());
+    error.clear();
+    const bool idChanged =
+        tab->saveDocumentForTest(0, QStringLiteral("{_id: 99, name: 'x'}"), &error);
+    out << QStringLiteral("mongotab changed _id: %1")
+               .arg(idChanged ? QStringLiteral("SAVED (wrong)") : error);
+
+    tab->setFind(QString(), QString(), QStringLiteral("{_id: 1}"), 50);
+    tab->run();
+    tab->waitForIdle();
+    error.clear();
+    const bool inserted =
+        tab->insertDocumentForTest(QStringLiteral("{name: 'Zed', age: 50}"), &error);
+    out << QStringLiteral("mongotab insert: %1, %2")
+               .arg(inserted ? QStringLiteral("inserted") : QStringLiteral("FAILED ") + error,
+                    tab->pageText());
+    const int rows = int(tab->gridForTest().size()) - 1;
+    error.clear();
+    const bool deleted = tab->deleteRowsForTest({rows - 1}, &error); /* Zed, sorted last */
+    out << QStringLiteral("mongotab delete: %1, %2")
+               .arg(deleted ? QStringLiteral("deleted") : QStringLiteral("FAILED ") + error,
+                    tab->pageText());
+
+    tab->setMode(MongoTab::Mode::Aggregate,
+                 QStringLiteral("[{$match: {city: {$exists: true}}}, "
+                                "{$group: {_id: '$city', n: {$sum: 1}}}, {$sort: {_id: 1}}]"));
+    tab->run();
+    tab->waitForIdle();
+    out << QStringLiteral("mongotab aggregate: ") + tab->gridForTest().join(QStringLiteral(" ; "));
+    tab->setMode(MongoTab::Mode::Command, QStringLiteral("{count: 'people'}"));
+    tab->run();
+    tab->waitForIdle();
+    out << QStringLiteral("mongotab command: ") + tab->gridForTest().join(QStringLiteral(" ; "));
+    tab->setMode(MongoTab::Mode::Find);
+    tab->setFind(QStringLiteral("{age: {$gt: }}"));
+    tab->run();
+    tab->waitForIdle();
+    out << QStringLiteral("mongotab bad filter: ") + tab->statusText();
+
+    /* back to the whole collection for the screenshot */
+    tab->setFind(QString());
+    tab->run();
+    tab->waitForIdle();
+    seed->dropDatabase(db, nullptr);
     return out;
 }
 

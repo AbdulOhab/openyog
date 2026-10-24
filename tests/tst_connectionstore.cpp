@@ -69,6 +69,8 @@ private slots:
     void renameRefusedWhenKeychainLocked();
     void removeDeletesSecret();
     void sqliteStoresNoSecret();
+    void mongoRoundTrip();
+    void mongoUriCredentialsMoveOut();
     void sshSettingsAndSecretRoundTrip();
     void sshOffDropsItsSecret();
     void removeAndRenameCarryTheSshSecret();
@@ -204,6 +206,59 @@ void TestConnectionStore::sqliteStoresNoSecret()
     ConnectionParams back;
     QVERIFY(ConnectionStore::load(QStringLiteral("local"), &back));
     QCOMPARE(back.filePath, QStringLiteral("/tmp/x.sqlite"));
+}
+
+void TestConnectionStore::mongoRoundTrip()
+{
+    /* a connection string instead of a host: still a connection */
+    ConnectionParams p;
+    p.name = QStringLiteral("atlas");
+    p.driverType = SqlDriverType::Mongo;
+    p.host.clear();
+    p.port = 27017;
+    p.user = QStringLiteral("app");
+    p.password = QStringLiteral("m0ngo");
+    p.mongoUri = QStringLiteral("mongodb+srv://cluster0.example.net/?retryWrites=true");
+    p.authDatabase = QStringLiteral("admin");
+    p.database = QStringLiteral("shop");
+    ConnectionStore::save(p);
+    QCOMPARE(FakeSecretStore::entries().value(QStringLiteral("connection/atlas")),
+             QStringLiteral("m0ngo"));
+    QVERIFY(!iniText().contains(QStringLiteral("m0ngo")));
+
+    ConnectionParams back;
+    QVERIFY(ConnectionStore::load(QStringLiteral("atlas"), &back));
+    QCOMPARE(back.driverType, SqlDriverType::Mongo);
+    QCOMPARE(back.mongoUri, p.mongoUri);
+    QCOMPARE(back.authDatabase, QStringLiteral("admin"));
+    QCOMPARE(back.database, QStringLiteral("shop"));
+    QCOMPARE(back.user, QStringLiteral("app"));
+    QCOMPARE(back.password, QStringLiteral("m0ngo"));
+    QCOMPARE(back.port, 27017);
+}
+
+void TestConnectionStore::mongoUriCredentialsMoveOut()
+{
+    QString user, password;
+    QCOMPARE(
+        mongoUriWithoutCredentials(
+            QStringLiteral(" mongodb://app:p%40ss%3Aw0rd@h1:27017,h2:27018/shop?replicaSet=rs0 "),
+            &user, &password),
+        QStringLiteral("mongodb://h1:27017,h2:27018/shop?replicaSet=rs0"));
+    QCOMPARE(user, QStringLiteral("app"));
+    QCOMPARE(password, QStringLiteral("p@ss:w0rd"));
+
+    user = password = QStringLiteral("unchanged");
+    QCOMPARE(mongoUriWithoutCredentials(QStringLiteral("mongodb+srv://cluster0.example.net/"),
+                                        &user, &password),
+             QStringLiteral("mongodb+srv://cluster0.example.net/"));
+    QCOMPARE(user, QStringLiteral("unchanged")); /* nothing to take out: the fields stay */
+
+    QCOMPARE(mongoUriWithoutCredentials(QStringLiteral("mongodb+srv://reader@cluster0.example.net"),
+                                        &user, &password),
+             QStringLiteral("mongodb+srv://cluster0.example.net"));
+    QCOMPARE(user, QStringLiteral("reader"));
+    QCOMPARE(password, QStringLiteral("unchanged")); /* no password in it */
 }
 
 namespace {

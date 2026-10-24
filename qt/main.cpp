@@ -3,9 +3,9 @@
  * Selftest mode for CI/headless verification:
  *   openyog --screenshot=FILE.png              render main window to FILE, exit
  *   openyog --screenshot=FILE.png --dialog     render the connection dialog
- *   openyog --screenshot=FILE.png --dialog --dialogdriver=sqlite|postgres   … driver preselected
- *   openyog --screenshot=FILE.png --createtable render the Create Table dialog
- *   openyog --autoconnect=h:p:u:pw:db [--opentable=db:t] [--editcell=r:c:v |
+ *   openyog --screenshot=FILE.png --dialog --dialogdriver=sqlite|postgres|mongodb   … driver
+ * preselected openyog --screenshot=FILE.png --createtable render the Create Table dialog openyog
+ * --autoconnect=h:p:u:pw:db [--opentable=db:t] [--editcell=r:c:v |
  *           --stagecell=r:c:v] --screenshot=FILE.png   drive the data grid
  *   openyog --autoconnect=… --dumpdb=FILE.sql          dump a database
  *   openyog --delconn=NAME                             delete a saved connection
@@ -15,6 +15,9 @@
  *   openyog --comptest                                 autocomplete self-check
  *   openyog --sqlitetest=FILE.sqlite                   SQLite driver shape self-check
  *   openyog --pgtest=host:port:user:pw:db              PostgreSQL driver shape self-check
+ *   openyog --mongotest=host:port:user:pw              MongoDB client and notation self-check
+ *   openyog --autoconnectmongo=h:p:u:pw:authdb --mongotab --screenshot=FILE.png
+ *           drive a MongoDB tab on a scratch database
  *   openyog --autoconnectfile=FILE.sqlite [--opentable=db:t] [--editcell=r:c:v]
  *           --screenshot=FILE.png       same data-grid selftests, SQLite driver
  *   openyog --autoconnect…=… --schemadesigner[=FILE.png] --screenshot=FILE.png
@@ -91,6 +94,7 @@ int main(int argc, char *argv[])
                                   * Designer, print its tables/links (and export the image) */
     QString schemaDesignerExport;
     bool drawForeignKey = false; /* --drawfk selftest: a relationship drawn in the designer */
+    bool mongoTab = false;       /* --mongotab selftest, after --autoconnectmongo= */
     bool printResults = false;   /* --printresults selftest: Messages and result tabs, at the end */
     QString dataSyncSpec;        /* --datasync=SOURCE:TARGET[:apply] selftest */
     QString schemaSyncSpec;      /* --schemasync=SOURCE:TARGET[:apply][:shot=F] selftest */
@@ -276,6 +280,8 @@ int main(int argc, char *argv[])
                                             a.mid(QStringLiteral("--sqlitemisctest=").size()));
         if(a.startsWith(QStringLiteral("--pgtest=")))
             return Selftest::pgTest(argc, argv, a.mid(QStringLiteral("--pgtest=").size()));
+        if(a.startsWith(QStringLiteral("--mongotest=")))
+            return Selftest::mongoTest(a.mid(QStringLiteral("--mongotest=").size()));
         if(a.startsWith(QStringLiteral("--pgschematest=")))
             return Selftest::pgSchemaTest(argc, argv,
                                           a.mid(QStringLiteral("--pgschematest=").size()));
@@ -376,6 +382,25 @@ int main(int argc, char *argv[])
             autoConnect.name = QFileInfo(autoConnect.filePath).fileName();
             doAutoConnect = true;
         }
+        /* --autoconnectmongo=host:port:user:password:authdb — a MongoDB
+         * tab, for --mongotab */
+        if(a.startsWith(QStringLiteral("--autoconnectmongo="))) {
+            const QStringList parts =
+                a.mid(QStringLiteral("--autoconnectmongo=").size()).split(':');
+            if(parts.size() == 5) {
+                autoConnect.driverType = SqlDriverType::Mongo;
+                autoConnect.host = parts[0];
+                autoConnect.port = parts[1].toInt();
+                autoConnect.user = parts[2];
+                autoConnect.password = parts[3];
+                autoConnect.authDatabase = parts[4];
+                autoConnect.name =
+                    QStringLiteral("MongoDB %1:%2").arg(autoConnect.host).arg(autoConnect.port);
+                doAutoConnect = true;
+            }
+        }
+        if(a == QStringLiteral("--mongotab"))
+            mongoTab = true;
         /* --autoconnectpg=host:port:user:password:db — same downstream
          * selftest machinery as --autoconnect=, but for the PostgreSQL driver */
         if(a.startsWith(QStringLiteral("--autoconnectpg="))) {
@@ -718,6 +743,9 @@ int main(int argc, char *argv[])
                             : dialogDriver.compare(QStringLiteral("postgres"),
                                                    Qt::CaseInsensitive) == 0
                                 ? 2
+                            : dialogDriver.compare(QStringLiteral("mongodb"),
+                                                   Qt::CaseInsensitive) == 0
+                                ? 3
                                 : 0;
                         combo->setCurrentIndex(idx);
                     }
@@ -871,6 +899,9 @@ int main(int argc, char *argv[])
                         QTextStream(stdout) << "datatab: " << w->selftestShowDataTab() << '\n';
                     if(schemaDesigner)
                         for(const QString &line : w->selftestSchemaDesigner(schemaDesignerExport))
+                            QTextStream(stdout) << line << '\n';
+                    if(mongoTab)
+                        for(const QString &line : w->selftestMongoTab())
                             QTextStream(stdout) << line << '\n';
                     if(drawForeignKey)
                         for(const QString &line : w->selftestDrawForeignKey())

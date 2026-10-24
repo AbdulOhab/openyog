@@ -8,9 +8,12 @@
 #include "ConnectionDialog.h"
 #include "ConnectionStore.h"
 #include "ConnectionTab.h"
+#include "Icons.h"
+#include "MongoTab.h"
 #include "ObjectBrowser.h"
 #include "SessionStore.h"
 #include "Theme.h"
+#include "db/MongoClient.h"
 
 #include <QAction>
 #include <QApplication>
@@ -29,6 +32,7 @@
 #include <QCloseEvent>
 #include <QStatusBar>
 #include <QTimer>
+#include <QToolBar>
 #include <QStackedWidget>
 #include <QTabWidget>
 #include <QTextStream>
@@ -164,7 +168,41 @@ int MainWindow::totalLiveConnections() const
     for(int i = 0; i < m_tabs->count(); ++i)
         if(auto *t = qobject_cast<ConnectionTab *>(m_tabs->widget(i)))
             live += t->liveConnectionCount();
+        else if(qobject_cast<MongoTab *>(m_tabs->widget(i)))
+            ++live;
     return live;
+}
+
+bool MainWindow::openMongo(const ConnectionParams &params, bool interactive)
+{
+    QString error;
+    QApplication::setOverrideCursor(Qt::WaitCursor);
+    std::shared_ptr<MongoClient> client = MongoClient::connect(params, &error);
+    QApplication::restoreOverrideCursor();
+    if(!client) {
+        const QString where = params.mongoUri.isEmpty()
+                                  ? QStringLiteral("%1:%2").arg(params.host).arg(params.port)
+                                  : params.mongoUri;
+        const QString msg = QStringLiteral("Could not connect to MongoDB at %1.").arg(where);
+        if(interactive) {
+            QMessageBox::warning(this, QStringLiteral("Connection failed"),
+                                 msg + QStringLiteral("\n\n") + error);
+        } else {
+            statusBar()->showMessage(msg + QLatin1Char(' ') + error, 15000);
+            QTextStream(stderr) << msg << ' ' << error << '\n';
+        }
+        return false;
+    }
+    ConnectionStore::save(params);
+    auto *tab = new MongoTab(params, std::move(client), this);
+    const int index = m_tabs->addTab(tab, Icons::get(QStringLiteral("database.ico")), tab->title());
+    m_tabs->setCurrentIndex(index);
+    connect(tab, &MongoTab::statusMessage, this, [this, tab](const QString &message) {
+        if(m_tabs->currentWidget() == tab)
+            statusBar()->showMessage(message, 8000);
+    });
+    syncToolbarToCurrentTab();
+    return true;
 }
 
 void MainWindow::syncToolbarToCurrentTab()
@@ -216,6 +254,10 @@ void MainWindow::syncToolbarToCurrentTab()
                            .arg(tab->title(), tab->defaultDb(), tab->hostLabel()));
         m_driverLabel->setText(tab->driverDisplayLabel());
         m_connectionLabel->setText(tab->activeConnectionLabel());
+    } else if(auto *mongo = qobject_cast<MongoTab *>(m_tabs->currentWidget())) {
+        setWindowTitle(QStringLiteral("OpenYog - [%1 - MongoDB]").arg(mongo->title()));
+        m_driverLabel->setText(QStringLiteral("MongoDB"));
+        m_connectionLabel->setText(mongo->title());
     } else {
         setWindowTitle(QStringLiteral("OpenYog"));
         m_driverLabel->setText(QStringLiteral("—"));
@@ -225,6 +267,20 @@ void MainWindow::syncToolbarToCurrentTab()
      * PostgreSQL database holds several at once) — it used to count
      * tabs, which read as a lie the moment a side connection opened */
     m_connectionsLabel->setText(QStringLiteral("Connections: %1").arg(totalLiveConnections()));
+
+    const bool mongo = qobject_cast<MongoTab *>(m_tabs->currentWidget()) != nullptr;
+    if(m_mainToolbar && mongo && m_offForMongo.isEmpty()) {
+        for(QAction *a : m_mainToolbar->actions())
+            if(a != m_newConnAction && !a->isSeparator() && a->isEnabled()) {
+                a->setEnabled(false);
+                m_offForMongo << a;
+            }
+    } else if(!mongo && !m_offForMongo.isEmpty()) {
+        for(const QPointer<QAction> &a : std::as_const(m_offForMongo))
+            if(a)
+                a->setEnabled(true);
+        m_offForMongo.clear();
+    }
 }
 
 void MainWindow::useDatabaseFromCombo(const QString &db)
@@ -363,6 +419,8 @@ bool MainWindow::openAndRun(const ConnectionParams &params, bool interactive)
      * (non-interactive, the connect below fails saying the key's untrusted) */
     if(interactive && !ConnectionDialog::confirmSshHostKey(this, params))
         return false;
+    if(params.driverType == SqlDriverType::Mongo)
+        return openMongo(params, interactive);
     auto *tab = new ConnectionTab(params, this);
     if(!tab->isConnected()) {
         /* with the reason: a wrong password, an untrusted SSH host key and a
@@ -473,6 +531,8 @@ void MainWindow::saveSessionState()
         if(auto *t = qobject_cast<ConnectionTab *>(m_tabs->widget(i))) {
             SessionStore::setEditors(t->params().name, t->editorStates());
             open << t->params().name;
+        } else if(auto *m = qobject_cast<MongoTab *>(m_tabs->widget(i))) {
+            open << m->params().name;
         }
     open.removeDuplicates();
     SessionStore::setOpenConnections(open);

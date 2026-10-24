@@ -1,7 +1,7 @@
 # OpenYog
 
 Open source, cross-platform (Linux + Windows) desktop client for **MySQL,
-MariaDB, PostgreSQL, and SQLite**: a **GPL-3.0 fork of the SQLyog Community
+MariaDB, PostgreSQL, SQLite and MongoDB**: a **GPL-3.0 fork of the SQLyog Community
 Edition source** (13.3.1 GA), with SQLyog's original Windows-only UI layer
 replaced by a **Qt 6** front end on top of SQLyog's portable `wy*` core.
 
@@ -16,11 +16,23 @@ replaced by a **Qt 6** front end on top of SQLyog's portable `wy*` core.
 Early but usable for day-to-day work against a local server. Working now:
 
 - **Backends**: MySQL/MariaDB, PostgreSQL, and SQLite, all through one shared
-  `IDbConnection` abstraction, picked per connection. MongoDB support is not
-  started.
+  `IDbConnection` abstraction, picked per connection; and MongoDB, in a tab
+  of its own (below).
+- **MongoDB** (driver *MongoDB* in the connection dialog; host and port or a
+  `mongodb://` / `mongodb+srv://` connection string, auth database, TLS, SSH
+  tunnel): databases and collections on the left; a collection opens as a
+  grid of its documents, a page at a time with the count, filtered, sorted
+  and projected in the shell's notation (`{age: {$gte: 30}, name: /^a/i}`),
+  and as text. Run an aggregation pipeline or a database command instead of
+  a find. Edit, insert, duplicate or delete documents as text: every value
+  keeps its BSON type (`NumberLong(5)`, `ISODate(…)`, `NumberDecimal(…)`,
+  ObjectIds, binary, a whole double stays `2.0`). Manage indexes, create
+  and drop collections and databases, export a collection to a file of
+  documents (one per line, mongoimport reads it) and import one (that, or a
+  JSON array).
 - **Connections**: SQLyog-style *Connect to MySQL Host* dialog, extended with
   a driver picker for MySQL/MariaDB, PostgreSQL, and SQLite (saved
-  connections, clone / rename / delete, Test Connection), SSL client
+  connections, clone / rename / delete, Test Connection; MongoDB too), SSL client
   certificates, and SSH tunnels (password or private key, host keys checked
   against `~/.ssh/known_hosts`). Saved passwords live in the OS keychain;
   the open connections and their query tabs come back on the next start.
@@ -80,11 +92,12 @@ Requires a C++17 compiler, CMake ≥ 3.21, Ninja, Qt 6, QScintilla (Qt 6
 build), MariaDB client headers, libpq, and SQLite3. QtKeychain is optional:
 with it, saved connection passwords go to the OS keychain (GNOME Keyring,
 KWallet …); without it they stay base64-encoded in `connections.ini`.
-libssh is optional too: it adds SSH tunnels (Linux and Windows). On
-Arch / CachyOS:
+libssh is optional too: it adds SSH tunnels (Linux and Windows); so is
+libmongoc 2 (mongo-c-driver), which adds MongoDB connections. On Arch /
+CachyOS:
 
 ```bash
-sudo pacman -S --needed base-devel cmake ninja qt6-base qt6-tools qt6-svg qscintilla-qt6 qtkeychain-qt6 libssh mariadb postgresql-libs sqlite
+sudo pacman -S --needed base-devel cmake ninja qt6-base qt6-tools qt6-svg qscintilla-qt6 qtkeychain-qt6 libssh mongo-c-driver mariadb postgresql-libs sqlite
 
 cmake -S . -B build-cmake -G Ninja
 cmake --build build-cmake
@@ -94,17 +107,19 @@ ctest --test-dir build-cmake --output-on-failure   # unit tests + selftests
 ```
 
 CI (`.github/workflows/ci.yml`) runs the same build, `ctest` (including
-the live MySQL/PostgreSQL selftests against throwaway MariaDB and PostgreSQL
-containers), and a `clang-format` check on every push and pull request; it
-runs the tests a second time on a build with AddressSanitizer,
+the live MySQL/PostgreSQL/MongoDB selftests against throwaway MariaDB,
+PostgreSQL and MongoDB containers), and a `clang-format` check on every push
+and pull request; it runs the tests a second time on a build with AddressSanitizer,
 UndefinedBehaviorSanitizer and LeakSanitizer, which fails on any report. To
 run the live selftests locally, point CMake at throwaway databases — their
-fixtures drop and recreate tables:
+fixtures drop and recreate tables (MongoDB's, `openyog_test_mongo*`
+databases):
 
 ```bash
 cmake -S . -B build-cmake -G Ninja \
   -DOPENYOG_TEST_MYSQL=127.0.0.1:3306:root:secret:openyog_test \
-  -DOPENYOG_TEST_PG=127.0.0.1:5432:postgres:secret:openyog_test
+  -DOPENYOG_TEST_PG=127.0.0.1:5432:postgres:secret:openyog_test \
+  -DOPENYOG_TEST_MONGO=127.0.0.1:27017:root:secret
 ```
 
 ## Install (Linux)
@@ -139,7 +154,8 @@ contents to a Windows machine, not just `openyog.exe`. With wine installed
 the script then runs selftests on the result in a wine prefix of its own,
 among them `--keychaintest` (saved passwords go to Windows Credential
 Manager); given `OPENYOG_TEST_SSH` and `OPENYOG_TEST_PG` (see the script's
-header) it also runs a query through an SSH tunnel. Tested under wine only
+header) it also runs a query through an SSH tunnel, and given
+`OPENYOG_TEST_MONGO` the MongoDB selftest. Tested under wine only
 so far, not on real Windows hardware. SSH tunnels are in the Windows build
 too; there `known_hosts` is `%USERPROFILE%\.ssh\known_hosts`.
 

@@ -33,6 +33,8 @@ QString driverName(SqlDriverType d)
             return QStringLiteral("PostgreSQL");
         case SqlDriverType::Sqlite:
             break;
+        case SqlDriverType::Mongo:
+            return QStringLiteral("MongoDB");
     }
     return QStringLiteral("SQLite");
 }

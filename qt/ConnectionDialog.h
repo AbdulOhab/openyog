@@ -78,6 +78,11 @@ private:
     QWidget *m_mysqlTab = nullptr;
     QWidget *m_sqliteTab = nullptr;
     QWidget *m_postgresTab = nullptr;
+    QWidget *m_mongoTab = nullptr;
+    QLineEdit *m_mongoUri = nullptr, *m_mongoHost = nullptr, *m_mongoUser = nullptr,
+              *m_mongoPassword = nullptr, *m_mongoAuthDb = nullptr, *m_mongoDatabase = nullptr;
+    QSpinBox *m_mongoPort = nullptr;
+    QCheckBox *m_mongoSavePw = nullptr;
     QLineEdit *m_sqlitePath = nullptr;
 
     QLineEdit *m_pgHost = nullptr;

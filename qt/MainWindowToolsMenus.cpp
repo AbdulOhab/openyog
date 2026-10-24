@@ -586,6 +586,8 @@ void MainWindow::buildToolbarAndStatusBar()
      * (one action = one shortcut, one enable-state, icon in both places). */
     auto *toolbar = addToolBar(QStringLiteral("main"));
     toolbar->setMovable(false);
+    m_mainToolbar = toolbar;
+    m_newConnAction = newConn;
     constexpr int kToolbarIcon = 18;
     toolbar->setIconSize(QSize(kToolbarIcon, kToolbarIcon));
 

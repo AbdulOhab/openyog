@@ -101,7 +101,7 @@ configure_file("${CMAKE_CURRENT_BINARY_DIR}/bitmaps.qrc.in"
 
 add_executable(openyog
     qt/main.cpp
-    qt/Selftest.h qt/SelftestSqlite.cpp qt/SelftestServer.cpp qt/SelftestMisc.cpp # standalone --selftest flags
+    qt/Selftest.h qt/SelftestSqlite.cpp qt/SelftestServer.cpp qt/SelftestMisc.cpp qt/SelftestMongo.cpp # standalone --selftest flags
     qt/openyog.qrc
     "${CMAKE_CURRENT_BINARY_DIR}/bitmaps.qrc"
     qt/db/IDbDriver.h
@@ -158,6 +158,9 @@ add_executable(openyog
     qt/SchemaSyncDialog.h  qt/SchemaSyncDialog.cpp
     qt/DataSync.h          qt/DataSync.cpp
     qt/DataSyncDialog.h    qt/DataSyncDialog.cpp
+    qt/MongoJson.h         qt/MongoJson.cpp
+    qt/db/MongoClient.h    qt/db/MongoClient.cpp
+    qt/MongoTab.h          qt/MongoTab.cpp
 )
 # QScintilla (the query editor): system package, same pattern as the
 # client libraries above — on Arch, `sudo pacman -S qscintilla-qt6`
@@ -181,6 +184,31 @@ if(Qt6Keychain_FOUND)
     message(STATUS "QtKeychain found: saved passwords go to the OS keychain")
 else()
     message(STATUS "QtKeychain not found: saved passwords stay base64 in connections.ini")
+endif()
+
+# MongoDB connections (qt/db/MongoClient, the Mongo tab) through libmongoc 2
+# (Arch: mongo-c-driver; the Windows build: MSYS2's). Optional: without it
+# MongoClient compiles to stubs and the connection dialog says it isn't
+# available.
+find_package(mongoc 2.0 CONFIG QUIET)
+if(mongoc_FOUND)
+    target_compile_definitions(openyog PRIVATE OPENYOG_HAVE_MONGO)
+    if(WIN32)
+        # MSYS2's package config names Windows libraries as on a
+        # case-insensitive disk (-lBcrypt) and some of its own by paths on
+        # the machine that built it; using the DLLs needs only their two
+        # import libraries
+        find_library(MONGOC_IMPORT_LIBRARY NAMES mongoc2 REQUIRED)
+        find_library(BSON_IMPORT_LIBRARY NAMES bson2 REQUIRED)
+        get_target_property(MONGOC_INCLUDE_DIRS mongoc::shared INTERFACE_INCLUDE_DIRECTORIES)
+        target_include_directories(openyog PRIVATE ${MONGOC_INCLUDE_DIRS})
+        target_link_libraries(openyog PRIVATE ${MONGOC_IMPORT_LIBRARY} ${BSON_IMPORT_LIBRARY})
+    else()
+        target_link_libraries(openyog PRIVATE mongoc::shared)
+    endif()
+    message(STATUS "libmongoc ${mongoc_VERSION} found: MongoDB enabled")
+else()
+    message(STATUS "libmongoc 2 not found: MongoDB disabled")
 endif()
 
 # SSH tunnels (qt/db/SshTunnel) through libssh (Arch: libssh; the Windows

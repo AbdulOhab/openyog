@@ -36,7 +36,7 @@ REPO = "https://repo.msys2.org/mingw/ucrt64/"
 PREFIX = "mingw-w64-ucrt-x86_64-"
 LOCK = Path(__file__).with_name("msys2-ucrt64.lock")
 WANTED = ["qt6-base", "qscintilla-qt6", "qtkeychain-qt6", "libmariadbclient",
-          "postgresql", "sqlite3", "libssh"]
+          "postgresql", "sqlite3", "libssh", "mongo-c-driver"]
 # dependencies of a package's scripts or bindings, not of any DLL loaded here:
 # glib2's code generators (python), sqlite3's Tcl extension
 SKIP = ["python", "python-packaging", "tcl"]

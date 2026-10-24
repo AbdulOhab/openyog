@@ -98,6 +98,8 @@ QString normalized(const QString &definition, const Schema &side)
             return normalizePostgres(definition, side.database);
         case SqlDriverType::Sqlite:
             break;
+        case SqlDriverType::Mongo:
+            break; /* not SQL: never gets here */
     }
     return collapse(definition);
 }
@@ -127,6 +129,8 @@ QString objectNormalized(const QString &create, const Schema &side)
             return normalizePostgres(s, side.database);
         case SqlDriverType::Sqlite:
             break;
+        case SqlDriverType::Mongo:
+            break; /* not SQL: never gets here */
     }
     return collapse(s);
 }
@@ -340,6 +344,8 @@ Schema load(IDbConnection *conn, const QString &db)
                 s.tables << parseSqlite(name, create, indexes);
                 break;
             }
+            case SqlDriverType::Mongo:
+                break; /* not SQL: never gets here */
         }
     }
 
@@ -444,6 +450,8 @@ public:
                 return quoteDouble(m_target.database) + QLatin1Char('.') + quoteDouble(name);
             case SqlDriverType::Sqlite:
                 break;
+            case SqlDriverType::Mongo:
+                break; /* not SQL: never gets here */
         }
         return quoteDouble(name);
     }
@@ -499,6 +507,8 @@ public:
                 return;
             case SqlDriverType::Postgres:
                 break;
+            case SqlDriverType::Mongo:
+                break; /* not SQL: never gets here */
         }
         /* "name" type [NOT NULL] [DEFAULT expr], one ALTER COLUMN per part */
         struct Parts
@@ -585,6 +595,8 @@ public:
                                                        : key.name))};
             case SqlDriverType::Sqlite:
                 break;
+            case SqlDriverType::Mongo:
+                break; /* not SQL: never gets here */
         }
         return {};
     }
@@ -628,6 +640,8 @@ public:
                 return moveSchema(s, m_source.database, m_target.database);
             case SqlDriverType::Sqlite:
                 break;
+            case SqlDriverType::Mongo:
+                break; /* not SQL: never gets here */
         }
         return s;
     }
@@ -663,6 +677,8 @@ public:
             }
             case SqlDriverType::Sqlite:
                 break;
+            case SqlDriverType::Mongo:
+                break; /* not SQL: never gets here */
         }
         return QStringLiteral("DROP %1 IF EXISTS %2").arg(o.kind, quoteDouble(o.name));
     }
@@ -677,6 +693,8 @@ public:
                 return kind == QStringLiteral("TRIGGER");
             case SqlDriverType::Postgres:
                 break;
+            case SqlDriverType::Mongo:
+                break; /* not SQL: never gets here */
         }
         return false;
     }
@@ -1025,6 +1043,8 @@ QString script(const QList<Change> &changes, const Schema &source, const Schema 
         case SqlDriverType::Sqlite:
             out << QStringLiteral("BEGIN;");
             break;
+        case SqlDriverType::Mongo:
+            break; /* not SQL: never gets here */
     }
     /* a view's or trigger's CREATE names what is in its own schema without
      * it: found in the target's schema first while the script runs */

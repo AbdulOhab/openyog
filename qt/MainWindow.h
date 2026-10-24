@@ -6,10 +6,12 @@
 #pragma once
 
 #include <QMainWindow>
+#include <QPointer>
 
 #include "ConnectionParams.h"
 
 class QComboBox;
+class QToolBar;
 class QLabel;
 class QTabWidget;
 class ConnectionTab;
@@ -39,6 +41,8 @@ public:
      * interactive=false reports a failed connect in the status bar instead
      * of a message box (the startup reconnect) */
     bool openAndRun(const ConnectionParams &params, bool interactive = true);
+    /* openAndRun() for a MongoDB connection: a MongoTab instead */
+    bool openMongo(const ConnectionParams &params, bool interactive);
     /* reopen the connections open when the app last quit, each with its
      * query tabs (SessionStore) — unless switched off in Preferences */
     void restoreLastSession();
@@ -70,6 +74,10 @@ public:
      * of the current connection; apply: run the whole script, deletes
      * included, then compare again */
     QStringList selftestDataSync(const QString &spec);
+    /* --mongotab selftest, on a MongoDB tab (--autoconnectmongo=): seeds a
+     * scratch database, drives the tab through find, paging, edit, insert,
+     * delete, aggregate and a command, and drops the database again */
+    QStringList selftestMongoTab();
     void selftestUseDatabase(const QString &db);           /* --usedb= selftest */
     void selftestExpandDatabase(const QString &name);      /* --expandpgdb= selftest */
     void selftestSelectBrowserItem(const QString &path);   /* --selecttreepath= selftest */
@@ -161,6 +169,11 @@ private:
     class QStackedWidget *m_stack = nullptr;
     QTabWidget *m_tabs = nullptr;
     QComboBox *m_dbCombo = nullptr;
+    /* the main toolbar is SQL's: on a MongoDB tab its actions (but New
+     * Connection) are off, and the ones turned off here come back after */
+    QToolBar *m_mainToolbar = nullptr;
+    QAction *m_newConnAction = nullptr;
+    QList<QPointer<QAction>> m_offForMongo;
     QLabel *m_driverLabel = nullptr;     /* MySQL / PostgreSQL / SQLite */
     QLabel *m_connectionLabel = nullptr; /* which connection is in front */
     QLabel *m_execLabel = nullptr;

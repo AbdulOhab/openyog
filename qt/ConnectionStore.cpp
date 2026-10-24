@@ -141,19 +141,32 @@ bool ConnectionStore::load(const QString &name, ConnectionParams *out)
         return true;
     }
 
-    if(wyIni::IniGetString(n, "host", "", &value, iniPath().toUtf8()) == 0 ||
-       value.GetLength() == 0)
+    /* MongoDB: a connection string can stand in for the host */
+    QString mongoUri;
+    if(driver == SqlDriverType::Mongo) {
+        wyIni::IniGetString(n, "mongo_uri", "", &value, iniPath().toUtf8());
+        mongoUri = value.GetString();
+        wyIni::IniGetString(n, "auth_db", "", &value, iniPath().toUtf8());
+        out->authDatabase = value.GetString();
+    }
+    out->mongoUri = mongoUri;
+    if((wyIni::IniGetString(n, "host", "", &value, iniPath().toUtf8()) == 0 ||
+        value.GetLength() == 0) &&
+       mongoUri.isEmpty())
         return false;
 
     out->name = name;
-    out->driverType = driver; /* Mysql or Postgres — same field shape */
+    out->driverType = driver; /* Mysql, Postgres or Mongo — same field shape */
     out->host = value.GetString();
 
     wyIni::IniGetString(n, "user", "", &value, iniPath().toUtf8());
     out->user = value.GetString();
     wyIni::IniGetString(n, "database", "", &value, iniPath().toUtf8());
     out->database = value.GetString();
-    out->port = wyIni::IniGetInt(n, "port", driver == SqlDriverType::Postgres ? 5432 : 3306,
+    out->port = wyIni::IniGetInt(n, "port",
+                                 driver == SqlDriverType::Postgres ? 5432
+                                 : driver == SqlDriverType::Mongo  ? 27017
+                                                                   : 3306,
                                  iniPath().toUtf8());
 
     out->password = loadSecret(name, kDbPassword);
@@ -201,6 +214,10 @@ void ConnectionStore::save(const ConnectionParams &params)
     wyIni::IniWriteString(n, "user", toUtf8(params.user), p);
     wyIni::IniWriteString(n, "database", toUtf8(params.database), p);
     wyIni::IniWriteInt(n, "port", params.port, p);
+    if(params.driverType == SqlDriverType::Mongo) {
+        wyIni::IniWriteString(n, "mongo_uri", toUtf8(params.mongoUri), p);
+        wyIni::IniWriteString(n, "auth_db", toUtf8(params.authDatabase), p);
+    }
 
     saveSecret(params.name, kDbPassword, params.password);
 

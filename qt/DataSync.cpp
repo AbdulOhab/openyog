@@ -311,6 +311,8 @@ bool writeScript(IDbConnection *source, const QString &sourceDb, IDbConnection *
         case SqlDriverType::Sqlite:
             head += "PRAGMA foreign_keys = OFF;\nBEGIN;\n";
             break;
+        case SqlDriverType::Mongo:
+            break; /* not SQL: never gets here */
     }
     out(head);
     for(const QByteArray &d : std::as_const(deletes))
@@ -331,6 +333,8 @@ bool writeScript(IDbConnection *source, const QString &sourceDb, IDbConnection *
         case SqlDriverType::Sqlite:
             out("COMMIT;\nPRAGMA foreign_keys = ON;\n");
             break;
+        case SqlDriverType::Mongo:
+            break; /* not SQL: never gets here */
     }
     return true;
 }

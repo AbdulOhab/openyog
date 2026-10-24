@@ -417,6 +417,8 @@ quint8 dialectBit(SqlDriverType d)
             return Lite;
         case SqlDriverType::Mysql:
             break;
+        case SqlDriverType::Mongo:
+            break; /* not SQL: never gets here */
     }
     return My;
 }

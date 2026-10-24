@@ -20,7 +20,8 @@
 # With OPENYOG_TEST_SSH=host:port:user:password (an SSH server that allows
 # forwarding) and OPENYOG_TEST_PG=host:port:user:password:db (a PostgreSQL
 # server as seen from it), a query also runs through an SSH tunnel; its
-# known_hosts is $BUILD/ssh, not ~/.ssh.
+# known_hosts is $BUILD/ssh, not ~/.ssh. With OPENYOG_TEST_MONGO=
+# host:port:user:password, --mongotest runs against that MongoDB server.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUILD="${BUILD:-$ROOT/build-mingw}"
@@ -145,6 +146,15 @@ if command -v wine >/dev/null; then
         else
             echo "$out" | grep -v '^MESA' >&2
             echo "wine SSH tunnel: FAILED"; fails=$((fails + 1))
+        fi
+    fi
+    if [ -n "${OPENYOG_TEST_MONGO:-}" ]; then
+        out=$(cd "$DEPLOY" && timeout 300 wine openyog.exe "--mongotest=$OPENYOG_TEST_MONGO" 2>&1) || true
+        if grep -qE 'mongotest: [0-9]+ passed, 0 failed' <<<"$out"; then
+            echo "wine --mongotest: ok"
+        else
+            echo "$out" | grep -v '^MESA' >&2
+            echo "wine --mongotest: FAILED"; fails=$((fails + 1))
         fi
     fi
     wineserver -k 2>/dev/null || true
