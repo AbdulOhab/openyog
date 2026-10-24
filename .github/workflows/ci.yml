@@ -224,10 +224,11 @@ jobs:
           sudo -u builder git config --global --add safe.directory "$GITHUB_WORKSPACE/.git"
           cd /home/builder/pkg && sudo -u builder makepkg -s --noconfirm
 
+      # the package, not makepkg's -debug one beside it
       - uses: actions/upload-artifact@v4
         with:
           name: openyog-arch-package
-          path: /home/builder/pkg/*.pkg.tar.zst
+          path: /home/builder/pkg/openyog-git-[0-9]*.pkg.tar.zst
 
   release:
     name: GitHub Release
