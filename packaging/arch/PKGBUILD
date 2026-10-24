@@ -4,7 +4,7 @@
 #   cd packaging/arch && makepkg -si
 # (packaging/arch-git builds the latest commit instead.)
 pkgname=openyog
-pkgver=0.1.0
+pkgver=0.1.1
 pkgrel=1
 pkgdesc='Database client for MySQL, MariaDB, PostgreSQL, SQLite and MongoDB (Qt 6 fork of SQLyog Community)'
 arch=('x86_64' 'aarch64')
@@ -15,7 +15,7 @@ depends=('qt6-base' 'qscintilla-qt6' 'qtkeychain-qt6' 'mariadb-libs' 'postgresql
 makedepends=('cmake' 'ninja')
 conflicts=('openyog-git')
 source=("$pkgname-$pkgver.tar.gz::https://github.com/AbdulOhab/openyog/archive/refs/tags/v$pkgver.tar.gz")
-sha256sums=('83abbc34931c1d11eb33dc3801efeb1c88ff3cbe781adb4904526185217c3f76')
+sha256sums=('ddc99833e726b8d452b2149f1de489bfcad24ccaf254851d0c8f04d1a22538f3')
 
 build() {
   cmake -S "$pkgname-$pkgver" -B build -G Ninja \
