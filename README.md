@@ -10,7 +10,6 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/AbdulOhab/openyog/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/AbdulOhab/openyog/ci.yml?branch=main&label=CI" alt="CI"></a>
   <a href="https://github.com/AbdulOhab/openyog/releases/latest"><img src="https://img.shields.io/github/v/release/AbdulOhab/openyog" alt="Latest release"></a>
   <a href="LICENSE.md"><img src="https://img.shields.io/badge/license-GPL--3.0-blue" alt="GPL-3.0"></a>
 </p>
@@ -19,7 +18,8 @@
 
 OpenYog is a community fork of the SQLyog Community Edition source, with
 its Windows-only interface replaced by a Qt 6 one so it runs natively on
-Linux and Windows.
+Linux and Windows. The menus, toolbars and shortcuts are the ones SQLyog
+users already know.
 
 ## Features
 
@@ -52,24 +52,20 @@ Linux and Windows.
 
 ## Download
 
-Get the latest version from the [releases page](https://github.com/AbdulOhab/openyog/releases/latest).
+Get the latest version from the
+[releases page](https://github.com/AbdulOhab/openyog/releases/latest):
 
-| Platform | Download | Install |
-|---|---|---|
-| Windows 10/11 (64-bit) | `openyog-<version>-windows-x64-setup.exe` | Run the installer |
-| Windows, portable | `openyog-<version>-windows-x64.zip` | Unzip and run `openyog.exe` |
-| Any Linux (x86_64) | `openyog-<version>-x86_64.AppImage` | `chmod +x` it and run it |
-| Ubuntu / Debian / Mint | `openyog_<version>-1_amd64.deb` | `sudo apt install ./openyog_*.deb` |
-| Fedora / openSUSE | `openyog-<version>-1.x86_64.rpm` | `sudo dnf install ./openyog-*.rpm` |
-| Arch Linux / Manjaro | `openyog-<version>-1-x86_64.pkg.tar` | `sudo pacman -U openyog-*.pkg.tar` |
+- **Windows 10/11**: the installer (`setup.exe`), or the portable `.zip`.
+- **Linux**: the AppImage runs on any distribution. There are also `.deb`
+  (Ubuntu, Debian, Mint), `.rpm` (Fedora, openSUSE) and Arch packages.
 
-The AppImage, .deb and .rpm bring their own Qt and libraries and need glibc
-2.35 or newer (Ubuntu 22.04, Debian 12, Fedora 36 and later).
+The AppImage, .deb and .rpm come with their own Qt and libraries. All they
+need is glibc 2.35 or newer (Ubuntu 22.04, Debian 12, Fedora 36 and later).
 
 ## Build from source
 
 ```bash
-# Arch / Manjaro
+# Arch
 sudo pacman -S --needed base-devel cmake ninja qt6-base qt6-tools qt6-svg \
     qscintilla-qt6 qtkeychain-qt6 libssh mongo-c-driver mariadb-libs postgresql-libs sqlite
 cmake -S . -B build -G Ninja && cmake --build build
