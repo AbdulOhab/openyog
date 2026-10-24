@@ -6,7 +6,7 @@
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>GPL-3.0-or-later</project_license>
   <name>OpenYog</name>
-  <summary>Query and manage MySQL, MariaDB, PostgreSQL and SQLite databases</summary>
+  <summary>Query and manage MySQL, MariaDB, PostgreSQL, SQLite and MongoDB databases</summary>
   <description>
     <p>
       OpenYog is a desktop database client built on the SQLyog Community
@@ -15,11 +15,13 @@
       with Webyog or Idera.
     </p>
     <ul>
-      <li>MySQL, MariaDB, PostgreSQL and SQLite connections</li>
+      <li>MySQL, MariaDB, PostgreSQL and SQLite connections, and MongoDB in a tab of its own</li>
       <li>Query editor with syntax highlighting and context-aware autocomplete</li>
       <li>Editable table data: staged edits applied in one transaction</li>
       <li>Create and alter tables, indexes, foreign keys, views and routines</li>
       <li>SQL dump backups, database copy, CSV import and export</li>
+      <li>Import from CSV files, Excel workbooks and other connections</li>
+      <li>Schema and data synchronization, a schema designer and a query builder</li>
       <li>Saved passwords kept in the system keychain</li>
     </ul>
   </description>

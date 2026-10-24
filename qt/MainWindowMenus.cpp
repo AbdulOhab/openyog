@@ -623,7 +623,7 @@ void MainWindow::buildDatabaseMenu()
     connect(dbDump, &QAction::triggered, this, [this] { dumpDatabase(); });
     QMenu *dbImport = database->addMenu(QStringLiteral("&Import "));
     dbImport->menuAction()->setIcon(Icons::get(QStringLiteral("import_data.ico")));
-    addDisabled(dbImport, QStringLiteral("Import E&xternal Data…\tCtrl+Alt+O"));
+    dbImport->addAction(importExternalAction());
     QAction *dbRunScript =
         dbImport->addAction(QStringLiteral("&Execute SQL Script…\tCtrl+Shift+Q"));
     dbRunScript->setIcon(Icons::get(QStringLiteral("execbatch_16.ico")));
@@ -791,7 +791,7 @@ void MainWindow::buildTableMenu()
             [this] { onSelectedTable(&ConnectionTab::exportTableData); });
     QMenu *tblImport = table->addMenu(QStringLiteral("&Import "));
     tblImport->menuAction()->setIcon(Icons::get(QStringLiteral("import_data.ico")));
-    addDisabled(tblImport, QStringLiteral("Import E&xternal Data…\tCtrl+Alt+O"));
+    tblImport->addAction(importExternalAction());
     QAction *importCsv =
         tblImport->addAction(QStringLiteral("&Import CSV Data Using LOAD LOCAL…\tCtrl+Shift+M"));
     importCsv->setIcon(Icons::get(QStringLiteral("csv.ico")));

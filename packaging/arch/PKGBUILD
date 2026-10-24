@@ -5,7 +5,7 @@
 pkgname=openyog-git
 pkgver=0.1.0.r0.g0000000
 pkgrel=1
-pkgdesc='Database client for MySQL, MariaDB, PostgreSQL and SQLite (Qt 6 fork of SQLyog Community)'
+pkgdesc='Database client for MySQL, MariaDB, PostgreSQL, SQLite and MongoDB (Qt 6 fork of SQLyog Community)'
 arch=('x86_64' 'aarch64')
 url='https://github.com/AbdulOhab/openyog'
 license=('GPL-3.0-or-later')

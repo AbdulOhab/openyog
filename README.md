@@ -83,6 +83,15 @@ Early but usable for day-to-day work against a local server. Working now:
   match. Tick per table what to bring over (deletes start unticked); it runs
   on a worker thread and keeps only keys and digests in memory, so big tables
   are fine. The script goes to the target's query editor or a file.
+- **Import External Data** (Powertools, Database ▸ Import or Table ▸ Import,
+  Ctrl+Alt+O): rows from a CSV file (the separator found on its own, quoted
+  fields over several lines, an empty value as NULL), an Excel workbook
+  (.xlsx; dates read as dates) or a table or query of any open connection,
+  into a new table or an existing one. A new table's column types are
+  guessed from the data (or carried over from the source table) and can be
+  changed; each source column is mapped to a target column or left out.
+  It runs on a worker thread, all in one transaction: every row goes in or
+  none does.
 - **Export**: Backup database as a SQL dump; export a result set as CSV.
 - **Themes**: light (SQLyog "Flat" palette) and dark.
 
@@ -122,6 +131,17 @@ cmake -S . -B build-cmake -G Ninja \
   -DOPENYOG_TEST_MONGO=127.0.0.1:27017:root:secret
 ```
 
+## Download
+
+Each [release](https://github.com/AbdulOhab/openyog/releases) has:
+
+- **Windows** (64-bit): `openyog-<version>-windows-x64-setup.exe`, an
+  installer (Start menu entry, optional desktop icon, uninstalls from
+  *Apps & features*), or `openyog-<version>-windows-x64.zip` to unpack and
+  run as it is.
+- **Arch Linux / Manjaro**: `openyog-git-<version>-x86_64.pkg.tar.zst`,
+  installed with `sudo pacman -U openyog-git-*.pkg.tar.zst`.
+
 ## Install (Linux)
 
 ```bash
@@ -144,13 +164,17 @@ python3 and a host Qt of the same version as the pinned one (it supplies
 moc/rcc/uic):
 
 ```bash
-sudo pacman -S --needed mingw-w64-gcc wine   # wine: optional, runs the selftests
-tools/windows-cross-build.sh --zip
+sudo pacman -S --needed mingw-w64-gcc wine   # wine: runs the selftests, and makensis
+tools/windows-cross-build.sh --zip --installer
 ```
 
 Produces `build-mingw/deploy/` (the exe + every DLL it loads + Qt
-plugins) and `build-mingw/openyog-win-deploy.zip`: copy the zip's whole
-contents to a Windows machine, not just `openyog.exe`. With wine installed
+plugins), `build-mingw/openyog-<version>-windows-x64.zip` (copy its whole
+contents to a Windows machine, not just `openyog.exe`) and, with
+`--installer`, `build-mingw/openyog-<version>-windows-x64-setup.exe`, built
+from `tools/openyog.nsi` with MSYS2's NSIS under wine; the script installs
+it silently in its wine prefix, runs the installed program and uninstalls
+it again, which must leave nothing behind. With wine installed
 the script then runs selftests on the result in a wine prefix of its own,
 among them `--keychaintest` (saved passwords go to Windows Credential
 Manager); given `OPENYOG_TEST_SSH` and `OPENYOG_TEST_PG` (see the script's

@@ -15,6 +15,7 @@ class QToolBar;
 class QLabel;
 class QTabWidget;
 class ConnectionTab;
+class ExternalDataDialog;
 
 class MainWindow : public QMainWindow
 {
@@ -70,10 +71,17 @@ public:
     void openSchemaSync();
     /* Powertools ▸ Database Synchronization Wizard */
     void openDataSync();
+    void openImportExternalData();
+    /* the wizard into the current tab (nullptr when none is connected) */
+    ExternalDataDialog *makeImportDialog();
     /* --datasync=SRC:TGT[:apply][:shot=F] selftest: compare the rows of two databases
      * of the current connection; apply: run the whole script, deletes
      * included, then compare again */
     QStringList selftestDataSync(const QString &spec);
+    /* --importexternal=csv:FILE:TABLE | xlsx:FILE:SHEET:TABLE | db:DB.TABLE:TABLE
+     * selftest: the wizard driven into a new table of the current tab, its
+     * columns and rows printed, the table dropped */
+    QStringList selftestImportExternal(const QString &spec);
     /* --mongotab selftest, on a MongoDB tab (--autoconnectmongo=): seeds a
      * scratch database, drives the tab through find, paging, edit, insert,
      * delete, aggregate and a command, and drops the database again */
@@ -165,6 +173,10 @@ private:
      * side connections) — what the status bar's "Connections: N" shows */
     int totalLiveConnections() const;
     QAction *addDisabled(QMenu *menu, const QString &text);
+    /* Import External Data, one action in Powertools, Database ▸ Import and
+     * Table ▸ Import (one shortcut, not three clashing ones) */
+    QAction *importExternalAction();
+    QAction *m_importExternal = nullptr;
 
     class QStackedWidget *m_stack = nullptr;
     QTabWidget *m_tabs = nullptr;

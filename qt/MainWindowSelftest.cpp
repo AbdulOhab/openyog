@@ -7,6 +7,7 @@
 #include "ObjectBrowser.h"
 #include "DataSync.h"
 #include "DataSyncDialog.h"
+#include "ExternalDataDialog.h"
 #include "QueryBuilder.h"
 #include "MongoJson.h"
 #include "MongoTab.h"
@@ -19,8 +20,12 @@
 
 #include <QApplication>
 #include <QFile>
+#include <QStringDecoder>
 #include <QTemporaryDir>
 #include <QTextStream>
+
+#include <algorithm>
+#include <memory>
 
 void MainWindow::editTableCell(int row, int col, const QString &value, bool stageOnly)
 {
@@ -545,6 +550,84 @@ QStringList MainWindow::selftestMongoTab()
     tab->run();
     tab->waitForIdle();
     seed->dropDatabase(db, nullptr);
+    return out;
+}
+
+QStringList MainWindow::selftestImportExternal(const QString &spec)
+{
+    auto *tab = currentTab();
+    std::unique_ptr<ExternalDataDialog> dialog(makeImportDialog());
+    if(!tab || !dialog)
+        return {QStringLiteral("importexternal: not connected")};
+    QStringList p = spec.split(QLatin1Char(':'));
+    /* a Windows path's drive letter isn't a field of its own */
+    for(int i = 0; i + 1 < p.size(); ++i)
+        if(p[i].size() == 1 && p[i][0].isLetter() &&
+           (p[i + 1].startsWith(QLatin1Char('\\')) || p[i + 1].startsWith(QLatin1Char('/'))))
+            p[i] += QLatin1Char(':') + p.takeAt(i + 1);
+    /* :shot=FILE: the columns page as FILE, the import page as FILE-run.png */
+    QString shot;
+    if(p.last().startsWith(QStringLiteral("shot=")))
+        shot = p.takeLast().mid(5);
+    QString table;
+    if(p.value(0) == QStringLiteral("csv") && p.size() == 3) {
+        dialog->setCsvSourceForTest(p[1]);
+        table = p[2];
+    } else if(p.value(0) == QStringLiteral("xlsx") && p.size() == 4) {
+        dialog->setExcelSourceForTest(p[1], p[2]);
+        table = p[3];
+    } else if(p.value(0) == QStringLiteral("db") && p.size() == 3) {
+        dialog->setDatabaseSourceForTest(0, p[1].section(QLatin1Char('.'), 0, 0),
+                                         p[1].section(QLatin1Char('.'), 1));
+        table = p[2];
+    } else {
+        return {QStringLiteral("importexternal: bad spec %1").arg(spec)};
+    }
+    const QString db = tab->defaultDb().isEmpty() ? tab->databases().value(0) : tab->defaultDb();
+    dialog->setNewTableForTest(db, table);
+    dialog->show();
+    QStringList out;
+    for(const QString &line : dialog->mappingForTest())
+        out << QStringLiteral("importexternal column: ") + line;
+    if(!shot.isEmpty())
+        dialog->grab().save(shot);
+    out << QStringLiteral("importexternal: ") + dialog->importForTest();
+    if(!shot.isEmpty())
+        dialog->grab().save(
+            QString(shot).replace(QStringLiteral(".png"), QStringLiteral("-run.png")));
+
+    /* what's in the table now, binary values as hex */
+    IDbConnection *c = tab->connectionFor({}, nullptr);
+    const QString qualified = c->qualify(db, table);
+    int rows = 0;
+    QString error;
+    c->streamQuery(
+        QStringLiteral("SELECT * FROM %1 ORDER BY 1").arg(qualified), &error, {},
+        [&](const QVector<QByteArray> &fields, const QVector<bool> &isNull) {
+            QStringList cells;
+            for(int i = 0; i < fields.size(); ++i) {
+                if(isNull[i]) {
+                    cells << QStringLiteral("NULL");
+                    continue;
+                }
+                QStringDecoder utf8(QStringConverter::Utf8);
+                QString text = utf8(fields[i]);
+                const bool binary =
+                    utf8.hasError() || std::any_of(text.cbegin(), text.cend(), [](QChar ch) {
+                        return ch.unicode() < 0x20 && ch != QLatin1Char('\r') &&
+                               ch != QLatin1Char('\n');
+                    });
+                cells << (binary ? QStringLiteral("0x") + QString::fromLatin1(fields[i].toHex())
+                                 : text.replace(QLatin1Char('\r'), QStringLiteral("\\r"))
+                                       .replace(QLatin1Char('\n'), QStringLiteral("\\n")));
+            }
+            out << QStringLiteral("importexternal row: ") + cells.join(QStringLiteral(" | "));
+            ++rows;
+            return true;
+        });
+    out << QStringLiteral("importexternal rows: %1%2").arg(rows).arg(error);
+    c->query(QStringLiteral("DROP TABLE %1").arg(qualified), nullptr, nullptr);
+    tab->refreshBrowser();
     return out;
 }
 

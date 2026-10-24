@@ -362,8 +362,7 @@ void MainWindow::buildPowertoolsMenu()
     schemaSync->setIcon(Icons::get(QStringLiteral("schema.ico")));
     connect(schemaSync, &QAction::triggered, this, &MainWindow::openSchemaSync);
     powertools->addSeparator();
-    addDisabled(powertools, QStringLiteral("Import E&xternal Data…\tCtrl+Alt+O"))
-        ->setIcon(Icons::get(QStringLiteral("odbc.ico")));
+    powertools->addAction(importExternalAction());
     addDisabled(powertools, QStringLiteral("S&QL Scheduler and Reporting Wizard…\tCtrl+Alt+N"))
         ->setIcon(Icons::get(QStringLiteral("notification_16.ico")));
     addDisabled(powertools, QStringLiteral("S&cheduled Backups…\tCtrl+Alt+S"))

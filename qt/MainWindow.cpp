@@ -4,6 +4,7 @@
  * in MainWindowSelftest.cpp. */
 #include "MainWindow.h"
 #include "DataSyncDialog.h"
+#include "ExternalDataDialog.h"
 #include "SchemaSyncDialog.h"
 #include "ConnectionDialog.h"
 #include "ConnectionStore.h"
@@ -13,6 +14,7 @@
 #include "ObjectBrowser.h"
 #include "SessionStore.h"
 #include "Theme.h"
+#include "db/IDbConnection.h"
 #include "db/MongoClient.h"
 
 #include <QAction>
@@ -155,6 +157,18 @@ QAction *MainWindow::addDisabled(QMenu *menu, const QString &text)
     QAction *a = menu->addAction(text);
     a->setEnabled(false);
     return a;
+}
+
+QAction *MainWindow::importExternalAction()
+{
+    if(!m_importExternal) {
+        m_importExternal = new QAction(Icons::get(QStringLiteral("odbc.ico")),
+                                       QStringLiteral("Import E&xternal Data…\tCtrl+Alt+O"), this);
+        m_importExternal->setToolTip(
+            QStringLiteral("Rows from a CSV file, an Excel workbook or another connection"));
+        connect(m_importExternal, &QAction::triggered, this, &MainWindow::openImportExternalData);
+    }
+    return m_importExternal;
 }
 
 ConnectionTab *MainWindow::currentTab() const
@@ -595,6 +609,54 @@ void MainWindow::openSchemaSync()
         endpoints << e;
     }
     auto *dialog = new SchemaSyncDialog(endpoints, this);
+    dialog->setAttribute(Qt::WA_DeleteOnClose);
+    dialog->show();
+}
+
+ExternalDataDialog *MainWindow::makeImportDialog()
+{
+    ConnectionTab *current = currentTab();
+    if(!current || !current->isConnected())
+        return nullptr;
+    const auto endpoint = [](ConnectionTab *t) {
+        /* the dialog can outlive a tab closed behind it */
+        QPointer<ConnectionTab> tab(t);
+        ExternalDataDialog::Connection c;
+        c.label = t->title();
+        c.driver = t->driverType();
+        c.databases = [tab] { return tab ? tab->databases() : QStringList(); };
+        c.currentDatabase = [tab] { return tab ? tab->defaultDb() : QString(); };
+        c.connection = [tab](const QString &) -> IDbConnection * {
+            return tab ? tab->connectionFor({}, nullptr) : nullptr;
+        };
+        c.params = [params = t->params()](const QString &) { return params; };
+        return c;
+    };
+    /* any connected tab can be the source, this one first */
+    QList<ExternalDataDialog::Connection> sources;
+    sources << endpoint(current);
+    for(int i = 0; i < m_tabs->count(); ++i)
+        if(auto *t = qobject_cast<ConnectionTab *>(m_tabs->widget(i));
+           t && t != current && t->isConnected())
+            sources << endpoint(t);
+    auto *dialog = new ExternalDataDialog(endpoint(current), sources, this);
+    QPointer<ConnectionTab> tab(current);
+    connect(dialog, &ExternalDataDialog::imported, this, [tab] {
+        if(tab)
+            tab->refreshBrowser();
+    });
+    return dialog;
+}
+
+void MainWindow::openImportExternalData()
+{
+    ExternalDataDialog *dialog = makeImportDialog();
+    if(!dialog) {
+        QMessageBox::information(this, QStringLiteral("Import External Data"),
+                                 QStringLiteral("Open a connection first: the rows go into one "
+                                                "of its tables."));
+        return;
+    }
     dialog->setAttribute(Qt::WA_DeleteOnClose);
     dialog->show();
 }

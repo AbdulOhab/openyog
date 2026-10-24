@@ -16,6 +16,8 @@
  *   openyog --sqlitetest=FILE.sqlite                   SQLite driver shape self-check
  *   openyog --pgtest=host:port:user:pw:db              PostgreSQL driver shape self-check
  *   openyog --mongotest=host:port:user:pw              MongoDB client and notation self-check
+ *   openyog --autoconnect…=… --importexternal=csv:FILE:TABLE|xlsx:FILE:SHEET:TABLE|db:DB.T:TABLE
+ *           drive Import External Data into a new table (repeatable), print it, drop it
  *   openyog --autoconnectmongo=h:p:u:pw:authdb --mongotab --screenshot=FILE.png
  *           drive a MongoDB tab on a scratch database
  *   openyog --autoconnectfile=FILE.sqlite [--opentable=db:t] [--editcell=r:c:v]
@@ -95,6 +97,7 @@ int main(int argc, char *argv[])
     QString schemaDesignerExport;
     bool drawForeignKey = false; /* --drawfk selftest: a relationship drawn in the designer */
     bool mongoTab = false;       /* --mongotab selftest, after --autoconnectmongo= */
+    QStringList importExternal;  /* --importexternal=SPEC selftest, repeatable */
     bool printResults = false;   /* --printresults selftest: Messages and result tabs, at the end */
     QString dataSyncSpec;        /* --datasync=SOURCE:TARGET[:apply] selftest */
     QString schemaSyncSpec;      /* --schemasync=SOURCE:TARGET[:apply][:shot=F] selftest */
@@ -401,6 +404,8 @@ int main(int argc, char *argv[])
         }
         if(a == QStringLiteral("--mongotab"))
             mongoTab = true;
+        if(a.startsWith(QStringLiteral("--importexternal=")))
+            importExternal << a.mid(QStringLiteral("--importexternal=").size());
         /* --autoconnectpg=host:port:user:password:db — same downstream
          * selftest machinery as --autoconnect=, but for the PostgreSQL driver */
         if(a.startsWith(QStringLiteral("--autoconnectpg="))) {
@@ -899,6 +904,9 @@ int main(int argc, char *argv[])
                         QTextStream(stdout) << "datatab: " << w->selftestShowDataTab() << '\n';
                     if(schemaDesigner)
                         for(const QString &line : w->selftestSchemaDesigner(schemaDesignerExport))
+                            QTextStream(stdout) << line << '\n';
+                    for(const QString &spec : std::as_const(importExternal))
+                        for(const QString &line : w->selftestImportExternal(spec))
                             QTextStream(stdout) << line << '\n';
                     if(mongoTab)
                         for(const QString &line : w->selftestMongoTab())

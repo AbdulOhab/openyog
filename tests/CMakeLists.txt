@@ -25,6 +25,13 @@ openyog_unit_test(tst_schemadiagram "${QT_SRC}/SchemaDiagram.cpp")
 openyog_unit_test(tst_querybuild "${QT_SRC}/QueryBuild.cpp")
 openyog_unit_test(tst_schemasync "${QT_SRC}/SchemaSync.cpp")
 openyog_unit_test(tst_mongojson "${QT_SRC}/MongoJson.cpp")
+# Import External Data: CSV, .xlsx and another database into real SQLite ones
+openyog_unit_test(tst_externaldata "${QT_SRC}/ExternalData.cpp" "${QT_SRC}/SqlDump.cpp"
+                  "${QT_SRC}/db/SqliteConnection.cpp")
+target_link_libraries(tst_externaldata PRIVATE ${SQLITE3_LIBRARY} ZLIB::ZLIB)
+target_include_directories(tst_externaldata PRIVATE "${SHIM_DIR}")
+target_compile_definitions(tst_externaldata PRIVATE
+                           FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/fixtures")
 # the Schema Designer's canvas, through the mouse on an offscreen window
 openyog_unit_test(tst_schemadesigner "${QT_SRC}/SchemaDesigner.cpp" "${QT_SRC}/DiagramItems.cpp"
                   "${QT_SRC}/SchemaDiagram.cpp")
@@ -147,6 +154,25 @@ if(SQLITE3_CLI)
         ENVIRONMENT "${SELFTEST_ENV}"
         PASS_REGULAR_EXPRESSION "drawfk: refused\n"
         FAIL_REGULAR_EXPRESSION "drawfk error")
+    # Import External Data, the wizard driven into new tables: a CSV file, an
+    # Excel sheet and a table of the same database (its own fixture copy:
+    # the tables come and go)
+    set(impdb "${CMAKE_CURRENT_BINARY_DIR}/fixture-import.sqlite")
+    add_test(NAME import_fixture
+             COMMAND "${CMAKE_COMMAND}" "-DSQLITE3=${SQLITE3_CLI}"
+                     "-DSQL=${CMAKE_CURRENT_SOURCE_DIR}/fixtures/sqlite_fixture.sql"
+                     "-DDB=${impdb}" -P "${CMAKE_CURRENT_SOURCE_DIR}/make_fixture_db.cmake")
+    set_tests_properties(import_fixture PROPERTIES FIXTURES_SETUP import_db)
+    add_test(NAME selftest_importexternal
+             COMMAND openyog "--autoconnectfile=${impdb}"
+                     "--importexternal=csv:${CMAKE_CURRENT_SOURCE_DIR}/fixtures/import_people.csv:people_csv:shot=${CMAKE_CURRENT_BINARY_DIR}/import-columns.png"
+                     "--importexternal=xlsx:${CMAKE_CURRENT_SOURCE_DIR}/fixtures/import_people.xlsx:People:people_xlsx"
+                     "--importexternal=db:main.employees:employees_copy"
+                     "--screenshot=${CMAKE_CURRENT_BINARY_DIR}/import.png")
+    set_tests_properties(selftest_importexternal PROPERTIES
+        FIXTURES_REQUIRED import_db
+        ENVIRONMENT "${SELFTEST_ENV}"
+        PASS_REGULAR_EXPRESSION "importexternal column: salary -> salary NUMERIC\n.*importexternal: Imported 3 rows into main\\.people_csv\\.\nimportexternal row: 1 \\| Alice \\| 5000\\.5 \\| 2024-01-15 \\| 1 \\| 0101 \\| NULL\nimportexternal row: 2 \\| [^|]+ \\| 4200 \\| 2023-06-01 10:30:00 \\| 0 \\| 0202 \\| line one\\\\r\\\\nline two\nimportexternal row: 3 \\| O\"Brien; Jr \\| 0\\.1 \\| NULL \\| 1 \\| 0303 \\| \n.*importexternal: Imported 4 rows into main\\.people_xlsx\\.\n.*importexternal row: 4 \\| NULL \\| 1500 \\| NULL \\| NULL \\| NULL\n.*importexternal: Imported 3 rows into main\\.employees_copy\\.")
     # a query's result over the row limit (10,000 by default): the first rows
     # kept, the rest counted, and the tab says so
     add_test(NAME selftest_result_row_limit
@@ -247,6 +273,14 @@ if(OPENYOG_TEST_MYSQL)
                      "--screenshot=${CMAKE_CURRENT_BINARY_DIR}/mysql-querybuilder-file.png")
     set_tests_properties(selftest_mysql_querybuilder_file PROPERTIES PASS_REGULAR_EXPRESSION
         "querybuilder left out: column employees\\.retired\n.*WHERE `employees`\\.`name` LIKE 'A%'\n    OR `employees`\\.`salary` IS NULL\nORDER BY `employees`\\.`name`\nquerybuilder rows: 2\nquerybuilder saved and reopened: same sql")
+    add_test(NAME selftest_mysql_importexternal
+             COMMAND openyog "--autoconnect=${OPENYOG_TEST_MYSQL}"
+                     "--importexternal=csv:${CMAKE_CURRENT_SOURCE_DIR}/fixtures/import_people.csv:people_csv"
+                     "--importexternal=xlsx:${CMAKE_CURRENT_SOURCE_DIR}/fixtures/import_people.xlsx:People:people_xlsx"
+                     "--importexternal=db:${my_db}.employees:employees_copy"
+                     "--screenshot=${CMAKE_CURRENT_BINARY_DIR}/mysql-import.png")
+    set_tests_properties(selftest_mysql_importexternal PROPERTIES PASS_REGULAR_EXPRESSION
+        "importexternal column: salary -> salary DECIMAL\\(10,2\\)\n.*importexternal column: active -> active TINYINT\\(1\\)\n.*importexternal: Imported 3 rows into ${my_db}\\.people_csv\\.\nimportexternal row: 1 \\| Alice \\| 5000\\.50 \\| 2024-01-15 00:00:00 \\| 1 \\| 0101 \\| NULL\n.*importexternal row: 3 \\| O\"Brien; Jr \\| 0\\.10 \\| NULL \\| 1 \\| 0303 \\| \n.*importexternal: Imported 4 rows into ${my_db}\\.people_xlsx\\.\n.*importexternal column: photo -> photo LONGBLOB\nimportexternal: Imported 4 rows into ${my_db}\\.employees_copy\\.\n.*importexternal row: 2 \\| Karim \\| 4200\\.00 \\| Chattogram \\| 2 \\| 2023-06-01 \\| 0x89504e4700ff")
     add_test(NAME selftest_mysql_querybuilder
              COMMAND openyog "--autoconnect=${OPENYOG_TEST_MYSQL}"
                      "--querybuilder=employees:name+emp_dept:name"
@@ -288,6 +322,7 @@ if(OPENYOG_TEST_MYSQL)
                          selftest_mysql_complete selftest_mysql_complete_join
                          selftest_mysql_schemadesigner selftest_mysql_drawfk
                          selftest_mysql_querybuilder selftest_mysql_querybuilder_file
+                         selftest_mysql_importexternal
                          selftest_mysql_schemasync selftest_mysql_datasync PROPERTIES
                          FIXTURES_REQUIRED mysql_db RESOURCE_LOCK mysql_db
                          ENVIRONMENT "${SELFTEST_ENV}")
@@ -346,6 +381,14 @@ if(OPENYOG_TEST_PG)
                      "--screenshot=${CMAKE_CURRENT_BINARY_DIR}/pg-querybuilder-file.png")
     set_tests_properties(selftest_pg_querybuilder_file PROPERTIES PASS_REGULAR_EXPRESSION
         "querybuilder left out: column employees\\.retired\n.*WHERE \"employees\"\\.\"name\" LIKE 'A%'\n    OR \"employees\"\\.\"salary\" IS NULL\nORDER BY \"employees\"\\.\"name\"\nquerybuilder rows: 2\nquerybuilder saved and reopened: same sql")
+    add_test(NAME selftest_pg_importexternal
+             COMMAND openyog "--autoconnectpg=${OPENYOG_TEST_PG}"
+                     "--importexternal=csv:${CMAKE_CURRENT_SOURCE_DIR}/fixtures/import_people.csv:people_csv"
+                     "--importexternal=xlsx:${CMAKE_CURRENT_SOURCE_DIR}/fixtures/import_people.xlsx:People:people_xlsx"
+                     "--importexternal=db:public.employees:employees_copy"
+                     "--screenshot=${CMAKE_CURRENT_BINARY_DIR}/pg-import.png")
+    set_tests_properties(selftest_pg_importexternal PROPERTIES PASS_REGULAR_EXPRESSION
+        "importexternal column: salary -> salary numeric\\(10,2\\)\n.*importexternal column: active -> active boolean\n.*importexternal: Imported 3 rows into public\\.people_csv\\.\nimportexternal row: 1 \\| Alice \\| 5000\\.50 \\| 2024-01-15 00:00:00 \\| t \\| 0101 \\| NULL\n.*importexternal: Imported 4 rows into public\\.people_xlsx\\.\n.*importexternal column: photo -> photo bytea\nimportexternal: Imported 4 rows into public\\.employees_copy\\.\n.*importexternal row: 2 \\| Karim \\| 4200\\.00 \\| Chattogram \\| 2 \\| 2023-06-01 \\| \\\\x89504e4700ff")
     add_test(NAME selftest_pg_querybuilder
              COMMAND openyog "--autoconnectpg=${OPENYOG_TEST_PG}"
                      "--querybuilder=employees:name+emp_dept:name"
@@ -382,7 +425,7 @@ if(OPENYOG_TEST_PG)
     set_tests_properties(selftest_pg_metadata selftest_pg_schema selftest_pg_multidb
                          selftest_pg_dump_roundtrip selftest_pg_complete selftest_pg_complete_join
                          selftest_pg_schemadesigner selftest_pg_drawfk selftest_pg_querybuilder
-                         selftest_pg_querybuilder_file
+                         selftest_pg_querybuilder_file selftest_pg_importexternal
                          selftest_pg_schemasync selftest_pg_datasync
                          PROPERTIES
                          FIXTURES_REQUIRED pg_db RESOURCE_LOCK pg_db

@@ -1,0 +1,6 @@
+id;name;salary;joined;active;code;note
+1;Alice;5000.50;2024-01-15;true;0101;
+2;"রহিম";4200;2023-06-01 10:30:00;false;0202;"line one
+line two"
+
+3;"O""Brien; Jr";0.1;;TRUE;0303;""

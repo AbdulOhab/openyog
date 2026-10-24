@@ -75,6 +75,8 @@ target_compile_options(smoketest PRIVATE -Wall)
 
 # ---- Phase 2: the Qt 6 application shell ("OpenYog", name approved 2026-09-08)
 find_package(Qt6 REQUIRED COMPONENTS Widgets)
+# zlib: reading .xlsx workbooks (zip files) in Import External Data
+find_package(ZLIB REQUIRED)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 
@@ -161,6 +163,8 @@ add_executable(openyog
     qt/MongoJson.h         qt/MongoJson.cpp
     qt/db/MongoClient.h    qt/db/MongoClient.cpp
     qt/MongoTab.h          qt/MongoTab.cpp
+    qt/ExternalData.h      qt/ExternalData.cpp
+    qt/ExternalDataDialog.h qt/ExternalDataDialog.cpp
 )
 # QScintilla (the query editor): system package, same pattern as the
 # client libraries above — on Arch, `sudo pacman -S qscintilla-qt6`
@@ -169,7 +173,7 @@ find_path(QSCINTILLA_INCLUDE_DIR Qsci/qsciscintilla.h
           HINTS /usr/include/qt6 /usr/local/include/qt6 PATH_SUFFIXES qt6 REQUIRED)
 find_library(QSCINTILLA_LIBRARY NAMES qscintilla2_qt6 REQUIRED)
 target_include_directories(openyog PRIVATE ${QSCINTILLA_INCLUDE_DIR})
-target_link_libraries(openyog PRIVATE wycore Qt6::Widgets ${MARIADB_LIBRARY} ${SQLITE3_LIBRARY} ${PQ_LIBRARY} ${QSCINTILLA_LIBRARY})
+target_link_libraries(openyog PRIVATE wycore Qt6::Widgets ZLIB::ZLIB ${MARIADB_LIBRARY} ${SQLITE3_LIBRARY} ${PQ_LIBRARY} ${QSCINTILLA_LIBRARY})
 target_compile_options(openyog PRIVATE -Wall)
 target_compile_definitions(openyog PRIVATE OPENYOG_VERSION="${PROJECT_VERSION}")
 
