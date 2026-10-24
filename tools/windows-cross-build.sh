@@ -3,9 +3,13 @@
 # openyog.exe, every DLL it loads and the Qt plugins it needs in
 # build-mingw/deploy/, then (when wine is installed) runs selftests on it.
 #
-#   tools/windows-cross-build.sh [--zip]
+#   tools/windows-cross-build.sh [--zip] [--installer]
 #
-# --zip also packs deploy/ into build-mingw/openyog-win-deploy.zip.
+# --zip also packs deploy/ into build-mingw/openyog-<version>-windows-x64.zip;
+# --installer builds build-mingw/openyog-<version>-windows-x64-setup.exe from
+# tools/openyog.nsi with MSYS2's makensis (a Windows program: needs wine),
+# then installs it silently in the wine prefix, runs the installed exe and
+# uninstalls it again.
 #
 # Needs: mingw-w64-gcc (Arch: pacman -S mingw-w64-gcc), cmake, ninja,
 # python3, and host Qt 6 tools (moc/rcc/uic, Arch: qt6-base) of the same
@@ -24,6 +28,15 @@
 # host:port:user:password, --mongotest runs against that MongoDB server.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ZIP=0
+INSTALLER=0
+for arg in "$@"; do
+    case "$arg" in
+        --zip) ZIP=1 ;;
+        --installer) INSTALLER=1 ;;
+        *) echo "usage: $0 [--zip] [--installer]" >&2; exit 2 ;;
+    esac
+done
 BUILD="${BUILD:-$ROOT/build-mingw}"
 SYSROOT="$BUILD/sysroot/ucrt64"
 DEPLOY="$BUILD/deploy"
@@ -163,8 +176,49 @@ else
     echo "wine not installed: selftests skipped"
 fi
 
-if [ "${1:-}" = "--zip" ]; then
-    rm -f "$BUILD/openyog-win-deploy.zip"
-    (cd "$DEPLOY" && zip -qr "$BUILD/openyog-win-deploy.zip" .)
-    echo "zip: $BUILD/openyog-win-deploy.zip"
+VERSION=$(sed -n 's/^project(openyog VERSION \([0-9.]*\).*/\1/p' "$ROOT/CMakeLists.txt")
+if [ "$ZIP" = 1 ]; then
+    rm -f "$BUILD"/openyog-*-windows-x64.zip
+    (cd "$DEPLOY" && zip -qr "$BUILD/openyog-$VERSION-windows-x64.zip" .)
+    echo "zip: $BUILD/openyog-$VERSION-windows-x64.zip"
+fi
+
+# ---- the installer ------------------------------------------------------
+if [ "$INSTALLER" = 1 ]; then
+    command -v wine >/dev/null || { echo "--installer needs wine (makensis is a Windows program)" >&2; exit 1; }
+    export WINEPREFIX="${WINEPREFIX:-$BUILD/wine}" WINEDEBUG=-all
+    # what the uninstaller removes: every file installed, then each folder
+    # (deepest first, and only if empty)
+    FILES="$BUILD/installer-files.nsh"
+    (
+        cd "$DEPLOY"
+        find . -type f | sort | sed 's|^\./||' | while read -r f; do
+            printf 'Delete "$INSTDIR\\%s"\n' "${f//\//\\}"
+        done
+        find . -mindepth 1 -type d | sort -r | sed 's|^\./||' | while read -r d; do
+            printf 'RMDir "$INSTDIR\\%s"\n' "${d//\//\\}"
+        done
+    ) > "$FILES"
+    SETUP="$BUILD/openyog-$VERSION-windows-x64-setup.exe"
+    rm -f "$BUILD"/openyog-*-windows-x64-setup.exe
+    wine "$SYSROOT/bin/makensis.exe" -V2 "/DVERSION=$VERSION" \
+        "/DDEPLOY=$(winepath -w "$DEPLOY")" "/DROOT=$(winepath -w "$ROOT")" \
+        "/DFILES=$(winepath -w "$FILES")" "/DOUTFILE=$(winepath -w "$SETUP")" \
+        "$(winepath -w "$ROOT/tools/openyog.nsi")"
+    [ -f "$SETUP" ] || { echo "makensis made no installer" >&2; exit 1; }
+    echo "installer: $SETUP"
+
+    # installed, run and uninstalled again in the wine prefix
+    TEST_DIR="$WINEPREFIX/drive_c/OpenYog-installtest"
+    rm -rf "${TEST_DIR:?}"
+    timeout 300 wine "$SETUP" /S '/D=C:\OpenYog-installtest'
+    out=$(cd "$TEST_DIR" && QT_QPA_PLATFORM=offscreen timeout 120 wine openyog.exe --version 2>&1) || true
+    grep -q "OpenYog $VERSION" <<<"$out" || { echo "the installed openyog.exe didn't run: $out" >&2; exit 1; }
+    # _?= runs the uninstaller in place, so this waits for it
+    timeout 300 wine "$TEST_DIR/uninstall.exe" /S '_?=C:\OpenYog-installtest'
+    left=$(find "$TEST_DIR" -mindepth 1 ! -name uninstall.exe | head -5)
+    [ -z "$left" ] || { echo "the uninstaller left: $left" >&2; exit 1; }
+    rm -rf "${TEST_DIR:?}"
+    wineserver -k 2>/dev/null || true
+    echo "installer: installs, runs and uninstalls under wine: ok"
 fi

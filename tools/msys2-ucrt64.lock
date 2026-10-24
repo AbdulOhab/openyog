@@ -41,6 +41,7 @@ mingw-w64-ucrt-x86_64-nettle-4.0-1-any.pkg.tar.zst 47b49f1723ef2c75ff3042b6e4639
 mingw-w64-ucrt-x86_64-nghttp2-1.70.0-1-any.pkg.tar.zst 39baf792ff3855c1d656514eaef648fab20de80614517fc15f57a57fa103cc20
 mingw-w64-ucrt-x86_64-nghttp3-1.18.0-1-any.pkg.tar.zst 06e51ea288e5fdd511c753038979772ec22ec71504dac61f912c63a6e586ba80
 mingw-w64-ucrt-x86_64-ngtcp2-1.25.0-1-any.pkg.tar.zst cce230d80a05cd0a1ec38fa5d76c0445c9bb725c65c2136be3d23e6dc218a89e
+mingw-w64-ucrt-x86_64-nsis-3.13-2-any.pkg.tar.zst 262c2453ee69924e4995a6f3c685edb96e57e57e749d38f8f89732be6ffccff7
 mingw-w64-ucrt-x86_64-openssl-3.6.5-1-any.pkg.tar.zst 773e021ebad83f14b5c103db467411e8ff064663e1c7e7f730e2be72f4117064
 mingw-w64-ucrt-x86_64-p11-kit-0.26.5-1-any.pkg.tar.zst 6e1645f0afa669f3e3325abb891d79c58dacf0bb5f9bb1ea719d22da1d754e62
 mingw-w64-ucrt-x86_64-pcre2-10.49-1-any.pkg.tar.zst 63172179db724ac71e2439a7981134c1bcab8049bdddfd349b32b8f76ed52d1e

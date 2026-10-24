@@ -3,6 +3,8 @@ name: CI
 on:
   push:
     branches: [main]
+    # a version tag: the same jobs, then a GitHub Release with their packages
+    tags: ['v*']
   pull_request:
   workflow_dispatch:
 
@@ -178,19 +180,22 @@ jobs:
 
       # builds, deploys, then runs --version, --stmtattest, --icontest,
       # --keychaintest, a query through an SSH tunnel and --mongotest under
-      # wine
-      - name: Build, deploy, wine selftests
+      # wine; packs the zip and builds the installer, which it installs,
+      # runs and uninstalls under wine
+      - name: Build, deploy, wine selftests, zip, installer
         env:
           QT_HOST_PATH: /opt/qt/${{ steps.qt.outputs.version }}/gcc_64
           OPENYOG_TEST_SSH: 127.0.0.1:22:tunnel:tunnelpw
           OPENYOG_TEST_PG: postgres:5432:postgres:root:openyog_test
           OPENYOG_TEST_MONGO: mongo:27017:root:root
-        run: tools/windows-cross-build.sh --zip
+        run: tools/windows-cross-build.sh --zip --installer
 
       - uses: actions/upload-artifact@v4
         with:
           name: openyog-windows
-          path: build-mingw/openyog-win-deploy.zip
+          path: |
+            build-mingw/openyog-*-windows-x64.zip
+            build-mingw/openyog-*-windows-x64-setup.exe
 
   arch-package:
     name: Arch package (makepkg)
@@ -223,3 +228,31 @@ jobs:
         with:
           name: openyog-arch-package
           path: /home/builder/pkg/*.pkg.tar.zst
+
+  release:
+    name: GitHub Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [linux, windows, arch-package]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      # notes from docs/release-notes/<tag>.md when there are some
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ls -l dist
+          notes="docs/release-notes/${GITHUB_REF_NAME}.md"
+          if [ -f "$notes" ]; then
+            gh release create "$GITHUB_REF_NAME" dist/* --title "OpenYog ${GITHUB_REF_NAME#v}" --notes-file "$notes"
+          else
+            gh release create "$GITHUB_REF_NAME" dist/* --title "OpenYog ${GITHUB_REF_NAME#v}" --generate-notes
+          fi
