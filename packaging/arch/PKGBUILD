@@ -9,7 +9,8 @@ pkgdesc='Database client for MySQL, MariaDB, PostgreSQL and SQLite (Qt 6 fork of
 arch=('x86_64' 'aarch64')
 url='https://github.com/AbdulOhab/openyog'
 license=('GPL-3.0-or-later')
-depends=('qt6-base' 'qscintilla-qt6' 'qtkeychain-qt6' 'mariadb-libs' 'postgresql-libs' 'sqlite' 'libssh')
+depends=('qt6-base' 'qscintilla-qt6' 'qtkeychain-qt6' 'mariadb-libs' 'postgresql-libs' 'sqlite' 'libssh'
+         'mongo-c-driver')
 makedepends=('git' 'cmake' 'ninja')
 provides=('openyog')
 conflicts=('openyog')

@@ -42,13 +42,21 @@ jobs:
         options: >-
           --health-cmd "pg_isready -U postgres"
           --health-interval 5s --health-timeout 5s --health-retries 30
+      mongo:
+        image: mongo:7.0
+        env:
+          MONGO_INITDB_ROOT_USERNAME: root
+          MONGO_INITDB_ROOT_PASSWORD: root
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'db.runCommand({ping: 1}).ok'"
+          --health-interval 5s --health-timeout 5s --health-retries 30
     steps:
       - name: Install dependencies
         run: |
           pacman -Syu --noconfirm --needed \
             base-devel git cmake ninja clang \
             qt6-base qt6-svg qscintilla-qt6 qtkeychain-qt6 \
-            mariadb-libs postgresql-libs sqlite libssh \
+            mariadb-libs postgresql-libs sqlite libssh mongo-c-driver \
             mariadb-clients postgresql openssh
 
       - uses: actions/checkout@v4
@@ -75,6 +83,7 @@ jobs:
           -DOPENYOG_TEST_MYSQL=mariadb:3306:root:root:openyog_test
           -DOPENYOG_TEST_PG=postgres:5432:postgres:root:openyog_test
           -DOPENYOG_TEST_SSH=127.0.0.1:22:tunnel:tunnelpw
+          -DOPENYOG_TEST_MONGO=mongo:27017:root:root
           "-DCMAKE_C_FLAGS=${{ matrix.flags }}" "-DCMAKE_CXX_FLAGS=${{ matrix.flags }}"
           "-DCMAKE_EXE_LINKER_FLAGS=${{ matrix.flags }}"
 
@@ -104,7 +113,7 @@ jobs:
     runs-on: ubuntu-latest
     # Arch's mingw-w64-gcc is UCRT, like the MSYS2 packages the build links
     container: archlinux:latest
-    # a database for the SSH tunnel check under wine
+    # databases for the SSH tunnel and MongoDB checks under wine
     services:
       postgres:
         image: postgres:16-alpine
@@ -113,6 +122,14 @@ jobs:
           POSTGRES_DB: openyog_test
         options: >-
           --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 30
+      mongo:
+        image: mongo:7.0
+        env:
+          MONGO_INITDB_ROOT_USERNAME: root
+          MONGO_INITDB_ROOT_PASSWORD: root
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'db.runCommand({ping: 1}).ok'"
           --health-interval 5s --health-timeout 5s --health-retries 30
     steps:
       - name: Install dependencies
@@ -160,12 +177,14 @@ jobs:
           /usr/bin/sshd -o PasswordAuthentication=yes -o AllowTcpForwarding=yes
 
       # builds, deploys, then runs --version, --stmtattest, --icontest,
-      # --keychaintest and a query through an SSH tunnel under wine
+      # --keychaintest, a query through an SSH tunnel and --mongotest under
+      # wine
       - name: Build, deploy, wine selftests
         env:
           QT_HOST_PATH: /opt/qt/${{ steps.qt.outputs.version }}/gcc_64
           OPENYOG_TEST_SSH: 127.0.0.1:22:tunnel:tunnelpw
           OPENYOG_TEST_PG: postgres:5432:postgres:root:openyog_test
+          OPENYOG_TEST_MONGO: mongo:27017:root:root
         run: tools/windows-cross-build.sh --zip
 
       - uses: actions/upload-artifact@v4
