@@ -86,6 +86,8 @@ public:
      * scratch database, drives the tab through find, paging, edit, insert,
      * delete, aggregate and a command, and drops the database again */
     QStringList selftestMongoTab();
+    /* --mongoopen=DB.COLLECTION: that collection open in the MongoDB tab */
+    QStringList selftestMongoOpen(const QString &spec);
     void selftestUseDatabase(const QString &db);           /* --usedb= selftest */
     void selftestExpandDatabase(const QString &name);      /* --expandpgdb= selftest */
     void selftestSelectBrowserItem(const QString &path);   /* --selecttreepath= selftest */

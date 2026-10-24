@@ -98,6 +98,8 @@ int main(int argc, char *argv[])
     bool drawForeignKey = false; /* --drawfk selftest: a relationship drawn in the designer */
     bool mongoTab = false;       /* --mongotab selftest, after --autoconnectmongo= */
     QStringList importExternal;  /* --importexternal=SPEC selftest, repeatable */
+    QString mongoOpen;           /* --mongoopen=DB.COLLECTION, after --autoconnectmongo= */
+    QString connName;            /* --connname=NAME: the --autoconnect…= connection's name */
     bool printResults = false;   /* --printresults selftest: Messages and result tabs, at the end */
     QString dataSyncSpec;        /* --datasync=SOURCE:TARGET[:apply] selftest */
     QString schemaSyncSpec;      /* --schemasync=SOURCE:TARGET[:apply][:shot=F] selftest */
@@ -404,6 +406,10 @@ int main(int argc, char *argv[])
         }
         if(a == QStringLiteral("--mongotab"))
             mongoTab = true;
+        if(a.startsWith(QStringLiteral("--connname=")))
+            connName = a.mid(QStringLiteral("--connname=").size());
+        if(a.startsWith(QStringLiteral("--mongoopen=")))
+            mongoOpen = a.mid(QStringLiteral("--mongoopen=").size());
         if(a.startsWith(QStringLiteral("--importexternal=")))
             importExternal << a.mid(QStringLiteral("--importexternal=").size());
         /* --autoconnectpg=host:port:user:password:db — same downstream
@@ -818,8 +824,11 @@ int main(int argc, char *argv[])
         w->show();
         /* threaded execution needs more than a frame or two to land */
         QTimer::singleShot(1500, [&, w = w.get()] {
-            if(doAutoConnect)
+            if(doAutoConnect) {
+                if(!connName.isEmpty())
+                    autoConnect.name = connName;
                 w->openAndRun(autoConnect, /*interactive=*/false);
+            }
             /* open the table only after the batch's results have landed,
              * so the data grid keeps the focus */
             QTimer::singleShot(600, [&, w] {
@@ -904,6 +913,9 @@ int main(int argc, char *argv[])
                         QTextStream(stdout) << "datatab: " << w->selftestShowDataTab() << '\n';
                     if(schemaDesigner)
                         for(const QString &line : w->selftestSchemaDesigner(schemaDesignerExport))
+                            QTextStream(stdout) << line << '\n';
+                    if(!mongoOpen.isEmpty())
+                        for(const QString &line : w->selftestMongoOpen(mongoOpen))
                             QTextStream(stdout) << line << '\n';
                     for(const QString &spec : std::as_const(importExternal))
                         for(const QString &line : w->selftestImportExternal(spec))

@@ -807,6 +807,10 @@ void MongoTab::showDocuments(const Result &r, bool editable)
         }
         text << MongoJson::toShell(doc);
     }
+    /* as wide as what's in them, within reason */
+    m_grid->resizeColumnsToContents();
+    for(int col = 0; col < m_grid->columnCount(); ++col)
+        m_grid->setColumnWidth(col, std::clamp(m_grid->columnWidth(col), 60, 280));
     m_json->setPlainText(text.join(QStringLiteral("\n\n")));
     if(r.error.isEmpty() && r.message.isEmpty())
         setStatus(

@@ -631,6 +631,19 @@ QStringList MainWindow::selftestImportExternal(const QString &spec)
     return out;
 }
 
+QStringList MainWindow::selftestMongoOpen(const QString &spec)
+{
+    auto *tab = qobject_cast<MongoTab *>(m_tabs->currentWidget());
+    if(!tab)
+        return {QStringLiteral("mongoopen: no MongoDB tab")};
+    tab->waitForIdle();
+    tab->openCollection(spec.section(QLatin1Char('.'), 0, 0), spec.section(QLatin1Char('.'), 1));
+    tab->waitForIdle();
+    tab->reloadDatabases(); /* the open database expanded */
+    tab->waitForIdle();
+    return {QStringLiteral("mongoopen: ") + tab->pageText()};
+}
+
 QStringList MainWindow::selftestQueryBuilder(const QString &spec)
 {
     auto *tab = currentTab();
