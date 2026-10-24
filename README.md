@@ -88,9 +88,7 @@ not there yet. Bug reports and ideas are welcome in
 ## License
 
 OpenYog is licensed under the [GPL-3.0-or-later](LICENSE.md). It builds on
-the SQLyog Community Edition source that Webyog released under the GPL; the
-upstream copyright notices are kept, and the proprietary `htmlayout`
-component of the original is not included.
+the SQLyog Community Edition source that Webyog released under the GPL.
 
 OpenYog is an independent project, not affiliated with or endorsed by
 Webyog or Idera, Inc. "SQLyog" is a trademark of its owner.

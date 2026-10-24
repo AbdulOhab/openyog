@@ -10,7 +10,7 @@ build), the MariaDB client library, libpq, SQLite 3 and zlib. Optional:
 - **libssh**: SSH tunnels.
 - **libmongoc 2** (mongo-c-driver): MongoDB connections.
 
-On Arch / Manjaro / CachyOS:
+On Arch:
 
 ```bash
 sudo pacman -S --needed base-devel cmake ninja qt6-base qt6-tools qt6-svg \
