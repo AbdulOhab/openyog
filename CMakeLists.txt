@@ -243,6 +243,8 @@ if(WIN32)
     enable_language(RC)
     set(CMAKE_RC_FLAGS "${CMAKE_RC_FLAGS} -I${CMAKE_CURRENT_SOURCE_DIR}/qt")
     target_sources(openyog PRIVATE qt/openyog.rc)
+    set_source_files_properties(qt/openyog.rc PROPERTIES COMPILE_DEFINITIONS
+        "OPENYOG_VERSION_TEXT=${PROJECT_VERSION};OPENYOG_VERSION_RC=${PROJECT_VERSION_MAJOR},${PROJECT_VERSION_MINOR},${PROJECT_VERSION_PATCH},0")
     set_target_properties(openyog PROPERTIES WIN32_EXECUTABLE TRUE)
 endif()
 

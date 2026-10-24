@@ -8,5 +8,40 @@
  * regardless of anything else linked in later. Compiled by windres only on
  * Windows builds — see the WIN32 block in CMakeLists.txt, which also puts
  * qt/ on the resource-compiler include path so the path below resolves.
+ *
+ * The version resource is what Explorer's Properties ▸ Details shows, and
+ * what code signing checks the product name and version against.
+ * OPENYOG_VERSION_TEXT (0.1.1) and OPENYOG_VERSION_RC (0,1,1,0) come from
+ * CMakeLists.txt; the text is quoted here, as windres drops the quotes of a
+ * string passed with -D.
  */
+#define OPENYOG_STR2(x) #x
+#define OPENYOG_STR(x) OPENYOG_STR2(x)
+
 1 ICON "resources/openyog.ico"
+
+1 VERSIONINFO
+FILEVERSION OPENYOG_VERSION_RC
+PRODUCTVERSION OPENYOG_VERSION_RC
+FILEOS 0x40004
+FILETYPE 0x1
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904B0"
+        BEGIN
+            VALUE "CompanyName", "OpenYog contributors"
+            VALUE "FileDescription", "OpenYog"
+            VALUE "FileVersion", OPENYOG_STR(OPENYOG_VERSION_TEXT)
+            VALUE "InternalName", "openyog"
+            VALUE "LegalCopyright", "GPL-3.0-or-later"
+            VALUE "OriginalFilename", "openyog.exe"
+            VALUE "ProductName", "OpenYog"
+            VALUE "ProductVersion", OPENYOG_STR(OPENYOG_VERSION_TEXT)
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x409, 1200
+    END
+END
