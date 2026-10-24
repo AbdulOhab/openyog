@@ -65,9 +65,10 @@ target_link_libraries(wycore PUBLIC Threads::Threads)
 
 find_library(MARIADB_LIBRARY mariadb REQUIRED)
 find_library(SQLITE3_LIBRARY sqlite3 REQUIRED)   # openyog's SqliteDriver needs it too now
-find_library(PQ_LIBRARY pq REQUIRED)   # openyog's PostgresDriver — libpq-fe.h is
-                                       # already on the default include path,
-                                       # no header shim needed (unlike mysql/sqlite3)
+find_library(PQ_LIBRARY pq REQUIRED)   # openyog's PostgresDriver
+# libpq-fe.h: in the include root on Arch, under postgresql/ on Debian and
+# Ubuntu (and pgsql/ on some Fedora setups)
+find_path(PQ_INCLUDE_DIR libpq-fe.h PATH_SUFFIXES postgresql pgsql REQUIRED)
 
 add_executable(smoketest port/smoketest.cpp)
 target_link_libraries(smoketest PRIVATE wycore ${MARIADB_LIBRARY} ${SQLITE3_LIBRARY})
@@ -172,7 +173,7 @@ add_executable(openyog
 find_path(QSCINTILLA_INCLUDE_DIR Qsci/qsciscintilla.h
           HINTS /usr/include/qt6 /usr/local/include/qt6 PATH_SUFFIXES qt6 REQUIRED)
 find_library(QSCINTILLA_LIBRARY NAMES qscintilla2_qt6 REQUIRED)
-target_include_directories(openyog PRIVATE ${QSCINTILLA_INCLUDE_DIR})
+target_include_directories(openyog PRIVATE ${QSCINTILLA_INCLUDE_DIR} ${PQ_INCLUDE_DIR})
 target_link_libraries(openyog PRIVATE wycore Qt6::Widgets ZLIB::ZLIB ${MARIADB_LIBRARY} ${SQLITE3_LIBRARY} ${PQ_LIBRARY} ${QSCINTILLA_LIBRARY})
 target_compile_options(openyog PRIVATE -Wall)
 target_compile_definitions(openyog PRIVATE OPENYOG_VERSION="${PROJECT_VERSION}")
