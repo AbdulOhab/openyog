@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
 # linux-bundle.sh — the Linux packages that carry their own libraries:
 #
-#   openyog-<version>-x86_64.AppImage   runs as it is on most distributions
-#   openyog_<version>_amd64.deb         Debian, Ubuntu, Mint …
-#   openyog-<version>-1.x86_64.rpm      Fedora, openSUSE …
+#   openyog-<version>-x86_64.AppImage        runs as it is on most distributions
+#   openyog-<version>-linux-x86_64.tar.gz    the same, unpacked: run ./openyog
+#   openyog_<version>-1_amd64.deb            Debian, Ubuntu, Mint …
+#   openyog-<version>-1.x86_64.rpm           Fedora, openSUSE …
 #
-# The .deb and .rpm hold the AppImage's files under /opt/openyog, with
-# /usr/bin/openyog, the desktop entry and the icons in the usual places.
+# The .tar.gz holds the AppImage's files in a folder of their own; the .deb
+# and .rpm hold them under /opt/openyog, with /usr/bin/openyog, the desktop
+# entry and the icons in the usual places.
 #
 #   tools/linux-bundle.sh --container   build in a throwaway Ubuntu 22.04
 #                                       container (podman or docker)
@@ -218,8 +220,23 @@ rm -f "$OUT"/openyog_*_amd64.deb "$OUT"/openyog-*.x86_64.rpm
 "$WORK/nfpm" package -f "$WORK/nfpm.yaml" -p deb -t "$OUT/" >/dev/null
 "$WORK/nfpm" package -f "$WORK/nfpm.yaml" -p rpm -t "$OUT/" >/dev/null
 
-# the AppImage starts: its GUI too (here: no display, so offscreen)
+# ---- the portable .tar.gz, from the same files ------------------------------------
+PORTABLE="$OUT/openyog-$VERSION-linux-x86_64.tar.gz"
+rm -rf "$WORK/portable" && mkdir -p "$WORK/portable"
+cp -a "$APPDIR/usr" "$WORK/portable/openyog-$VERSION"
+ln -s bin/openyog "$WORK/portable/openyog-$VERSION/openyog"
+rm -f "$OUT"/openyog-*-linux-x86_64.tar.gz
+tar -C "$WORK/portable" --sort=name --owner=0 --group=0 --numeric-owner \
+    -czf "$PORTABLE" "openyog-$VERSION"
+
+# the AppImage and the unpacked .tar.gz start, with none of the build's
+# libraries on the path: their GUI too (here: no display, so offscreen)
+unset LD_LIBRARY_PATH
 export QT_QPA_PLATFORM=offscreen APPIMAGE_EXTRACT_AND_RUN=1
-"$APPIMAGE" --version
-"$APPIMAGE" --icontest | grep -q "icontest: PASS" || { echo "the AppImage's GUI didn't start" >&2; exit 1; }
+rm -rf "$WORK/portable-test" && mkdir -p "$WORK/portable-test"
+tar -xzf "$PORTABLE" -C "$WORK/portable-test"
+for app in "$APPIMAGE" "$WORK/portable-test/openyog-$VERSION/openyog"; do
+    "$app" --version
+    "$app" --icontest | grep -q "icontest: PASS" || { echo "$app: the GUI didn't start" >&2; exit 1; }
+done
 ls -l "$OUT"

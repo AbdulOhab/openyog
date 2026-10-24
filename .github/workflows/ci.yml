@@ -233,7 +233,7 @@ jobs:
           path: /home/builder/pkg/openyog-[0-9]*.pkg.tar
 
   linux-packages:
-    name: Linux packages (AppImage, deb, rpm)
+    name: Linux packages (AppImage, tar.gz, deb, rpm)
     runs-on: ubuntu-latest
     # glibc 2.35: the oldest the packages are for
     container: ubuntu:22.04
@@ -256,12 +256,13 @@ jobs:
           name: openyog-linux
           path: |
             build-linux/*.AppImage
+            build-linux/*.tar.gz
             build-linux/*.deb
             build-linux/*.rpm
 
   # each package installed and started where people would use it
   linux-packages-test:
-    name: Linux package on ${{ matrix.image }}
+    name: Linux ${{ matrix.package }} on ${{ matrix.image }}
     needs: linux-packages
     runs-on: ubuntu-latest
     container: ${{ matrix.image }}
@@ -270,14 +271,29 @@ jobs:
       matrix:
         include:
           - image: debian:12
+            package: deb
             install: apt-get update -qq && apt-get install -y -qq ./openyog_*.deb
           - image: ubuntu:24.04
+            package: deb
             install: apt-get update -qq && apt-get install -y -qq ./openyog_*.deb
           - image: fedora:latest
+            package: rpm
             install: dnf install -y -q ./openyog-*.rpm
           - image: opensuse/tumbleweed
+            package: rpm
             install: zypper --non-interactive install --allow-unsigned-rpm ./openyog-*.rpm
+          # the portable .tar.gz with only the libraries the .deb depends on
+          - image: debian:12
+            package: tar.gz
+            install: >-
+              apt-get update -qq &&
+              apt-get install -y -qq libgl1 libopengl0 libegl1 libfontconfig1 libfreetype6
+              libx11-6 libx11-xcb1 libxcb1 libdbus-1-3 libcom-err2 libgpg-error0 libgmp10
+              libwayland-client0 zlib1g libstdc++6 >/dev/null &&
+              tar -xzf openyog-*-linux-x86_64.tar.gz &&
+              ln -s "$PWD"/openyog-*/openyog /usr/local/bin/openyog
           - image: archlinux:latest
+            package: AppImage
             install: >-
               pacman -Sy --noconfirm --needed mesa fontconfig libxcb libx11 dbus >/dev/null &&
               chmod +x openyog-*.AppImage &&

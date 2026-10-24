@@ -56,11 +56,13 @@ Get the latest version from the
 [releases page](https://github.com/AbdulOhab/openyog/releases/latest):
 
 - **Windows 10/11**: the installer (`setup.exe`), or the portable `.zip`.
-- **Linux**: the AppImage runs on any distribution. There are also `.deb`
-  (Ubuntu, Debian, Mint), `.rpm` (Fedora, openSUSE) and Arch packages.
+- **Linux**: the AppImage runs on any distribution, and so does the portable
+  `.tar.gz` (unpack it and run `./openyog`). There are also `.deb` (Ubuntu,
+  Debian, Mint), `.rpm` (Fedora, openSUSE) and Arch packages.
 
-The AppImage, .deb and .rpm come with their own Qt and libraries. All they
-need is glibc 2.35 or newer (Ubuntu 22.04, Debian 12, Fedora 36 and later).
+The AppImage, .tar.gz, .deb and .rpm come with their own Qt and libraries.
+All they need is glibc 2.35 or newer (Ubuntu 22.04, Debian 12, Fedora 36 and
+later).
 
 ## Build from source
 
